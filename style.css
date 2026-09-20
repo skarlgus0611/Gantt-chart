@@ -1,1 +1,64 @@
+* {
+  box-sizing: border-box;
+}
 
+body {
+  margin: 0;
+  font-family: Arial, "Noto Sans KR", sans-serif;
+  background: #f5f7fb;
+  color: #1f2937;
+}
+
+header {
+  background: white;
+  padding: 24px 32px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+header h1 {
+  margin: 0 0 6px 0;
+  font-size: 28px;
+}
+
+header p {
+  margin: 0;
+  color: #6b7280;
+}
+
+main {
+  padding: 24px 32px;
+}
+
+.toolbar {
+  margin-bottom: 16px;
+}
+
+button {
+  border: none;
+  background: #2563eb;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+#status {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+#gantt {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  min-height: 300px;
+  padding: 20px;
+}
