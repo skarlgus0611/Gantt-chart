@@ -2496,167 +2496,59 @@ function reorderLocal(
  * ========================================================= */
 
 function updateRange() {
+  const totalDays = daysInYear(state.year);
 
-  const minElement =
-    document.getElementById(
-      "rangeMin"
-    );
+  let start = Number(state.rangeStart);
+  let end = Number(state.rangeEnd);
 
-  const maxElement =
-    document.getElementById(
-      "rangeMax"
-    );
+  // 범위를 연도 전체 안으로 제한
+  start = Math.max(0, Math.min(start, totalDays - 1));
+  end = Math.max(start, Math.min(end, totalDays - 1));
 
+  state.rangeStart = start;
+  state.rangeEnd = end;
 
-  if (
-    !minElement ||
-    !maxElement
-  ) {
-    return;
+  const rangeMin = document.getElementById("rangeMin");
+  const rangeMax = document.getElementById("rangeMax");
+
+  if (rangeMin) {
+    rangeMin.max = totalDays - 1;
+    rangeMin.value = start;
   }
 
-
-  let min =
-    Number(
-      minElement.value
-    );
-
-
-  let max =
-    Number(
-      maxElement.value
-    );
-
-
-  const totalDays =
-    daysInYear(
-      state.year
-    );
-
-
-  min =
-    Math.max(
-      0,
-      Math.min(
-        min,
-        totalDays - 1
-      )
-    );
-
-
-  max =
-    Math.max(
-      0,
-      Math.min(
-        max,
-        totalDays - 1
-      )
-    );
-
-
-  /*
-   * 최소/최대가 같아지는 것을 방지
-   */
-  if (min >= max) {
-
-    if (
-      document.activeElement ===
-      minElement
-    ) {
-
-      min =
-        Math.max(
-          0,
-          max - 1
-        );
-
-    } else {
-
-      max =
-        Math.min(
-          totalDays - 1,
-          min + 1
-        );
-    }
+  if (rangeMax) {
+    rangeMax.max = totalDays - 1;
+    rangeMax.value = end;
   }
 
-
-  state.rangeStart =
-    min;
-
-  state.rangeEnd =
-    max;
-
-
-  minElement.value =
-    min;
-
-  maxElement.value =
-    max;
-
-
-  renderTimeline();
-
-
-  requestAnimationFrame(
-    syncGanttRows
-  );
+  render();
 }
-
 
 /* =========================================================
  * RESET RANGE
  * ========================================================= */
 
 function resetRange() {
+  const totalDays = daysInYear(state.year);
 
-  const days =
-    daysInYear(
-      state.year
-    );
+  state.rangeStart = 0;
+  state.rangeEnd = totalDays - 1;
 
+  const rangeMin = document.getElementById("rangeMin");
+  const rangeMax = document.getElementById("rangeMax");
 
-  state.rangeStart =
-    0;
-
-  state.rangeEnd =
-    days - 1;
-
-
-  const min =
-    document.getElementById(
-      "rangeMin"
-    );
-
-  const max =
-    document.getElementById(
-      "rangeMax"
-    );
-
-
-  if (min) {
-
-    min.min = 0;
-
-    min.max =
-      days - 1;
-
-    min.value = 0;
+  if (rangeMin) {
+    rangeMin.max = totalDays - 1;
+    rangeMin.value = 0;
   }
 
-
-  if (max) {
-
-    max.min = 0;
-
-    max.max =
-      days - 1;
-
-    max.value =
-      days - 1;
+  if (rangeMax) {
+    rangeMax.max = totalDays - 1;
+    rangeMax.value = totalDays - 1;
   }
+
+  render();
 }
-
 
 /* =========================================================
  * YEAR
