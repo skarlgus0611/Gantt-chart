@@ -1,38 +1,351 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
+
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
 
   <title>나의 Gantt Chart</title>
 
-  <link rel="stylesheet" href="style.css">
+  <link
+    rel="stylesheet"
+    href="style.css"
+  >
+
 </head>
+
 
 <body>
 
-  <header>
+<header class="topbar">
+
+  <div>
     <h1>나의 Gantt Chart</h1>
-    <p>Google Sheets 연동 프로젝트 관리</p>
-  </header>
+    <p>프로젝트 일정 관리</p>
+  </div>
 
-  <main>
+  <div class="top-actions">
 
-    <section class="toolbar">
-      <button id="reloadBtn">새로고침</button>
-    </section>
+    <button id="todayBtn">
+      오늘
+    </button>
 
-    <section id="status">
-      데이터를 불러오는 중...
-    </section>
+    <button id="reloadBtn">
+      새로고침
+    </button>
 
-    <section id="gantt">
-      <!-- 여기에 Gantt Chart가 표시됩니다. -->
-    </section>
+  </div>
 
-  </main>
+</header>
 
-  <script src="app.js"></script>
+
+<main>
+
+  <!-- 연도 / 기간 -->
+  <section class="control-bar">
+
+    <button id="prevYear">
+      ‹
+    </button>
+
+    <strong id="yearTitle">
+      2026
+    </strong>
+
+    <button id="nextYear">
+      ›
+    </button>
+
+  </section>
+
+
+  <!-- Gantt -->
+  <section class="gantt">
+
+    <!-- 왼쪽 작업명 -->
+    <div
+      id="taskColumn"
+      class="task-column"
+    ></div>
+
+
+    <!-- 오른쪽 시간 -->
+    <div
+      id="timeline"
+      class="timeline"
+    ></div>
+
+  </section>
+
+
+  <!-- 기간 확대/축소 -->
+  <section class="zoom-area">
+
+    <div class="zoom-label">
+      표시 기간
+    </div>
+
+    <div class="range-slider">
+
+      <div
+        id="rangeTrack"
+        class="range-track"
+      ></div>
+
+      <input
+        id="rangeMin"
+        type="range"
+        min="0"
+        max="364"
+        value="0"
+      >
+
+      <input
+        id="rangeMax"
+        type="range"
+        min="0"
+        max="364"
+        value="364"
+      >
+
+    </div>
+
+  </section>
+
+
+  <!-- 작업 상세 -->
+  <aside
+    id="detailPanel"
+    class="detail-panel hidden"
+  ></aside>
+
+
+  <!-- 작업 추가 -->
+  <button
+    id="addTaskBtn"
+    class="add-box"
+  >
+    ＋ 작업 추가
+  </button>
+
+
+  <!-- 카테고리 추가 -->
+  <button
+    id="addCategoryBtn"
+    class="add-category-box"
+  >
+    ＋ 카테고리 추가
+  </button>
+
+
+</main>
+
+
+<!-- 작업 입력 모달 -->
+<div
+  id="taskModal"
+  class="modal hidden"
+>
+
+  <div class="modal-card">
+
+    <div class="modal-header">
+
+      <h2>작업 추가</h2>
+
+      <button
+        class="close-btn"
+        data-close="taskModal"
+      >
+        ×
+      </button>
+
+    </div>
+
+
+    <label>
+      작업명
+      <input
+        id="taskName"
+        type="text"
+      >
+    </label>
+
+
+    <label>
+      카테고리
+      <select
+        id="taskCategory"
+      ></select>
+    </label>
+
+
+    <div class="date-grid">
+
+      <label>
+        시작일
+        <input
+          id="taskStart"
+          type="date"
+        >
+      </label>
+
+      <label>
+        종료일
+        <input
+          id="taskEnd"
+          type="date"
+        >
+      </label>
+
+    </div>
+
+
+    <label>
+      진행률
+      <input
+        id="taskProgress"
+        type="number"
+        min="0"
+        max="100"
+        value="0"
+      >
+    </label>
+
+
+    <label>
+      막대 색상
+      <input
+        id="taskColor"
+        type="color"
+        value="#3B82F6"
+      >
+    </label>
+
+
+    <label>
+      메모
+      <textarea
+        id="taskMemo"
+      ></textarea>
+    </label>
+
+
+    <label>
+      대상처
+      <input
+        id="taskTarget"
+        type="text"
+      >
+    </label>
+
+
+    <label>
+      담당자
+      <input
+        id="taskOwner"
+        type="text"
+      >
+    </label>
+
+
+    <div class="modal-actions">
+
+      <button
+        data-close="taskModal"
+      >
+        취소
+      </button>
+
+      <button
+        id="saveTaskBtn"
+        class="primary"
+      >
+        작업 추가
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- 카테고리 입력 모달 -->
+<div
+  id="categoryModal"
+  class="modal hidden"
+>
+
+  <div class="modal-card">
+
+    <div class="modal-header">
+
+      <h2>카테고리 추가</h2>
+
+      <button
+        class="close-btn"
+        data-close="categoryModal"
+      >
+        ×
+      </button>
+
+    </div>
+
+
+    <label>
+      카테고리명
+
+      <input
+        id="categoryName"
+        type="text"
+        placeholder="예: 운동"
+      >
+
+    </label>
+
+
+    <label>
+      기본 막대 색상
+
+      <input
+        id="categoryColor"
+        type="color"
+        value="#3B82F6"
+      >
+
+    </label>
+
+
+    <div class="modal-actions">
+
+      <button
+        data-close="categoryModal"
+      >
+        취소
+      </button>
+
+      <button
+        id="saveCategoryBtn"
+        class="primary"
+      >
+        카테고리 추가
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<script src="app.js"></script>
 
 </body>
+
 </html>
