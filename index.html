@@ -2,14 +2,37 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>간트차트</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>나의 Gantt Chart</title>
+
+  <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-  <h1>내 간트차트</h1>
+  <header>
+    <h1>나의 Gantt Chart</h1>
+    <p>Google Sheets 연동 프로젝트 관리</p>
+  </header>
 
-  <p>GitHub Pages 연결 테스트</p>
+  <main>
+
+    <section class="toolbar">
+      <button id="reloadBtn">새로고침</button>
+    </section>
+
+    <section id="status">
+      데이터를 불러오는 중...
+    </section>
+
+    <section id="gantt">
+      <!-- 여기에 Gantt Chart가 표시됩니다. -->
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
 
 </body>
 </html>
