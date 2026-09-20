@@ -1,5 +1,5 @@
 const API_URL =
-  "https://script.google.com/macros/s/AKfycbz8XK85cnU9VMpS4cKU4mC6QLtjGSMxuy0bGErXzr--P5qOWEozhv88ElVSZBhGQUr0bA/exec?api=1&key=21cb42f7a0ea44838dea501764474553";
+  "https://script.google.com/macros/s/AKfycbx33KL-l94mz08Q8rWJHYrGUXyipmxrm02z3Y26OR20V9q5V2diZRFIzvyFpqio-0Jg8Q/exec?api=1&key=21cb42f7a0ea44838dea501764474553";
 
 async function loadData() {
   const status = document.getElementById("status");
