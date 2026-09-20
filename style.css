@@ -2,8 +2,13 @@
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
+  padding: 0;
+
+  width: 100%;
+  min-height: 100%;
 
   font-family:
     Arial,
@@ -12,6 +17,10 @@ body {
 
   background: #f4f6f9;
   color: #1f2937;
+}
+
+body {
+  overflow-x: hidden;
 }
 
 
@@ -62,7 +71,8 @@ body {
 ========================= */
 
 button {
-  border: 1px solid #d1d5db;
+  border:
+    1px solid #d1d5db;
 
   background: white;
 
@@ -73,6 +83,8 @@ button {
   padding: 8px 14px;
 
   cursor: pointer;
+
+  font: inherit;
 }
 
 button:hover {
@@ -87,12 +99,18 @@ button.primary {
   border-color: #2563eb;
 }
 
+button:active {
+  transform: translateY(1px);
+}
+
 
 /* =========================
    Main
 ========================= */
 
 main {
+  width: 100%;
+
   padding: 22px 28px;
 }
 
@@ -137,7 +155,7 @@ main {
 
 
 /* =========================
-   Gantt
+   Gantt 전체
 ========================= */
 
 .gantt {
@@ -157,13 +175,13 @@ main {
 
 
 /* =========================
-   왼쪽
+   왼쪽 작업 영역
 ========================= */
 
 .task-column {
   width: 260px;
 
-  flex-shrink: 0;
+  flex: 0 0 260px;
 
   border-right:
     1px solid #e5e7eb;
@@ -190,6 +208,11 @@ main {
     1px solid #e5e7eb;
 }
 
+
+/* =========================
+   카테고리
+========================= */
+
 .category-label {
   height: 38px;
 
@@ -207,7 +230,62 @@ main {
   font-size: 13px;
 
   font-weight: 700;
+
+  flex-shrink: 0;
 }
+
+.category-label-name {
+  overflow: hidden;
+
+  white-space: nowrap;
+
+  text-overflow: ellipsis;
+
+  min-width: 0;
+
+  flex: 1;
+}
+
+
+/* 카테고리 삭제 버튼 */
+
+.category-delete-btn {
+  flex:
+    0 0 24px;
+
+  width: 24px;
+
+  height: 24px;
+
+  padding: 0;
+
+  margin: 0;
+
+  border: 0;
+
+  background: transparent;
+
+  color: #94a3b8;
+
+  font-size: 18px;
+
+  line-height: 24px;
+
+  border-radius: 6px;
+
+  cursor: pointer;
+}
+
+.category-delete-btn:hover {
+  background: #fee2e2;
+
+  color: #dc2626;
+}
+
+
+/* =========================
+   작업 카드
+========================= */
 
 .task-card {
   height: 54px;
@@ -233,12 +311,18 @@ main {
     transform .15s,
     box-shadow .15s,
     opacity .15s;
+
+  overflow: hidden;
 }
 
 .task-card:hover {
   box-shadow:
     0 3px 10px
-    rgba(0,0,0,.08);
+    rgba(0, 0, 0, .08);
+}
+
+.task-card:active {
+  cursor: grabbing;
 }
 
 .task-card.dragging {
@@ -251,7 +335,7 @@ main {
 .task-card.long-pressing {
   box-shadow:
     0 0 0 3px
-    rgba(37,99,235,.16);
+    rgba(37, 99, 235, .16);
 }
 
 .task-name {
@@ -262,6 +346,8 @@ main {
   text-overflow: ellipsis;
 
   font-size: 14px;
+
+  min-width: 0;
 }
 
 
@@ -270,17 +356,40 @@ main {
 ========================= */
 
 .timeline {
-  flex: 1;
+  flex: 1 1 auto;
+
+  min-width: 0;
 
   overflow-x: auto;
 
+  overflow-y: hidden;
+
   position: relative;
+
+  background: white;
 }
 
+
+/*
+ * 중요:
+ * app.js가 실제 표시 범위에 따라
+ * timeline-inner의 width를 직접 계산한다.
+ *
+ * 따라서 여기서는 고정 min-width를 주지 않는다.
+ */
+
 .timeline-inner {
-  min-width: 900px;
   position: relative;
+
+  min-height: 100%;
+
+  width: max-content;
 }
+
+
+/* =========================
+   주간 헤더
+========================= */
 
 .week-header {
   height: 52px;
@@ -294,7 +403,7 @@ main {
 }
 
 .week-cell {
-  min-width: 34px;
+  min-width: 0;
 
   display: flex;
 
@@ -308,7 +417,16 @@ main {
 
   border-right:
     1px solid #edf0f4;
+
+  overflow: hidden;
+
+  white-space: nowrap;
 }
+
+
+/* =========================
+   Timeline 카테고리
+========================= */
 
 .timeline-category {
   height: 38px;
@@ -317,7 +435,14 @@ main {
     1px solid #edf0f4;
 
   background: #f8fafc;
+
+  flex-shrink: 0;
 }
+
+
+/* =========================
+   Timeline 작업 행
+========================= */
 
 .timeline-task-row {
   height: 64px;
@@ -336,7 +461,14 @@ main {
 
   background-size:
     var(--week-width) 100%;
+
+  flex-shrink: 0;
 }
+
+
+/* =========================
+   작업 막대
+========================= */
 
 .task-bar {
   position: absolute;
@@ -355,7 +487,7 @@ main {
 
   box-shadow:
     0 2px 5px
-    rgba(0,0,0,.12);
+    rgba(0, 0, 0, .12);
 
   transition:
     filter .15s,
@@ -373,11 +505,13 @@ main {
   position: absolute;
 
   left: 0;
+
   top: 0;
+
   bottom: 0;
 
   background:
-    rgba(255,255,255,.25);
+    rgba(255, 255, 255, .25);
 
   pointer-events: none;
 }
@@ -414,7 +548,7 @@ main {
 
 
 /* =========================
-   오늘
+   오늘 표시선
 ========================= */
 
 .today-line {
@@ -469,6 +603,7 @@ main {
   position: absolute;
 
   left: 8px;
+
   right: 8px;
 
   top: 12px;
@@ -500,6 +635,14 @@ main {
   margin: 0;
 }
 
+.range-slider input[type="range"]::-webkit-slider-runnable-track {
+  background: transparent;
+}
+
+.range-slider input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+
 .range-slider input[type="range"]::-webkit-slider-thumb {
   appearance: none;
 
@@ -516,7 +659,28 @@ main {
 
   box-shadow:
     0 2px 5px
-    rgba(0,0,0,.15);
+    rgba(0, 0, 0, .15);
+
+  pointer-events: auto;
+
+  cursor: grab;
+}
+
+.range-slider input[type="range"]::-moz-range-thumb {
+  width: 20px;
+
+  height: 20px;
+
+  border-radius: 50%;
+
+  background: white;
+
+  border:
+    2px solid #2563eb;
+
+  box-shadow:
+    0 2px 5px
+    rgba(0, 0, 0, .15);
 
   pointer-events: auto;
 
@@ -578,7 +742,7 @@ main {
 
   box-shadow:
     0 8px 30px
-    rgba(0,0,0,.08);
+    rgba(0, 0, 0, .08);
 }
 
 .hidden {
@@ -599,6 +763,18 @@ main {
   margin: 0;
 
   font-size: 18px;
+}
+
+.detail-title > button {
+  width: 36px;
+
+  height: 36px;
+
+  padding: 0;
+
+  font-size: 22px;
+
+  border: 0;
 }
 
 .detail-grid {
@@ -638,10 +814,20 @@ main {
     1px solid #d1d5db;
 
   border-radius: 7px;
+
+  font: inherit;
 }
 
 .detail-memo {
   margin-top: 16px;
+}
+
+.detail-memo > span {
+  display: block;
+
+  font-size: 11px;
+
+  color: #94a3b8;
 }
 
 .detail-memo textarea {
@@ -659,6 +845,8 @@ main {
   border-radius: 8px;
 
   resize: vertical;
+
+  font: inherit;
 }
 
 .detail-actions {
@@ -682,7 +870,7 @@ main {
   inset: 0;
 
   background:
-    rgba(15,23,42,.45);
+    rgba(15, 23, 42, .45);
 
   display: flex;
 
@@ -691,10 +879,13 @@ main {
   justify-content: center;
 
   z-index: 100;
+
+  padding: 15px;
 }
 
 .modal-card {
-  width: min(520px, calc(100vw - 30px));
+  width:
+    min(520px, calc(100vw - 30px));
 
   max-height:
     calc(100vh - 30px);
@@ -709,7 +900,7 @@ main {
 
   box-shadow:
     0 20px 60px
-    rgba(0,0,0,.2);
+    rgba(0, 0, 0, .2);
 }
 
 .modal-header {
@@ -775,6 +966,8 @@ main {
   height: 42px;
 
   padding: 3px;
+
+  cursor: pointer;
 }
 
 .date-grid {
@@ -798,6 +991,29 @@ main {
 
 
 /* =========================
+   스크롤바
+========================= */
+
+.timeline::-webkit-scrollbar {
+  height: 10px;
+}
+
+.timeline::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.timeline::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+
+  border-radius: 10px;
+}
+
+.timeline::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+
+/* =========================
    반응형
 ========================= */
 
@@ -807,13 +1023,66 @@ main {
     padding: 14px;
   }
 
+  .topbar {
+    padding: 0 16px;
+  }
+
+  .topbar h1 {
+    font-size: 20px;
+  }
+
+  .topbar p {
+    display: none;
+  }
+
   .task-column {
     width: 180px;
+
+    flex-basis: 180px;
   }
 
   .detail-grid {
     grid-template-columns:
       repeat(2, 1fr);
+  }
+
+}
+
+@media (max-width: 520px) {
+
+  .topbar {
+    height: 64px;
+  }
+
+  .top-actions button {
+    padding:
+      7px 10px;
+
+    font-size: 12px;
+  }
+
+  main {
+    padding: 10px;
+  }
+
+  .task-column {
+    width: 150px;
+
+    flex-basis: 150px;
+  }
+
+  .task-card {
+    padding: 0 9px;
+  }
+
+  .detail-grid {
+    grid-template-columns:
+      1fr;
+  }
+
+  .date-grid {
+    grid-template-columns:
+      1fr;
   }
 
 }
