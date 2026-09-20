@@ -5,54 +5,42 @@ const EDIT_KEY =
   "21cb42f7a0ea44838dea501764474553";
 
 
+/* =========================================================
+ * STATE
+ * ========================================================= */
+
 let state = {
-
   tasks: [],
-
   categories: [],
 
-  year:
-    new Date().getFullYear(),
+  // 화면은 항상 한 개 연도만 표시한다.
+  year: new Date().getFullYear(),
 
-  displayStartYear:
-    new Date().getFullYear(),
-
-  displayEndYear:
-    new Date().getFullYear(),
-
+  // 선택 연도 내부에서만 확대/축소
   rangeStart: 0,
-
   rangeEnd: 364,
 
   selectedTask: null,
-
   draggingTaskId: null
-
 };
 
 
-/* =================================================
+/* =========================================================
  * API
- * ================================================= */
+ * ========================================================= */
 
 async function apiGet() {
+  const response = await fetch(
+    API_URL +
+    "?api=1&key=" +
+    encodeURIComponent(EDIT_KEY)
+  );
 
-  const response =
-    await fetch(
-      API_URL +
-      "?api=1&key=" +
-      encodeURIComponent(
-        EDIT_KEY
-      )
-    );
-
-  const result =
-    await response.json();
+  const result = await response.json();
 
   if (!result.ok) {
     throw new Error(
-      result.error ||
-      "API 오류"
+      result.error || "API 오류"
     );
   }
 
@@ -60,116 +48,92 @@ async function apiGet() {
 }
 
 
-async function apiPost(
-  action,
-  data = {}
-) {
+async function apiPost(action, data = {}) {
+  const response = await fetch(
+    API_URL,
+    {
+      method: "POST",
 
-  const response =
-    await fetch(
-      API_URL,
-      {
-        method: "POST",
+      headers: {
+        "Content-Type":
+          "text/plain;charset=utf-8"
+      },
 
-        headers: {
-          "Content-Type":
-            "text/plain;charset=utf-8"
-        },
+      body: JSON.stringify({
+        action,
+        key: EDIT_KEY,
+        ...data
+      })
+    }
+  );
 
-        body:
-          JSON.stringify({
-
-            action,
-
-            key:
-              EDIT_KEY,
-
-            ...data
-
-          })
-
-      }
-    );
-
-  const result =
-    await response.json();
+  const result = await response.json();
 
   if (!result.ok) {
-
     throw new Error(
-      result.error ||
-      "저장 실패"
+      result.error || "저장 실패"
     );
-
   }
 
   return result;
 }
 
 
-/* =================================================
- * 초기화
- * ================================================= */
+/* =========================================================
+ * DATA LOAD
+ * ========================================================= */
 
 async function loadData() {
-
   try {
-
-    const data =
-      await apiGet();
+    const data = await apiGet();
 
     state.tasks =
-      data.tasks || [];
+      Array.isArray(data.tasks)
+        ? data.tasks
+        : [];
 
     state.categories =
-      data.categories || [];
+      Array.isArray(data.categories)
+        ? data.categories
+        : [];
 
     render();
 
   } catch (error) {
-
     console.error(error);
 
     alert(
       "데이터를 불러오지 못했습니다.\n" +
       error.message
     );
-
   }
-
 }
 
 
-/* =================================================
- * 날짜
- * ================================================= */
+/* =========================================================
+ * DATE
+ * ========================================================= */
 
-function dateObj(
-  value
-) {
+function dateObj(value) {
+  if (!value) return null;
 
   const [
     y,
     m,
     d
-  ] =
-    value
-      .split("-")
-      .map(Number);
+  ] = String(value)
+    .split("-")
+    .map(Number);
 
   return new Date(
     y,
     m - 1,
     d
   );
-
 }
 
 
-function dateKey(
-  date
-) {
-
+function dateKey(date) {
   return [
     date.getFullYear(),
 
@@ -182,14 +146,10 @@ function dateKey(
     ).padStart(2, "0")
 
   ].join("-");
-
 }
 
 
-function dayOfYear(
-  date
-) {
-
+function dayOfYear(date) {
   const start =
     new Date(
       date.getFullYear(),
@@ -199,64 +159,321 @@ function dayOfYear(
 
   return Math.floor(
     (
-      date - start
+      date.getTime() -
+      start.getTime()
     ) /
     86400000
   );
-
 }
 
 
-function daysInYear(
-  year
-) {
-
+function daysInYear(year) {
   return (
     new Date(
       year + 1,
       0,
       1
-    ) -
+    ).getTime() -
     new Date(
       year,
       0,
       1
-    )
-  ) /
-  86400000;
-
+    ).getTime()
+  ) / 86400000;
 }
 
 
-/* =================================================
- * Render
- * ================================================= */
+/*
+ * 선택된 연도의 1월 1일
+ */
+function getYearStart() {
+  return new Date(
+    state.year,
+    0,
+    1
+  );
+}
+
+
+/*
+ * 선택된 연도의 12월 31일
+ */
+function getYearEnd() {
+  return new Date(
+    state.year,
+    11,
+    31
+  );
+}
+
+
+/*
+ * 선택된 연도 1월 1일부터 몇 번째 날인지
+ */
+function dayOffsetFromYearStart(date) {
+  const start = getYearStart();
+
+  return Math.floor(
+    (
+      date.getTime() -
+      start.getTime()
+    ) /
+    86400000
+  );
+}
+
+
+/* =========================================================
+ * RENDER
+ * ========================================================= */
 
 function render() {
 
-  document
-    .getElementById(
+  const yearTitle =
+    document.getElementById(
       "yearTitle"
-    )
-    .textContent =
-    state.displayStartYear === state.displayEndYear
-      ? state.displayStartYear
-      : `${state.displayStartYear}–${state.displayEndYear}`;
+    );
+
+  if (yearTitle) {
+    yearTitle.textContent =
+      state.year;
+  }
 
   renderTaskColumn();
-
   renderTimeline();
 
-  requestAnimationFrame(
-    syncGanttRows
-  );
+  // 폰트/레이아웃 계산이 끝난 다음 한 번 더 맞춘다.
+  requestAnimationFrame(() => {
+    syncGanttRows();
 
+    requestAnimationFrame(() => {
+      syncGanttRows();
+    });
+
+    setTimeout(
+      syncGanttRows,
+      100
+    );
+  });
 }
 
 
-/* =================================================
- * 작업 왼쪽
- * ================================================= */
+/* =========================================================
+ * TASK / CATEGORY GROUP
+ *
+ * 핵심:
+ *
+ * 1. 선택한 연도에 걸쳐 있는 작업만 표시
+ *
+ *    시작일 <= 선택연도 12/31
+ *    &&
+ *    종료일 >= 선택연도 1/1
+ *
+ * 2. 전년도부터 이어진 작업은 가장 위
+ *
+ * 3. 그런 작업이 있는 카테고리도 가장 위
+ *
+ * 4. 다른 연도에만 존재하는 카테고리는 숨김
+ *
+ * 5. 삭제된 카테고리의 작업은 "기타"
+ * ========================================================= */
+
+function groupTasks() {
+
+  const yearStart =
+    `${state.year}-01-01`;
+
+  const yearEnd =
+    `${state.year}-12-31`;
+
+
+  /*
+   * 선택한 연도에 실제로 걸쳐 있는 작업만 가져온다.
+   *
+   * 예:
+   *
+   * 2025-12-20 ~ 2026-01-20
+   * → 2025에도 표시
+   * → 2026에도 표시
+   *
+   * 2025-01-01 ~ 2025-12-31
+   * → 2026에는 표시하지 않음
+   */
+  const visibleTasks =
+    state.tasks.filter(task => {
+
+      if (!task.start || !task.end) {
+        return false;
+      }
+
+      return (
+        task.start <= yearEnd &&
+        task.end >= yearStart
+      );
+    });
+
+
+  /*
+   * 전년도부터 현재 연도로 넘어온 작업
+   */
+  function isContinuing(task) {
+    return (
+      task.start < yearStart &&
+      task.end >= yearStart
+    );
+  }
+
+
+  const groups = [];
+
+
+  /*
+   * 카테고리 순서 자체는
+   * Categories 시트의 순서를 기본적으로 유지한다.
+   *
+   * 단,
+   * 전년도에서 이어진 작업이 하나라도 있는
+   * 카테고리는 최상단으로 이동한다.
+   */
+  state.categories.forEach(
+    category => {
+
+      const tasks =
+        visibleTasks.filter(
+          task =>
+            task.categoryId ===
+            category.id
+        );
+
+      if (!tasks.length) {
+        return;
+      }
+
+
+      const continuing =
+        tasks.filter(
+          isContinuing
+        );
+
+      const newTasks =
+        tasks.filter(
+          task =>
+            !isContinuing(task)
+        );
+
+
+      groups.push({
+        id: category.id,
+
+        name: category.name,
+
+        tasks: [
+          ...continuing,
+          ...newTasks
+        ],
+
+        hasContinuing:
+          continuing.length > 0
+      });
+    }
+  );
+
+
+  /*
+   * 카테고리 안에서
+   * 이어진 작업이 있는 카테고리를 위로
+   */
+  groups.sort(
+    (a, b) => {
+
+      if (
+        a.hasContinuing !==
+        b.hasContinuing
+      ) {
+        return a.hasContinuing
+          ? -1
+          : 1;
+      }
+
+      return 0;
+    }
+  );
+
+
+  /*
+   * 카테고리가 삭제된 작업
+   *
+   * → 기타
+   */
+  const uncategorized =
+    visibleTasks.filter(
+      task =>
+        !state.categories.some(
+          category =>
+            category.id ===
+            task.categoryId
+        )
+    );
+
+
+  if (uncategorized.length) {
+
+    const continuing =
+      uncategorized.filter(
+        isContinuing
+      );
+
+    const newTasks =
+      uncategorized.filter(
+        task =>
+          !isContinuing(task)
+      );
+
+
+    groups.push({
+      id: "",
+
+      name: "기타",
+
+      tasks: [
+        ...continuing,
+        ...newTasks
+      ],
+
+      hasContinuing:
+        continuing.length > 0
+    });
+
+
+    /*
+     * 기타도 이어진 작업이 있으면
+     * 최상단으로 올린다.
+     */
+    groups.sort(
+      (a, b) => {
+
+        if (
+          a.hasContinuing !==
+          b.hasContinuing
+        ) {
+          return a.hasContinuing
+            ? -1
+            : 1;
+        }
+
+        return 0;
+      }
+    );
+  }
+
+
+  return groups;
+}
+
+
+/* =========================================================
+ * LEFT TASK COLUMN
+ * ========================================================= */
 
 function renderTaskColumn() {
 
@@ -265,8 +482,17 @@ function renderTaskColumn() {
       "taskColumn"
     );
 
+  if (!column) {
+    return;
+  }
+
+
   column.innerHTML = "";
 
+
+  /*
+   * Header
+   */
   const header =
     document.createElement(
       "div"
@@ -283,283 +509,229 @@ function renderTaskColumn() {
   );
 
 
-  const grouped =
+  const groups =
     groupTasks();
 
 
-  grouped.forEach(group => {
+  groups.forEach(
+    group => {
 
-    const cat =
-      document.createElement(
-        "div"
+      /*
+       * Category row
+       */
+      const category =
+        document.createElement(
+          "div"
+        );
+
+      category.className =
+        "category-label";
+
+
+      /*
+       * 카테고리 이름 + 삭제 버튼
+       */
+      const name =
+        document.createElement(
+          "span"
+        );
+
+      name.className =
+        "category-label-name";
+
+      name.textContent =
+        group.name;
+
+
+      category.appendChild(
+        name
       );
 
-    cat.className =
-      "category-label";
 
-    cat.textContent =
-      group.name;
+      /*
+       * "기타"는 실제 카테고리가 아니므로
+       * 삭제 버튼을 만들지 않는다.
+       */
+      if (group.id) {
 
-    column.appendChild(
-      cat
-    );
-
-
-    group.tasks.forEach(
-      task => {
-
-        const card =
+        const deleteButton =
           document.createElement(
-            "div"
+            "button"
           );
 
-        card.className =
-          "task-card";
+        deleteButton.type =
+          "button";
 
-        card.dataset.id =
-          task.id;
+        deleteButton.className =
+          "category-delete-btn";
 
-        card.innerHTML = `
-          <div class="task-name">
-            ${escapeHtml(task.name)}
-          </div>
-        `;
+        deleteButton.textContent =
+          "×";
 
+        deleteButton.title =
+          "카테고리 삭제";
 
-        setupTaskDrag(
-          card,
-          task
+        deleteButton.setAttribute(
+          "aria-label",
+          group.name +
+          " 카테고리 삭제"
         );
 
 
-        card.addEventListener(
+        /*
+         * CSS가 없어도 버튼이
+         * 기본 UI를 망가뜨리지 않도록
+         * 최소한의 스타일을 직접 넣는다.
+         */
+        deleteButton.style.flex =
+          "0 0 auto";
+
+        deleteButton.style.width =
+          "24px";
+
+        deleteButton.style.height =
+          "24px";
+
+        deleteButton.style.padding =
+          "0";
+
+        deleteButton.style.margin =
+          "0";
+
+        deleteButton.style.border =
+          "0";
+
+        deleteButton.style.background =
+          "transparent";
+
+        deleteButton.style.cursor =
+          "pointer";
+
+        deleteButton.style.fontSize =
+          "18px";
+
+        deleteButton.style.lineHeight =
+          "1";
+
+        deleteButton.style.color =
+          "inherit";
+
+
+        deleteButton.addEventListener(
           "click",
-          () => {
+          event => {
 
-            if (
-              state.draggingTaskId
-            ) {
-              return;
-            }
+            event.preventDefault();
+            event.stopPropagation();
 
-            showTaskDetail(
-              task.id
+            deleteCategory(
+              group.id,
+              group.name
             );
-
           }
         );
 
 
-        column.appendChild(
-          card
-        );
+        category.style.display =
+          "flex";
 
+        category.style.alignItems =
+          "center";
+
+        category.style.justifyContent =
+          "space-between";
+
+        category.style.gap =
+          "8px";
+
+
+        category.appendChild(
+          deleteButton
+        );
       }
 
-    );
 
-  });
-
-}
-
-
-/* =================================================
- * 카테고리 그룹
- * ================================================= */
-
-function groupTasks() {
-
-  const groups = [];
-
-  state.categories.forEach(
-    category => {
-
-      groups.push({
-
-        id:
-          category.id,
-
-        name:
-          category.name,
-
-        tasks:
-          state.tasks.filter(
-            task =>
-              task.categoryId ===
-              category.id
-          )
-
-      });
-
-    }
-  );
-
-
-  const uncategorized =
-    state.tasks.filter(
-      task =>
-        !state.categories.some(
-          c =>
-            c.id ===
-            task.categoryId
-        )
-    );
-
-
-  if (
-    uncategorized.length
-  ) {
-
-    groups.push({
-
-      id: "",
-
-      name: "기타",
-
-      tasks:
-        uncategorized
-
-    });
-
-  }
-
-
-  return groups;
-}
-
-
-/* =================================================
- * Timeline 날짜 계산
- * ================================================= */
-
-function getTimelineStartDate() {
-
-  return new Date(
-    state.displayStartYear,
-    0,
-    1
-  );
-
-}
-
-
-function getTimelineEndDate() {
-
-  return new Date(
-    state.displayEndYear + 1,
-    0,
-    1
-  );
-
-}
-
-
-function getTimelineTotalDays() {
-
-  return Math.round(
-    (
-      getTimelineEndDate() -
-      getTimelineStartDate()
-    ) /
-    86400000
-  );
-
-}
-
-
-function dayOffsetFromTimelineStart(
-  date
-) {
-
-  return Math.floor(
-    (
-      date -
-      getTimelineStartDate()
-    ) /
-    86400000
-  );
-
-}
-
-
-/* =================================================
- * 표시 연도 계산
- * ================================================= */
-
-function updateDisplayYears() {
-
-  state.displayStartYear =
-    state.year;
-
-  state.displayEndYear =
-    state.year;
-
-
-  state.tasks.forEach(
-    task => {
-
-      if (
-        !task.start ||
-        !task.end
-      ) {
-        return;
-      }
-
-      const start =
-        dateObj(
-          task.start
-        );
-
-      const end =
-        dateObj(
-          task.end
-        );
+      column.appendChild(
+        category
+      );
 
 
       /*
-       * 현재 보고 있는 연도에서 시작하거나
-       * 현재 보고 있는 연도를 걸치고 있는 작업 중
-       * 다음 연도까지 이어지는 작업이 있으면
-       * 타임라인을 그 연도까지 확장한다.
+       * Tasks
        */
+      group.tasks.forEach(
+        task => {
 
-      if (
-        start.getFullYear() <=
-        state.year &&
+          const card =
+            document.createElement(
+              "div"
+            );
 
-        end.getFullYear() >
-        state.year
-      ) {
+          card.className =
+            "task-card";
 
-        state.displayEndYear =
-          Math.max(
-            state.displayEndYear,
-            end.getFullYear()
+          card.dataset.id =
+            task.id;
+
+
+          card.innerHTML = `
+            <div class="task-name">
+              ${escapeHtml(task.name)}
+            </div>
+          `;
+
+
+          setupTaskDrag(
+            card,
+            task
           );
 
-      }
 
+          card.addEventListener(
+            "click",
+            () => {
+
+              if (
+                state.draggingTaskId
+              ) {
+                return;
+              }
+
+              showTaskDetail(
+                task.id
+              );
+            }
+          );
+
+
+          column.appendChild(
+            card
+          );
+        }
+      );
     }
   );
-
 }
 
 
-/* =================================================
- * Timeline
- * ================================================= */
+/* =========================================================
+ * TIMELINE
+ * ========================================================= */
 
 function renderTimeline() {
-
-  updateDisplayYears();
-
 
   const timeline =
     document.getElementById(
       "timeline"
     );
 
-  timeline.innerHTML = "";
+  if (!timeline) {
+    return;
+  }
+
+
+  timeline.innerHTML =
+    "";
 
 
   const inner =
@@ -571,17 +743,41 @@ function renderTimeline() {
     "timeline-inner";
 
 
+  /*
+   * 화면은 반드시 선택된 한 해만 사용
+   */
   const totalDays =
-    getTimelineTotalDays();
+    daysInYear(
+      state.year
+    );
+
+
+  /*
+   * range 역시 선택 연도 안에서만 움직인다.
+   */
+  state.rangeStart =
+    Math.max(
+      0,
+      Math.min(
+        state.rangeStart,
+        totalDays - 1
+      )
+    );
+
+  state.rangeEnd =
+    Math.max(
+      state.rangeStart,
+      Math.min(
+        state.rangeEnd,
+        totalDays - 1
+      )
+    );
 
 
   const visibleDays =
-    Math.max(
-      1,
-      state.rangeEnd -
-      state.rangeStart +
-      1
-    );
+    state.rangeEnd -
+    state.rangeStart +
+    1;
 
 
   const width =
@@ -590,23 +786,31 @@ function renderTimeline() {
       visibleDays * 8
     );
 
+
   inner.style.width =
     width + "px";
 
 
-  const weekWidth =
-    width /
+  const weekCount =
     Math.ceil(
       visibleDays / 7
     );
 
-  inner.style
-    .setProperty(
-      "--week-width",
-      weekWidth + "px"
-    );
+
+  const weekWidth =
+    width /
+    weekCount;
 
 
+  inner.style.setProperty(
+    "--week-width",
+    weekWidth + "px"
+  );
+
+
+  /*
+   * 주 헤더
+   */
   renderWeekHeader(
     inner,
     totalDays,
@@ -615,6 +819,9 @@ function renderTimeline() {
   );
 
 
+  /*
+   * Category + Task rows
+   */
   const groups =
     groupTasks();
 
@@ -622,16 +829,17 @@ function renderTimeline() {
   groups.forEach(
     group => {
 
-      const catRow =
+      const categoryRow =
         document.createElement(
           "div"
         );
 
-      catRow.className =
+      categoryRow.className =
         "timeline-category";
 
+
       inner.appendChild(
-        catRow
+        categoryRow
       );
 
 
@@ -658,14 +866,15 @@ function renderTimeline() {
           inner.appendChild(
             row
           );
-
         }
       );
-
     }
   );
 
 
+  /*
+   * 오늘 선
+   */
   renderTodayLine(
     inner,
     totalDays,
@@ -682,109 +891,12 @@ function renderTimeline() {
   requestAnimationFrame(
     syncGanttRows
   );
-
 }
 
 
-/* =================================================
- * 좌우 행 높이 강제 동기화
- * ================================================= */
-
-function syncGanttRows() {
-
-  const left =
-    document.getElementById(
-      "taskColumn"
-    );
-
-  const timeline =
-    document.getElementById(
-      "timeline"
-    );
-
-  const inner =
-    timeline &&
-    timeline.querySelector(
-      ".timeline-inner"
-    );
-
-
-  if (
-    !left ||
-    !inner
-  ) {
-    return;
-  }
-
-
-  const leftRows =
-    [
-      ...left.children
-    ].filter(
-      el =>
-        !el.classList.contains(
-          "task-header"
-        )
-    );
-
-
-  const rightRows =
-    [
-      ...inner.children
-    ].filter(
-      el =>
-        el.classList.contains(
-          "timeline-category"
-        ) ||
-        el.classList.contains(
-          "timeline-task-row"
-        )
-    );
-
-
-  if (
-    leftRows.length !==
-    rightRows.length
-  ) {
-    return;
-  }
-
-
-  rightRows.forEach(
-    (row, index) => {
-
-      const leftRow =
-        leftRows[index];
-
-      const height =
-        leftRow.getBoundingClientRect()
-          .height;
-
-
-      if (
-        height > 0
-      ) {
-
-        row.style.height =
-          height + "px";
-
-        row.style.minHeight =
-          height + "px";
-
-        row.style.maxHeight =
-          height + "px";
-
-      }
-
-    }
-  );
-
-}
-
-
-/* =================================================
- * 주 헤더
- * ================================================= */
+/* =========================================================
+ * WEEK HEADER
+ * ========================================================= */
 
 function renderWeekHeader(
   inner,
@@ -833,8 +945,11 @@ function renderWeekHeader(
 
     const date =
       new Date(
-        getTimelineStartDate()
+        state.year,
+        0,
+        1
       );
+
 
     date.setDate(
       date.getDate() +
@@ -843,14 +958,27 @@ function renderWeekHeader(
 
 
     const end =
-      new Date(
-        date
-      );
+      new Date(date);
+
 
     end.setDate(
-      end.getDate() +
-      6
+      end.getDate() + 6
     );
+
+
+    /*
+     * 연도 밖으로 넘어가는
+     * 주 헤더는 12/31까지만 의미가 있도록
+     * title을 조정한다.
+     */
+    const yearEnd =
+      getYearEnd();
+
+    if (end > yearEnd) {
+      end.setTime(
+        yearEnd.getTime()
+      );
+    }
 
 
     const cell =
@@ -873,20 +1001,33 @@ function renderWeekHeader(
     header.appendChild(
       cell
     );
-
   }
 
 
   inner.appendChild(
     header
   );
-
 }
 
 
-/* =================================================
- * Task bar
- * ================================================= */
+/* =========================================================
+ * TASK BAR
+ *
+ * 중요:
+ *
+ * 날짜가 여러 해에 걸쳐 있어도
+ * 현재 선택한 연도에 맞춰 잘라서 표시한다.
+ *
+ * 예:
+ *
+ * 2025-12-20 ~ 2026-01-20
+ *
+ * 2025 화면:
+ * 12/20 ~ 12/31
+ *
+ * 2026 화면:
+ * 01/01 ~ 01/20
+ * ========================================================= */
 
 function renderTaskBar(
   row,
@@ -904,82 +1045,94 @@ function renderTaskBar(
 
 
   const start =
-    dateObj(
-      task.start
-    );
+    dateObj(task.start);
 
   const end =
-    dateObj(
-      task.end
-    );
+    dateObj(task.end);
+
+
+  if (!start || !end) {
+    return;
+  }
+
+
+  const yearStart =
+    getYearStart();
+
+  const yearEnd =
+    getYearEnd();
 
 
   /*
-   * 핵심:
-   *
-   * 기존에는 dayOfYear(start),
-   * dayOfYear(end)를 사용해서
-   *
-   * 2026-12-20 → 353
-   * 2027-01-20 → 19
-   *
-   * 처럼 종료일이 다시 0부터 시작했다.
-   *
-   * 이제 표시 타임라인의 1월 1일부터
-   * 실제 날짜가 몇 일 떨어져 있는지를 계산한다.
+   * 현재 연도와 전혀 겹치지 않으면
+   * 표시하지 않는다.
    */
-
-  const startDay =
-    dayOffsetFromTimelineStart(
-      start
-    );
-
-  const endDay =
-    dayOffsetFromTimelineStart(
-      end
-    );
-
-
-  const visibleStart =
-    state.rangeStart;
-
-  const visibleEnd =
-    state.rangeEnd;
-
-
-  /*
-   * 화면 범위를 벗어난 작업은 표시하지 않는다.
-   */
-
   if (
-    endDay <
-    visibleStart ||
-
-    startDay >
-    visibleEnd
+    end < yearStart ||
+    start > yearEnd
   ) {
     return;
   }
 
 
-  const clippedStart =
-    Math.max(
-      startDay,
-      visibleStart
+  /*
+   * 현재 연도 안에서 잘라낸다.
+   */
+  const visibleStartDate =
+    start < yearStart
+      ? yearStart
+      : start;
+
+
+  const visibleEndDate =
+    end > yearEnd
+      ? yearEnd
+      : end;
+
+
+  let startDay =
+    dayOffsetFromYearStart(
+      visibleStartDate
     );
 
 
-  const clippedEnd =
+  let endDay =
+    dayOffsetFromYearStart(
+      visibleEndDate
+    );
+
+
+  /*
+   * 현재 확대 범위 안에서 다시 잘라낸다.
+   */
+  if (
+    endDay <
+    state.rangeStart ||
+    startDay >
+    state.rangeEnd
+  ) {
+    return;
+  }
+
+
+  startDay =
+    Math.max(
+      startDay,
+      state.rangeStart
+    );
+
+
+  endDay =
     Math.min(
       endDay,
-      visibleEnd
+      state.rangeEnd
     );
 
 
   const left =
     (
-      clippedStart -
-      visibleStart
+      startDay -
+      state.rangeStart
     ) /
     visibleDays *
     100;
@@ -987,8 +1140,8 @@ function renderTaskBar(
 
   const width =
     (
-      clippedEnd -
-      clippedStart +
+      endDay -
+      startDay +
       1
     ) /
     visibleDays *
@@ -1007,7 +1160,6 @@ function renderTaskBar(
   bar.style.left =
     left + "%";
 
-
   bar.style.width =
     width + "%";
 
@@ -1017,34 +1169,39 @@ function renderTaskBar(
     "#3B82F6";
 
 
-  bar.innerHTML = `
+  const progress =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        Number(task.progress) || 0
+      )
+    );
 
+
+  bar.innerHTML = `
     <div
       class="task-progress"
-      style="width:${task.progress}%"
+      style="width:${progress}%"
     ></div>
 
     <div class="task-bar-text">
-
       ${escapeHtml(task.name)}
-
       &nbsp;
-
-      ${task.progress}%
-
+      ${progress}%
     </div>
-
   `;
 
 
   bar.addEventListener(
     "click",
-    () => {
+    event => {
+
+      event.stopPropagation();
 
       showTaskDetail(
         task.id
       );
-
     }
   );
 
@@ -1052,13 +1209,12 @@ function renderTaskBar(
   row.appendChild(
     bar
   );
-
 }
 
 
-/* =================================================
- * 오늘 표시
- * ================================================= */
+/* =========================================================
+ * TODAY LINE
+ * ========================================================= */
 
 function renderTodayLine(
   inner,
@@ -1071,20 +1227,25 @@ function renderTodayLine(
     new Date();
 
 
-  const todayDay =
-    dayOffsetFromTimelineStart(
-      today
-    );
-
-
   /*
-   * 오늘이 현재 표시 타임라인 안에 있는지 확인
+   * 현재 선택한 연도와 다르면
+   * 오늘 선을 그리지 않는다.
    */
+  if (
+    today.getFullYear() !==
+    state.year
+  ) {
+    return;
+  }
+
+
+  const todayDay =
+    dayOfYear(today);
+
 
   if (
     todayDay <
     state.rangeStart ||
-
     todayDay >
     state.rangeEnd
   ) {
@@ -1107,32 +1268,292 @@ function renderTodayLine(
         todayDay -
         state.rangeStart
       ) /
-      visibleDays
-    ) *
-    100 +
-    "%";
+      visibleDays *
+      100
+    ) + "%";
 
 
   inner.appendChild(
     line
   );
-
 }
 
 
-/* =================================================
- * 상세정보
- * ================================================= */
+/* =========================================================
+ * LEFT / RIGHT ROW HEIGHT SYNC
+ *
+ * 왼쪽:
+ *
+ * task-header
+ * category-label
+ * task-card
+ * category-label
+ * task-card
+ *
+ * 오른쪽:
+ *
+ * week-header
+ * timeline-category
+ * timeline-task-row
+ * timeline-category
+ * timeline-task-row
+ *
+ * 순서대로 1:1 대응시킨다.
+ * ========================================================= */
 
-function showTaskDetail(
-  id
-) {
+function syncGanttRows() {
+
+  const left =
+    document.getElementById(
+      "taskColumn"
+    );
+
+  const timeline =
+    document.getElementById(
+      "timeline"
+    );
+
+  if (!left || !timeline) {
+    return;
+  }
+
+
+  const inner =
+    timeline.querySelector(
+      ".timeline-inner"
+    );
+
+  if (!inner) {
+    return;
+  }
+
+
+  /*
+   * Header
+   */
+  const leftHeader =
+    left.querySelector(
+      ".task-header"
+    );
+
+  const rightHeader =
+    inner.querySelector(
+      ".week-header"
+    );
+
+
+  if (
+    leftHeader &&
+    rightHeader
+  ) {
+
+    leftHeader.style.boxSizing =
+      "border-box";
+
+    rightHeader.style.boxSizing =
+      "border-box";
+
+
+    /*
+     * 기존 inline height 제거
+     * → 실제 높이를 다시 측정
+     */
+    leftHeader.style.height = "";
+    leftHeader.style.minHeight = "";
+    leftHeader.style.maxHeight = "";
+
+    rightHeader.style.height = "";
+    rightHeader.style.minHeight = "";
+    rightHeader.style.maxHeight = "";
+
+
+    const height =
+      Math.max(
+        leftHeader.getBoundingClientRect().height,
+        rightHeader.getBoundingClientRect().height
+      );
+
+
+    if (height > 0) {
+
+      [
+        leftHeader,
+        rightHeader
+      ].forEach(
+        element => {
+
+          element.style.height =
+            height + "px";
+
+          element.style.minHeight =
+            height + "px";
+
+          element.style.maxHeight =
+            height + "px";
+        }
+      );
+    }
+  }
+
+
+  /*
+   * 왼쪽 category/task
+   */
+  const leftRows =
+    [
+      ...left.children
+    ].filter(
+      element =>
+        element.classList.contains(
+          "category-label"
+        ) ||
+        element.classList.contains(
+          "task-card"
+        )
+    );
+
+
+  /*
+   * 오른쪽 category/task
+   */
+  const rightRows =
+    [
+      ...inner.children
+    ].filter(
+      element =>
+        element.classList.contains(
+          "timeline-category"
+        ) ||
+        element.classList.contains(
+          "timeline-task-row"
+        )
+    );
+
+
+  /*
+   * 개수가 다르면
+   * 억지로 맞추지 않는다.
+   */
+  if (
+    leftRows.length !==
+    rightRows.length
+  ) {
+
+    console.warn(
+      "Gantt row count mismatch:",
+      leftRows.length,
+      rightRows.length
+    );
+
+    return;
+  }
+
+
+  leftRows.forEach(
+    element => {
+
+      element.style.boxSizing =
+        "border-box";
+
+      element.style.verticalAlign =
+        "top";
+    }
+  );
+
+
+  rightRows.forEach(
+    element => {
+
+      element.style.boxSizing =
+        "border-box";
+
+      element.style.verticalAlign =
+        "top";
+    }
+  );
+
+
+  /*
+   * 각 행을 1:1로 정확히 맞춘다.
+   */
+  leftRows.forEach(
+    (leftRow, index) => {
+
+      const rightRow =
+        rightRows[index];
+
+      /*
+       * 먼저 기존 강제 높이를 제거한다.
+       */
+      leftRow.style.height = "";
+      leftRow.style.minHeight = "";
+      leftRow.style.maxHeight = "";
+
+      rightRow.style.height = "";
+      rightRow.style.minHeight = "";
+      rightRow.style.maxHeight = "";
+
+
+      const leftHeight =
+        leftRow.getBoundingClientRect().height;
+
+      const rightHeight =
+        rightRow.getBoundingClientRect().height;
+
+
+      /*
+       * 둘 중 큰 값을 사용한다.
+       *
+       * 한쪽 내용이 조금 더 높더라도
+       * 양쪽 모두 같은 높이가 된다.
+       */
+      const height =
+        Math.max(
+          leftHeight,
+          rightHeight
+        );
+
+
+      if (height <= 0) {
+        return;
+      }
+
+
+      leftRow.style.height =
+        height + "px";
+
+      leftRow.style.minHeight =
+        height + "px";
+
+      leftRow.style.maxHeight =
+        height + "px";
+
+
+      rightRow.style.height =
+        height + "px";
+
+      rightRow.style.minHeight =
+        height + "px";
+
+      rightRow.style.maxHeight =
+        height + "px";
+    }
+  );
+}
+
+
+/* =========================================================
+ * TASK DETAIL
+ * ========================================================= */
+
+function showTaskDetail(id) {
 
   const task =
     state.tasks.find(
-      t =>
-        t.id === id
+      item =>
+        item.id === id
     );
+
 
   if (!task) {
     return;
@@ -1149,29 +1570,45 @@ function showTaskDetail(
     );
 
 
+  if (!panel) {
+    return;
+  }
+
+
   panel.classList.remove(
     "hidden"
   );
 
 
-  const categoryOptions =
-    state.categories
-      .map(
-        cat => `
-          <option
-            value="${escapeAttr(cat.id)}"
-            ${
-              cat.id ===
-              task.categoryId
-                ? "selected"
-                : ""
-            }
-          >
-            ${escapeHtml(cat.name)}
-          </option>
-        `
-      )
-      .join("");
+  /*
+   * 카테고리가 삭제된 작업도
+   * 상세창에서 "기타"로 볼 수 있게 한다.
+   */
+  const categoryOptions = [
+
+    `
+      <option value="">
+        기타
+      </option>
+    `,
+
+    ...state.categories.map(
+      category => `
+        <option
+          value="${escapeAttr(category.id)}"
+          ${
+            category.id ===
+            task.categoryId
+              ? "selected"
+              : ""
+          }
+        >
+          ${escapeHtml(category.name)}
+        </option>
+      `
+    )
+
+  ].join("");
 
 
   panel.innerHTML = `
@@ -1184,6 +1621,7 @@ function showTaskDetail(
 
       <button
         id="closeDetail"
+        type="button"
       >
         ×
       </button>
@@ -1225,7 +1663,7 @@ function showTaskDetail(
         <input
           id="detailStart"
           type="date"
-          value="${task.start}"
+          value="${escapeAttr(task.start)}"
         >
 
       </div>
@@ -1238,7 +1676,7 @@ function showTaskDetail(
         <input
           id="detailEnd"
           type="date"
-          value="${task.end}"
+          value="${escapeAttr(task.end)}"
         >
 
       </div>
@@ -1253,7 +1691,7 @@ function showTaskDetail(
           type="number"
           min="0"
           max="100"
-          value="${task.progress}"
+          value="${Number(task.progress) || 0}"
         >
 
       </div>
@@ -1266,7 +1704,9 @@ function showTaskDetail(
         <input
           id="detailColor"
           type="color"
-          value="${task.color || "#3B82F6"}"
+          value="${escapeAttr(
+            task.color || "#3B82F6"
+          )}"
         >
 
       </div>
@@ -1313,6 +1753,7 @@ function showTaskDetail(
 
       <button
         id="deleteTaskBtn"
+        type="button"
       >
         삭제
       </button>
@@ -1320,6 +1761,7 @@ function showTaskDetail(
       <button
         id="saveDetailBtn"
         class="primary"
+        type="button"
       >
         저장
       </button>
@@ -1329,51 +1771,57 @@ function showTaskDetail(
   `;
 
 
-  document
-    .getElementById(
+  const closeButton =
+    document.getElementById(
       "closeDetail"
-    )
-    .onclick =
-    () => {
+    );
 
-      panel.classList.add(
-        "hidden"
-      );
+  if (closeButton) {
+    closeButton.onclick =
+      () => {
 
-    };
+        panel.classList.add(
+          "hidden"
+        );
+
+      };
+  }
 
 
-  document
-    .getElementById(
+  const saveButton =
+    document.getElementById(
       "saveDetailBtn"
-    )
-    .onclick =
-    () =>
-      saveTaskDetail(
-        task.id
-      );
+    );
+
+  if (saveButton) {
+    saveButton.onclick =
+      () =>
+        saveTaskDetail(
+          task.id
+        );
+  }
 
 
-  document
-    .getElementById(
+  const deleteButton =
+    document.getElementById(
       "deleteTaskBtn"
-    )
-    .onclick =
-    () =>
-      deleteTask(
-        task.id
-      );
+    );
 
+  if (deleteButton) {
+    deleteButton.onclick =
+      () =>
+        deleteTask(
+          task.id
+        );
+  }
 }
 
 
-/* =================================================
- * 작업 수정 저장
- * ================================================= */
+/* =========================================================
+ * SAVE TASK DETAIL
+ * ========================================================= */
 
-async function saveTaskDetail(
-  id
-) {
+async function saveTaskDetail(id) {
 
   try {
 
@@ -1382,69 +1830,60 @@ async function saveTaskDetail(
       id,
 
       name:
-        document
-          .getElementById(
-            "detailName"
-          )
-          .value,
+        document.getElementById(
+          "detailName"
+        ).value.trim(),
 
       categoryId:
-        document
-          .getElementById(
-            "detailCategory"
-          )
-          .value,
+        document.getElementById(
+          "detailCategory"
+        ).value,
 
       start:
-        document
-          .getElementById(
-            "detailStart"
-          )
-          .value,
+        document.getElementById(
+          "detailStart"
+        ).value,
 
       end:
-        document
-          .getElementById(
-            "detailEnd"
-          )
-          .value,
+        document.getElementById(
+          "detailEnd"
+        ).value,
 
       progress:
-        document
-          .getElementById(
-            "detailProgress"
-          )
-          .value,
+        document.getElementById(
+          "detailProgress"
+        ).value,
 
       color:
-        document
-          .getElementById(
-            "detailColor"
-          )
-          .value,
+        document.getElementById(
+          "detailColor"
+        ).value,
 
       memo:
-        document
-          .getElementById(
-            "detailMemo"
-          )
-          .value,
+        document.getElementById(
+          "detailMemo"
+        ).value,
 
       target:
-        document
-          .getElementById(
-            "detailTarget"
-          )
-          .value,
+        document.getElementById(
+          "detailTarget"
+        ).value,
 
       owner:
-        document
-          .getElementById(
-            "detailOwner"
-          )
-          .value
-
+        document.getElementById(
+          "detailOwner"
+        ).value
     };
+
+
+    if (!data.name) {
+
+      alert(
+        "작업명을 입력해주세요."
+      );
+
+      return;
+    }
 
 
     if (
@@ -1457,7 +1896,6 @@ async function saveTaskDetail(
       );
 
       return;
-
     }
 
 
@@ -1471,7 +1909,6 @@ async function saveTaskDetail(
       );
 
       return;
-
     }
 
 
@@ -1486,9 +1923,11 @@ async function saveTaskDetail(
     await loadData();
 
 
-    showTaskDetail(
-      id
-    );
+    /*
+     * 삭제/수정 후에도
+     * 상세창을 다시 보여준다.
+     */
+    showTaskDetail(id);
 
 
   } catch (error) {
@@ -1497,19 +1936,15 @@ async function saveTaskDetail(
       "저장 실패\n" +
       error.message
     );
-
   }
-
 }
 
 
-/* =================================================
- * 작업 삭제
- * ================================================= */
+/* =========================================================
+ * DELETE TASK
+ * ========================================================= */
 
-async function deleteTask(
-  id
-) {
+async function deleteTask(id) {
 
   if (
     !confirm(
@@ -1534,13 +1969,17 @@ async function deleteTask(
       null;
 
 
-    document
-      .getElementById(
+    const panel =
+      document.getElementById(
         "detailPanel"
-      )
-      .classList.add(
+      );
+
+
+    if (panel) {
+      panel.classList.add(
         "hidden"
       );
+    }
 
 
     await loadData();
@@ -1552,15 +1991,102 @@ async function deleteTask(
       "삭제 실패\n" +
       error.message
     );
-
   }
-
 }
 
 
-/* =================================================
- * 작업 추가
- * ================================================= */
+/* =========================================================
+ * DELETE CATEGORY
+ *
+ * 백엔드의 deleteCategory가
+ * 카테고리 행만 삭제하므로
+ * 해당 카테고리의 작업은 삭제되지 않는다.
+ *
+ * → 이후 화면에서는 "기타"로 표시된다.
+ * ========================================================= */
+
+async function deleteCategory(
+  id,
+  name
+) {
+
+  if (!id) {
+    return;
+  }
+
+
+  const confirmed =
+    confirm(
+      `"${name}" 카테고리를 삭제할까요?\n\n` +
+      "카테고리에 속해 있던 작업은 삭제되지 않고 " +
+      "'기타'로 남습니다."
+    );
+
+
+  if (!confirmed) {
+    return;
+  }
+
+
+  try {
+
+    await apiPost(
+      "deleteCategory",
+      {
+        id
+      }
+    );
+
+
+    /*
+     * 삭제된 카테고리를 선택 중이었다면
+     * 상세창을 닫는다.
+     */
+    const selected =
+      state.tasks.find(
+        task =>
+          task.id ===
+          state.selectedTask
+      );
+
+
+    if (
+      selected &&
+      selected.categoryId === id
+    ) {
+
+      const panel =
+        document.getElementById(
+          "detailPanel"
+        );
+
+      if (panel) {
+        panel.classList.add(
+          "hidden"
+        );
+      }
+
+      state.selectedTask =
+        null;
+    }
+
+
+    await loadData();
+
+
+  } catch (error) {
+
+    alert(
+      "카테고리 삭제 실패\n" +
+      error.message
+    );
+  }
+}
+
+
+/* =========================================================
+ * ADD TASK
+ * ========================================================= */
 
 function openTaskModal() {
 
@@ -1570,98 +2096,126 @@ function openTaskModal() {
     );
 
 
-  select.innerHTML =
-    state.categories
-      .map(
-        cat => `
-          <option value="${cat.id}">
-            ${escapeHtml(cat.name)}
-          </option>
-        `
-      )
-      .join("");
+  if (select) {
+
+    select.innerHTML =
+      `
+        <option value="">
+          기타
+        </option>
+      ` +
+      state.categories
+        .map(
+          category => `
+            <option
+              value="${escapeAttr(category.id)}"
+            >
+              ${escapeHtml(category.name)}
+            </option>
+          `
+        )
+        .join("");
+  }
 
 
   const today =
     new Date();
 
   const todayString =
-    dateKey(
-      today
+    dateKey(today);
+
+
+  const taskStart =
+    document.getElementById(
+      "taskStart"
     );
 
-
-  document
-    .getElementById(
-      "taskStart"
-    )
-    .value =
-    todayString;
+  if (taskStart) {
+    taskStart.value =
+      todayString;
+  }
 
 
-  document
-    .getElementById(
+  const taskEnd =
+    document.getElementById(
       "taskEnd"
-    )
-    .value =
-    todayString;
+    );
+
+  if (taskEnd) {
+    taskEnd.value =
+      todayString;
+  }
 
 
-  document
-    .getElementById(
+  const taskName =
+    document.getElementById(
       "taskName"
-    )
-    .value = "";
+    );
+
+  if (taskName) {
+    taskName.value = "";
+  }
 
 
-  document
-    .getElementById(
+  const taskProgress =
+    document.getElementById(
       "taskProgress"
-    )
-    .value = 0;
+    );
+
+  if (taskProgress) {
+    taskProgress.value = 0;
+  }
 
 
-  document
-    .getElementById(
+  const taskMemo =
+    document.getElementById(
       "taskMemo"
-    )
-    .value = "";
+    );
+
+  if (taskMemo) {
+    taskMemo.value = "";
+  }
 
 
-  document
-    .getElementById(
+  const taskTarget =
+    document.getElementById(
       "taskTarget"
-    )
-    .value = "";
+    );
+
+  if (taskTarget) {
+    taskTarget.value = "";
+  }
 
 
-  document
-    .getElementById(
+  const taskOwner =
+    document.getElementById(
       "taskOwner"
-    )
-    .value = "";
+    );
+
+  if (taskOwner) {
+    taskOwner.value = "";
+  }
 
 
-  document
-    .getElementById(
+  const modal =
+    document.getElementById(
       "taskModal"
-    )
-    .classList.remove(
+    );
+
+  if (modal) {
+    modal.classList.remove(
       "hidden"
     );
-
+  }
 }
 
 
 async function saveNewTask() {
 
   const name =
-    document
-      .getElementById(
-        "taskName"
-      )
-      .value
-      .trim();
+    document.getElementById(
+      "taskName"
+    ).value.trim();
 
 
   if (!name) {
@@ -1671,24 +2225,19 @@ async function saveNewTask() {
     );
 
     return;
-
   }
 
 
   const start =
-    document
-      .getElementById(
-        "taskStart"
-      )
-      .value;
+    document.getElementById(
+      "taskStart"
+    ).value;
 
 
   const end =
-    document
-      .getElementById(
-        "taskEnd"
-      )
-      .value;
+    document.getElementById(
+      "taskEnd"
+    ).value;
 
 
   if (
@@ -1701,7 +2250,6 @@ async function saveNewTask() {
     );
 
     return;
-
   }
 
 
@@ -1714,7 +2262,6 @@ async function saveNewTask() {
     );
 
     return;
-
   }
 
 
@@ -1728,53 +2275,39 @@ async function saveNewTask() {
           name,
 
           categoryId:
-            document
-              .getElementById(
-                "taskCategory"
-              )
-              .value,
+            document.getElementById(
+              "taskCategory"
+            ).value,
 
           start,
 
           end,
 
           progress:
-            document
-              .getElementById(
-                "taskProgress"
-              )
-              .value,
+            document.getElementById(
+              "taskProgress"
+            ).value,
 
           color:
-            document
-              .getElementById(
-                "taskColor"
-              )
-              .value,
+            document.getElementById(
+              "taskColor"
+            ).value,
 
           memo:
-            document
-              .getElementById(
-                "taskMemo"
-              )
-              .value,
+            document.getElementById(
+              "taskMemo"
+            ).value,
 
           target:
-            document
-              .getElementById(
-                "taskTarget"
-              )
-              .value,
+            document.getElementById(
+              "taskTarget"
+            ).value,
 
           owner:
-            document
-              .getElementById(
-                "taskOwner"
-              )
-              .value
-
+            document.getElementById(
+              "taskOwner"
+            ).value
         }
-
       }
     );
 
@@ -1793,45 +2326,45 @@ async function saveNewTask() {
       "작업 추가 실패\n" +
       error.message
     );
-
   }
-
 }
 
 
-/* =================================================
- * Category 추가
- * ================================================= */
+/* =========================================================
+ * ADD CATEGORY
+ * ========================================================= */
 
 function openCategoryModal() {
 
-  document
-    .getElementById(
+  const name =
+    document.getElementById(
       "categoryName"
-    )
-    .value = "";
-
-
-  document
-    .getElementById(
-      "categoryModal"
-    )
-    .classList.remove(
-      "hidden"
     );
 
+  if (name) {
+    name.value = "";
+  }
+
+
+  const modal =
+    document.getElementById(
+      "categoryModal"
+    );
+
+  if (modal) {
+    modal.classList.remove(
+      "hidden"
+    );
+  }
 }
 
 
 async function saveNewCategory() {
 
   const name =
-    document
-      .getElementById(
-        "categoryName"
-      )
-      .value
-      .trim();
+    document.getElementById(
+      "categoryName"
+    ).value.trim();
 
 
   if (!name) {
@@ -1841,16 +2374,13 @@ async function saveNewCategory() {
     );
 
     return;
-
   }
 
 
   const color =
-    document
-      .getElementById(
-        "categoryColor"
-      )
-      .value;
+    document.getElementById(
+      "categoryColor"
+    ).value;
 
 
   try {
@@ -1859,13 +2389,9 @@ async function saveNewCategory() {
       "createCategory",
       {
         data: {
-
           name,
-
           color
-
         }
-
       }
     );
 
@@ -1884,15 +2410,13 @@ async function saveNewCategory() {
       "카테고리 추가 실패\n" +
       error.message
     );
-
   }
-
 }
 
 
-/* =================================================
- * Drag & Drop
- * ================================================= */
+/* =========================================================
+ * DRAG & DROP
+ * ========================================================= */
 
 function setupTaskDrag(
   element,
@@ -1924,18 +2448,24 @@ function setupTaskDrag(
             state.draggingTaskId =
               task.id;
 
+
             element.classList.add(
               "long-pressing"
             );
 
-            element.setPointerCapture(
-              event.pointerId
-            );
+
+            try {
+              element.setPointerCapture(
+                event.pointerId
+              );
+            } catch (error) {
+              // 일부 브라우저에서는
+              // capture가 실패할 수 있다.
+            }
 
           },
           450
         );
-
     }
   );
 
@@ -1954,12 +2484,11 @@ function setupTaskDrag(
       );
 
 
-      const cards =
-        [
-          ...document.querySelectorAll(
-            ".task-card"
-          )
-        ];
+      const cards = [
+        ...document.querySelectorAll(
+          ".task-card"
+        )
+      ];
 
 
       const target =
@@ -1984,7 +2513,6 @@ function setupTaskDrag(
               event.clientY <
               rect.bottom
             );
-
           }
         );
 
@@ -2002,16 +2530,14 @@ function setupTaskDrag(
 
 
         render();
-
       }
-
     }
   );
 
 
   element.addEventListener(
     "pointerup",
-    async event => {
+    async () => {
 
       clearTimeout(
         timer
@@ -2039,10 +2565,12 @@ function setupTaskDrag(
           {
             ids:
               state.tasks.map(
-                t => t.id
+                task =>
+                  task.id
               )
           }
         );
+
 
       } catch (error) {
 
@@ -2051,8 +2579,8 @@ function setupTaskDrag(
           error.message
         );
 
-        await loadData();
 
+        await loadData();
       }
 
 
@@ -2065,7 +2593,6 @@ function setupTaskDrag(
         },
         100
       );
-
     }
   );
 
@@ -2078,19 +2605,20 @@ function setupTaskDrag(
         timer
       );
 
+
       dragging = false;
+
 
       element.classList.remove(
         "dragging",
         "long-pressing"
       );
 
+
       state.draggingTaskId =
         null;
-
     }
   );
-
 }
 
 
@@ -2109,15 +2637,17 @@ function reorderLocal(
 
   const fromIndex =
     state.tasks.findIndex(
-      t =>
-        t.id === fromId
+      task =>
+        task.id ===
+        fromId
     );
 
 
   const toIndex =
     state.tasks.findIndex(
-      t =>
-        t.id === toId
+      task =>
+        task.id ===
+        toId
     );
 
 
@@ -2143,61 +2673,53 @@ function reorderLocal(
     0,
     moved
   );
-
 }
 
 
-/* =================================================
- * Zoom range
- * ================================================= */
+/* =========================================================
+ * ZOOM RANGE
+ *
+ * 연도는 넘어가지 않는다.
+ * range는 선택된 연도 안에서만 움직인다.
+ * ========================================================= */
 
 function updateRange() {
 
+  const minElement =
+    document.getElementById(
+      "rangeMin"
+    );
+
+  const maxElement =
+    document.getElementById(
+      "rangeMax"
+    );
+
+
+  if (
+    !minElement ||
+    !maxElement
+  ) {
+    return;
+  }
+
+
   let min =
     Number(
-      document
-        .getElementById(
-          "rangeMin"
-        )
-        .value
+      minElement.value
     );
 
 
   let max =
     Number(
-      document
-        .getElementById(
-          "rangeMax"
-        )
-        .value
+      maxElement.value
     );
 
 
-  if (
-    min >= max
-  ) {
-
-    if (
-      this &&
-      this.id ===
-      "rangeMin"
-    ) {
-
-      min =
-        max - 1;
-
-    } else {
-
-      max =
-        min + 1;
-
-    }
-
-  }
-
-
   const totalDays =
-    getTimelineTotalDays();
+    daysInYear(
+      state.year
+    );
 
 
   min =
@@ -2205,19 +2727,46 @@ function updateRange() {
       0,
       Math.min(
         min,
-        totalDays - 2
+        totalDays - 1
       )
     );
 
 
   max =
     Math.max(
-      min + 1,
+      0,
       Math.min(
         max,
         totalDays - 1
       )
     );
+
+
+  /*
+   * 최소/최대가 같아지는 것을 방지
+   */
+  if (min >= max) {
+
+    if (
+      document.activeElement ===
+      minElement
+    ) {
+
+      min =
+        Math.max(
+          0,
+          max - 1
+        );
+
+    } else {
+
+      max =
+        Math.min(
+          totalDays - 1,
+          min + 1
+        );
+    }
+  }
 
 
   state.rangeStart =
@@ -2227,58 +2776,32 @@ function updateRange() {
     max;
 
 
+  minElement.value =
+    min;
+
+  maxElement.value =
+    max;
+
+
   renderTimeline();
+
 
   requestAnimationFrame(
     syncGanttRows
   );
-
 }
 
 
-/* =================================================
- * 연도
- * ================================================= */
-
-document
-  .getElementById(
-    "prevYear"
-  )
-  .onclick =
-  () => {
-
-    state.year--;
-
-    resetRange();
-
-    render();
-
-  };
-
-
-document
-  .getElementById(
-    "nextYear"
-  )
-  .onclick =
-  () => {
-
-    state.year++;
-
-    resetRange();
-
-    render();
-
-  };
-
+/* =========================================================
+ * RESET RANGE
+ * ========================================================= */
 
 function resetRange() {
 
-  updateDisplayYears();
-
-
   const days =
-    getTimelineTotalDays();
+    daysInYear(
+      state.year
+    );
 
 
   state.rangeStart =
@@ -2288,150 +2811,224 @@ function resetRange() {
     days - 1;
 
 
-  const rangeMin =
+  const min =
     document.getElementById(
       "rangeMin"
     );
 
-  const rangeMax =
+  const max =
     document.getElementById(
       "rangeMax"
     );
 
 
-  if (
-    rangeMin &&
-    rangeMax
-  ) {
+  if (min) {
 
-    rangeMin.min =
-      0;
+    min.min = 0;
 
-    rangeMax.min =
-      1;
-
-    rangeMin.max =
-      days - 2;
-
-    rangeMax.max =
+    min.max =
       days - 1;
 
-    rangeMin.value =
-      0;
-
-    rangeMax.value =
-      days - 1;
-
+    min.value = 0;
   }
 
+
+  if (max) {
+
+    max.min = 0;
+
+    max.max =
+      days - 1;
+
+    max.value =
+      days - 1;
+  }
 }
 
 
-/* =================================================
- * 오늘
- * ================================================= */
+/* =========================================================
+ * YEAR
+ * ========================================================= */
 
-document
-  .getElementById(
-    "todayBtn"
-  )
-  .onclick =
-  () => {
-
-    const today =
-      new Date();
-
-
-    state.year =
-      today.getFullYear();
-
-
-    updateDisplayYears();
-
-
-    const day =
-      dayOffsetFromTimelineStart(
-        today
-      );
-
-
-    const start =
-      Math.max(
-        0,
-        day - 30
-      );
-
-
-    const end =
-      Math.min(
-        getTimelineTotalDays() - 1,
-        day + 30
-      );
-
-
-    state.rangeStart =
-      start;
-
-    state.rangeEnd =
-      end;
-
-
-    document
-      .getElementById(
-        "rangeMin"
-      )
-      .max =
-      getTimelineTotalDays() - 1;
-
-
-    document
-      .getElementById(
-        "rangeMax"
-      )
-      .max =
-      getTimelineTotalDays() - 1;
-
-
-    document
-      .getElementById(
-        "rangeMin"
-      )
-      .value =
-      start;
-
-
-    document
-      .getElementById(
-        "rangeMax"
-      )
-      .value =
-      end;
-
-
-    render();
-
-  };
-
-
-/* =================================================
- * 모달
- * ================================================= */
-
-function closeModal(
-  id
+function changeYear(
+  amount
 ) {
 
-  document
-    .getElementById(
-      id
-    )
-    .classList.add(
-      "hidden"
-    );
+  state.year +=
+    amount;
 
+
+  /*
+   * 연도를 바꾸면
+   * 반드시 새 연도 전체를 기본 화면으로 한다.
+   */
+  resetRange();
+
+
+  /*
+   * 선택한 연도에 존재하지 않는
+   * 작업/카테고리는 groupTasks()에서 자동으로 숨겨진다.
+   */
+  render();
 }
 
 
+/* 이전 연도 */
+const prevYear =
+  document.getElementById(
+    "prevYear"
+  );
+
+if (prevYear) {
+
+  prevYear.onclick =
+    () => {
+      changeYear(-1);
+    };
+}
+
+
+/* 다음 연도 */
+const nextYear =
+  document.getElementById(
+    "nextYear"
+  );
+
+if (nextYear) {
+
+  nextYear.onclick =
+    () => {
+      changeYear(1);
+    };
+}
+
+
+/* =========================================================
+ * TODAY
+ * ========================================================= */
+
+const todayBtn =
+  document.getElementById(
+    "todayBtn"
+  );
+
+
+if (todayBtn) {
+
+  todayBtn.onclick =
+    () => {
+
+      const today =
+        new Date();
+
+
+      state.year =
+        today.getFullYear();
+
+
+      const day =
+        dayOfYear(
+          today
+        );
+
+
+      const totalDays =
+        daysInYear(
+          state.year
+        );
+
+
+      /*
+       * 오늘 전후 30일
+       * 단, 현재 연도를 절대로 벗어나지 않는다.
+       */
+      const start =
+        Math.max(
+          0,
+          day - 30
+        );
+
+
+      const end =
+        Math.min(
+          totalDays - 1,
+          day + 30
+        );
+
+
+      state.rangeStart =
+        start;
+
+      state.rangeEnd =
+        end;
+
+
+      const rangeMin =
+        document.getElementById(
+          "rangeMin"
+        );
+
+      const rangeMax =
+        document.getElementById(
+          "rangeMax"
+        );
+
+
+      if (rangeMin) {
+
+        rangeMin.min = 0;
+
+        rangeMin.max =
+          totalDays - 1;
+
+        rangeMin.value =
+          start;
+      }
+
+
+      if (rangeMax) {
+
+        rangeMax.min = 0;
+
+        rangeMax.max =
+          totalDays - 1;
+
+        rangeMax.value =
+          end;
+      }
+
+
+      render();
+    };
+}
+
+
+/* =========================================================
+ * MODAL
+ * ========================================================= */
+
+function closeModal(id) {
+
+  const modal =
+    document.getElementById(
+      id
+    );
+
+
+  if (!modal) {
+    return;
+  }
+
+
+  modal.classList.add(
+    "hidden"
+  );
+}
+
+
+/*
+ * data-close가 있는 버튼
+ */
 document
   .querySelectorAll(
     "[data-close]"
@@ -2446,106 +3043,254 @@ document
           closeModal(
             button.dataset.close
           );
-
         }
       );
-
     }
   );
 
 
-document
-  .getElementById(
+/*
+ * 작업 추가
+ */
+const addTaskBtn =
+  document.getElementById(
     "addTaskBtn"
-  )
-  .onclick =
-  openTaskModal;
+  );
+
+if (addTaskBtn) {
+
+  addTaskBtn.onclick =
+    openTaskModal;
+}
 
 
-document
-  .getElementById(
+const saveTaskBtn =
+  document.getElementById(
     "saveTaskBtn"
-  )
-  .onclick =
-  saveNewTask;
+  );
+
+if (saveTaskBtn) {
+
+  saveTaskBtn.onclick =
+    saveNewTask;
+}
 
 
-document
-  .getElementById(
+/*
+ * 카테고리 추가
+ */
+const addCategoryBtn =
+  document.getElementById(
     "addCategoryBtn"
-  )
-  .onclick =
-  openCategoryModal;
+  );
+
+if (addCategoryBtn) {
+
+  addCategoryBtn.onclick =
+    openCategoryModal;
+}
 
 
-document
-  .getElementById(
+const saveCategoryBtn =
+  document.getElementById(
     "saveCategoryBtn"
-  )
-  .onclick =
-  saveNewCategory;
+  );
+
+if (saveCategoryBtn) {
+
+  saveCategoryBtn.onclick =
+    saveNewCategory;
+}
 
 
-document
-  .getElementById(
+/*
+ * 새로고침
+ */
+const reloadBtn =
+  document.getElementById(
     "reloadBtn"
-  )
-  .onclick =
-  loadData;
+  );
+
+if (reloadBtn) {
+
+  reloadBtn.onclick =
+    loadData;
+}
 
 
-document
-  .getElementById(
+/*
+ * 확대/축소 범위
+ */
+const rangeMin =
+  document.getElementById(
     "rangeMin"
-  )
-  .addEventListener(
+  );
+
+if (rangeMin) {
+
+  rangeMin.addEventListener(
     "input",
     updateRange
   );
+}
 
 
-document
-  .getElementById(
+const rangeMax =
+  document.getElementById(
     "rangeMax"
-  )
-  .addEventListener(
+  );
+
+if (rangeMax) {
+
+  rangeMax.addEventListener(
     "input",
     updateRange
   );
+}
 
 
-/* =================================================
- * HTML escape
- * ================================================= */
+/* =========================================================
+ * ESC
+ * ========================================================= */
+
+document.addEventListener(
+  "keydown",
+  event => {
+
+    if (
+      event.key !==
+      "Escape"
+    ) {
+      return;
+    }
+
+
+    /*
+     * 작업 추가 모달
+     */
+    const taskModal =
+      document.getElementById(
+        "taskModal"
+      );
+
+    if (
+      taskModal &&
+      !taskModal.classList.contains(
+        "hidden"
+      )
+    ) {
+
+      taskModal.classList.add(
+        "hidden"
+      );
+
+      return;
+    }
+
+
+    /*
+     * 카테고리 추가 모달
+     */
+    const categoryModal =
+      document.getElementById(
+        "categoryModal"
+      );
+
+    if (
+      categoryModal &&
+      !categoryModal.classList.contains(
+        "hidden"
+      )
+    ) {
+
+      categoryModal.classList.add(
+        "hidden"
+      );
+
+      return;
+    }
+
+
+    /*
+     * 상세 패널
+     */
+    const detailPanel =
+      document.getElementById(
+        "detailPanel"
+      );
+
+    if (
+      detailPanel &&
+      !detailPanel.classList.contains(
+        "hidden"
+      )
+    ) {
+
+      detailPanel.classList.add(
+        "hidden"
+      );
+
+      state.selectedTask =
+        null;
+    }
+  }
+);
+
+
+/* =========================================================
+ * WINDOW RESIZE
+ *
+ * 창 크기/폰트 등이 바뀌면
+ * 좌우 높이를 다시 맞춘다.
+ * ========================================================= */
+
+window.addEventListener(
+  "resize",
+  () => {
+
+    requestAnimationFrame(
+      syncGanttRows
+    );
+  }
+);
+
+
+/* =========================================================
+ * HTML ESCAPE
+ * ========================================================= */
 
 function escapeHtml(
   value
 ) {
 
   return String(
-    value || ""
+    value ?? ""
   )
+
     .replace(
       /&/g,
       "&amp;"
     )
+
     .replace(
       /</g,
       "&lt;"
     )
+
     .replace(
       />/g,
       "&gt;"
     )
+
     .replace(
       /"/g,
       "&quot;"
     )
+
     .replace(
       /'/g,
       "&#039;"
     );
-
 }
 
 
@@ -2556,14 +3301,20 @@ function escapeAttr(
   return escapeHtml(
     value
   );
-
 }
 
 
-/* =================================================
- * 시작
- * ================================================= */
+/* =========================================================
+ * INITIALIZE
+ * ========================================================= */
 
+/*
+ * 현재 연도의 전체 범위로 초기화
+ */
 resetRange();
 
+
+/*
+ * 데이터 불러오기
+ */
 loadData();
