@@ -14,6 +14,12 @@ let state = {
   year:
     new Date().getFullYear(),
 
+  displayStartYear:
+    new Date().getFullYear(),
+
+  displayEndYear:
+    new Date().getFullYear(),
+
   rangeStart: 0,
 
   rangeEnd: 364,
@@ -233,11 +239,17 @@ function render() {
       "yearTitle"
     )
     .textContent =
-    state.year;
+    state.displayStartYear === state.displayEndYear
+      ? state.displayStartYear
+      : `${state.displayStartYear}–${state.displayEndYear}`;
 
   renderTaskColumn();
 
   renderTimeline();
+
+  requestAnimationFrame(
+    syncGanttRows
+  );
 
 }
 
@@ -417,10 +429,130 @@ function groupTasks() {
 
 
 /* =================================================
+ * Timeline 날짜 계산
+ * ================================================= */
+
+function getTimelineStartDate() {
+
+  return new Date(
+    state.displayStartYear,
+    0,
+    1
+  );
+
+}
+
+
+function getTimelineEndDate() {
+
+  return new Date(
+    state.displayEndYear + 1,
+    0,
+    1
+  );
+
+}
+
+
+function getTimelineTotalDays() {
+
+  return Math.round(
+    (
+      getTimelineEndDate() -
+      getTimelineStartDate()
+    ) /
+    86400000
+  );
+
+}
+
+
+function dayOffsetFromTimelineStart(
+  date
+) {
+
+  return Math.floor(
+    (
+      date -
+      getTimelineStartDate()
+    ) /
+    86400000
+  );
+
+}
+
+
+/* =================================================
+ * 표시 연도 계산
+ * ================================================= */
+
+function updateDisplayYears() {
+
+  state.displayStartYear =
+    state.year;
+
+  state.displayEndYear =
+    state.year;
+
+
+  state.tasks.forEach(
+    task => {
+
+      if (
+        !task.start ||
+        !task.end
+      ) {
+        return;
+      }
+
+      const start =
+        dateObj(
+          task.start
+        );
+
+      const end =
+        dateObj(
+          task.end
+        );
+
+
+      /*
+       * 현재 보고 있는 연도에서 시작하거나
+       * 현재 보고 있는 연도를 걸치고 있는 작업 중
+       * 다음 연도까지 이어지는 작업이 있으면
+       * 타임라인을 그 연도까지 확장한다.
+       */
+
+      if (
+        start.getFullYear() <=
+        state.year &&
+
+        end.getFullYear() >
+        state.year
+      ) {
+
+        state.displayEndYear =
+          Math.max(
+            state.displayEndYear,
+            end.getFullYear()
+          );
+
+      }
+
+    }
+  );
+
+}
+
+
+/* =================================================
  * Timeline
  * ================================================= */
 
 function renderTimeline() {
+
+  updateDisplayYears();
+
 
   const timeline =
     document.getElementById(
@@ -440,9 +572,7 @@ function renderTimeline() {
 
 
   const totalDays =
-    daysInYear(
-      state.year
-    );
+    getTimelineTotalDays();
 
 
   const visibleDays =
@@ -516,12 +646,14 @@ function renderTimeline() {
           row.className =
             "timeline-task-row";
 
+
           renderTaskBar(
             row,
             task,
             totalDays,
             visibleDays
           );
+
 
           inner.appendChild(
             row
@@ -544,6 +676,107 @@ function renderTimeline() {
 
   timeline.appendChild(
     inner
+  );
+
+
+  requestAnimationFrame(
+    syncGanttRows
+  );
+
+}
+
+
+/* =================================================
+ * 좌우 행 높이 강제 동기화
+ * ================================================= */
+
+function syncGanttRows() {
+
+  const left =
+    document.getElementById(
+      "taskColumn"
+    );
+
+  const timeline =
+    document.getElementById(
+      "timeline"
+    );
+
+  const inner =
+    timeline &&
+    timeline.querySelector(
+      ".timeline-inner"
+    );
+
+
+  if (
+    !left ||
+    !inner
+  ) {
+    return;
+  }
+
+
+  const leftRows =
+    [
+      ...left.children
+    ].filter(
+      el =>
+        !el.classList.contains(
+          "task-header"
+        )
+    );
+
+
+  const rightRows =
+    [
+      ...inner.children
+    ].filter(
+      el =>
+        el.classList.contains(
+          "timeline-category"
+        ) ||
+        el.classList.contains(
+          "timeline-task-row"
+        )
+    );
+
+
+  if (
+    leftRows.length !==
+    rightRows.length
+  ) {
+    return;
+  }
+
+
+  rightRows.forEach(
+    (row, index) => {
+
+      const leftRow =
+        leftRows[index];
+
+      const height =
+        leftRow.getBoundingClientRect()
+          .height;
+
+
+      if (
+        height > 0
+      ) {
+
+        row.style.height =
+          height + "px";
+
+        row.style.minHeight =
+          height + "px";
+
+        row.style.maxHeight =
+          height + "px";
+
+      }
+
+    }
   );
 
 }
@@ -600,9 +833,7 @@ function renderWeekHeader(
 
     const date =
       new Date(
-        state.year,
-        0,
-        1
+        getTimelineStartDate()
       );
 
     date.setDate(
@@ -612,7 +843,9 @@ function renderWeekHeader(
 
 
     const end =
-      new Date(date);
+      new Date(
+        date
+      );
 
     end.setDate(
       end.getDate() +
@@ -681,11 +914,30 @@ function renderTaskBar(
     );
 
 
+  /*
+   * 핵심:
+   *
+   * 기존에는 dayOfYear(start),
+   * dayOfYear(end)를 사용해서
+   *
+   * 2026-12-20 → 353
+   * 2027-01-20 → 19
+   *
+   * 처럼 종료일이 다시 0부터 시작했다.
+   *
+   * 이제 표시 타임라인의 1월 1일부터
+   * 실제 날짜가 몇 일 떨어져 있는지를 계산한다.
+   */
+
   const startDay =
-    dayOfYear(start);
+    dayOffsetFromTimelineStart(
+      start
+    );
 
   const endDay =
-    dayOfYear(end);
+    dayOffsetFromTimelineStart(
+      end
+    );
 
 
   const visibleStart =
@@ -695,9 +947,14 @@ function renderTaskBar(
     state.rangeEnd;
 
 
+  /*
+   * 화면 범위를 벗어난 작업은 표시하지 않는다.
+   */
+
   if (
     endDay <
     visibleStart ||
+
     startDay >
     visibleEnd
   ) {
@@ -710,6 +967,7 @@ function renderTaskBar(
       startDay,
       visibleStart
     );
+
 
   const clippedEnd =
     Math.min(
@@ -748,6 +1006,7 @@ function renderTaskBar(
 
   bar.style.left =
     left + "%";
+
 
   bar.style.width =
     width + "%";
@@ -811,21 +1070,21 @@ function renderTodayLine(
   const today =
     new Date();
 
-  if (
-    today.getFullYear() !==
-    state.year
-  ) {
-    return;
-  }
-
 
   const todayDay =
-    dayOfYear(today);
+    dayOffsetFromTimelineStart(
+      today
+    );
 
+
+  /*
+   * 오늘이 현재 표시 타임라인 안에 있는지 확인
+   */
 
   if (
     todayDay <
     state.rangeStart ||
+
     todayDay >
     state.rangeEnd
   ) {
@@ -1089,9 +1348,10 @@ function showTaskDetail(
       "saveDetailBtn"
     )
     .onclick =
-    () => saveTaskDetail(
-      task.id
-    );
+    () =>
+      saveTaskDetail(
+        task.id
+      );
 
 
   document
@@ -1099,9 +1359,10 @@ function showTaskDetail(
       "deleteTaskBtn"
     )
     .onclick =
-    () => deleteTask(
-      task.id
-    );
+    () =>
+      deleteTask(
+        task.id
+      );
 
 }
 
@@ -1325,7 +1586,9 @@ function openTaskModal() {
     new Date();
 
   const todayString =
-    dateKey(today);
+    dateKey(
+      today
+    );
 
 
   document
@@ -1737,6 +2000,7 @@ function setupTaskDrag(
           targetId
         );
 
+
         render();
 
       }
@@ -1932,6 +2196,30 @@ function updateRange() {
   }
 
 
+  const totalDays =
+    getTimelineTotalDays();
+
+
+  min =
+    Math.max(
+      0,
+      Math.min(
+        min,
+        totalDays - 2
+      )
+    );
+
+
+  max =
+    Math.max(
+      min + 1,
+      Math.min(
+        max,
+        totalDays - 1
+      )
+    );
+
+
   state.rangeStart =
     min;
 
@@ -1940,6 +2228,10 @@ function updateRange() {
 
 
   renderTimeline();
+
+  requestAnimationFrame(
+    syncGanttRows
+  );
 
 }
 
@@ -1982,10 +2274,12 @@ document
 
 function resetRange() {
 
+  updateDisplayYears();
+
+
   const days =
-    daysInYear(
-      state.year
-    );
+    getTimelineTotalDays();
+
 
   state.rangeStart =
     0;
@@ -1994,33 +2288,41 @@ function resetRange() {
     days - 1;
 
 
-  document
-    .getElementById(
+  const rangeMin =
+    document.getElementById(
       "rangeMin"
-    )
-    .max =
-    days - 1;
+    );
 
-  document
-    .getElementById(
+  const rangeMax =
+    document.getElementById(
       "rangeMax"
-    )
-    .max =
-    days - 1;
+    );
 
 
-  document
-    .getElementById(
-      "rangeMin"
-    )
-    .value = 0;
+  if (
+    rangeMin &&
+    rangeMax
+  ) {
 
-  document
-    .getElementById(
-      "rangeMax"
-    )
-    .value =
-    days - 1;
+    rangeMin.min =
+      0;
+
+    rangeMax.min =
+      1;
+
+    rangeMin.max =
+      days - 2;
+
+    rangeMax.max =
+      days - 1;
+
+    rangeMin.value =
+      0;
+
+    rangeMax.value =
+      days - 1;
+
+  }
 
 }
 
@@ -2044,8 +2346,11 @@ document
       today.getFullYear();
 
 
+    updateDisplayYears();
+
+
     const day =
-      dayOfYear(
+      dayOffsetFromTimelineStart(
         today
       );
 
@@ -2059,9 +2364,7 @@ document
 
     const end =
       Math.min(
-        daysInYear(
-          state.year
-        ) - 1,
+        getTimelineTotalDays() - 1,
         day + 30
       );
 
@@ -2078,9 +2381,7 @@ document
         "rangeMin"
       )
       .max =
-      daysInYear(
-        state.year
-      ) - 1;
+      getTimelineTotalDays() - 1;
 
 
     document
@@ -2088,9 +2389,7 @@ document
         "rangeMax"
       )
       .max =
-      daysInYear(
-        state.year
-      ) - 1;
+      getTimelineTotalDays() - 1;
 
 
     document
@@ -2223,7 +2522,9 @@ function escapeHtml(
   value
 ) {
 
-  return String(value || "")
+  return String(
+    value || ""
+  )
     .replace(
       /&/g,
       "&amp;"
@@ -2266,1406 +2567,3 @@ function escapeAttr(
 resetRange();
 
 loadData();
-
-/* =========================================================
- * 최종 UI / 카테고리 이동 / 다년도 표시 보정
- * ========================================================= */
-
-(function () {
-
-  /* ---------------------------------------------------------
-   * 1. 표시 기간 기본값
-   * --------------------------------------------------------- */
-
-  if (
-    typeof state.displayStartYear !== "number"
-  ) {
-    state.displayStartYear =
-      new Date().getFullYear();
-  }
-
-  if (
-    typeof state.displayEndYear !== "number"
-  ) {
-    state.displayEndYear =
-      state.displayStartYear;
-  }
-
-
-  /* ---------------------------------------------------------
-   * 2. 날짜 계산 함수
-   * --------------------------------------------------------- */
-
-  window.displayStartDate = function () {
-
-    return new Date(
-      state.displayStartYear,
-      0,
-      1
-    );
-
-  };
-
-
-  window.displayEndExclusiveDate = function () {
-
-    return new Date(
-      state.displayEndYear + 1,
-      0,
-      1
-    );
-
-  };
-
-
-  window.displayTotalDays = function () {
-
-    return Math.round(
-      (
-        displayEndExclusiveDate() -
-        displayStartDate()
-      ) / 86400000
-    );
-
-  };
-
-
-  window.absoluteDisplayDay = function (date) {
-
-    return Math.floor(
-      (
-        date -
-        displayStartDate()
-      ) / 86400000
-    );
-
-  };
-
-
-  /* ---------------------------------------------------------
-   * 3. 표시 기간 선택 UI
-   * --------------------------------------------------------- */
-
-  function createDisplayPeriodUI() {
-
-    if (
-      document.getElementById(
-        "gantt-display-period"
-      )
-    ) {
-      return;
-    }
-
-
-    const yearTitle =
-      document.getElementById(
-        "yearTitle"
-      );
-
-    if (!yearTitle) {
-      return;
-    }
-
-
-    const box =
-      document.createElement(
-        "div"
-      );
-
-    box.id =
-      "gantt-display-period";
-
-
-    box.innerHTML = `
-      <span class="display-period-title">
-        표시 기간
-      </span>
-
-      <select
-        id="ganttStartYear"
-      ></select>
-
-      <span>년 ~</span>
-
-      <select
-        id="ganttEndYear"
-      ></select>
-    `;
-
-
-    yearTitle.parentElement
-      .appendChild(box);
-
-
-    fillDisplayYearOptions();
-
-
-    document
-      .getElementById(
-        "ganttStartYear"
-      )
-      .addEventListener(
-        "change",
-        function () {
-
-          state.displayStartYear =
-            Number(this.value);
-
-
-          if (
-            state.displayEndYear <
-            state.displayStartYear
-          ) {
-
-            state.displayEndYear =
-              state.displayStartYear;
-
-          }
-
-
-          resetRangeSafe();
-
-          render();
-
-        }
-      );
-
-
-    document
-      .getElementById(
-        "ganttEndYear"
-      )
-      .addEventListener(
-        "change",
-        function () {
-
-          state.displayEndYear =
-            Math.max(
-              state.displayStartYear,
-              Number(this.value)
-            );
-
-
-          resetRangeSafe();
-
-          render();
-
-        }
-      );
-
-  }
-
-
-  function fillDisplayYearOptions() {
-
-    const start =
-      document.getElementById(
-        "ganttStartYear"
-      );
-
-    const end =
-      document.getElementById(
-        "ganttEndYear"
-      );
-
-    if (!start || !end) {
-      return;
-    }
-
-
-    const current =
-      new Date().getFullYear();
-
-
-    const years = [];
-
-
-    for (
-      let y = current - 10;
-      y <= current + 10;
-      y++
-    ) {
-
-      years.push(y);
-
-    }
-
-
-    const html =
-      years
-        .map(
-          y =>
-            `<option value="${y}">
-              ${y}
-            </option>`
-        )
-        .join("");
-
-
-    start.innerHTML =
-      html;
-
-    end.innerHTML =
-      html;
-
-
-    start.value =
-      String(
-        state.displayStartYear
-      );
-
-    end.value =
-      String(
-        state.displayEndYear
-      );
-
-  }
-
-
-  /* ---------------------------------------------------------
-   * 4. 기존 render를 보정
-   * --------------------------------------------------------- */
-
-  const originalRender =
-    window.render;
-
-
-  window.render =
-    function () {
-
-      createDisplayPeriodUI();
-
-      fillDisplayYearOptions();
-
-
-      if (
-        document.getElementById(
-          "yearTitle"
-        )
-      ) {
-
-        document
-          .getElementById(
-            "yearTitle"
-          )
-          .textContent =
-          state.displayStartYear ===
-          state.displayEndYear
-
-            ? state.displayStartYear
-
-            : `${state.displayStartYear}–${state.displayEndYear}`;
-
-      }
-
-
-      originalRender();
-
-
-      fillDisplayYearOptions();
-
-      syncGanttRows();
-
-    };
-
-
-  /* ---------------------------------------------------------
-   * 5. 다년도 타임라인
-   * --------------------------------------------------------- */
-
-  window.renderTaskBar =
-    function (
-      row,
-      task,
-      totalDays,
-      visibleDays
-    ) {
-
-      if (
-        !task.start ||
-        !task.end
-      ) {
-        return;
-      }
-
-
-      const start =
-        dateObj(
-          task.start
-        );
-
-      const end =
-        dateObj(
-          task.end
-        );
-
-
-      const taskStart =
-        absoluteDisplayDay(
-          start
-        );
-
-      const taskEnd =
-        absoluteDisplayDay(
-          end
-        );
-
-
-      const visibleStart =
-        state.rangeStart;
-
-      const visibleEnd =
-        state.rangeEnd;
-
-
-      if (
-        taskEnd <
-        visibleStart ||
-        taskStart >
-        visibleEnd
-      ) {
-
-        return;
-
-      }
-
-
-      const clippedStart =
-        Math.max(
-          taskStart,
-          visibleStart
-        );
-
-
-      const clippedEnd =
-        Math.min(
-          taskEnd,
-          visibleEnd
-        );
-
-
-      const left =
-        (
-          clippedStart -
-          visibleStart
-        ) /
-        visibleDays *
-        100;
-
-
-      const width =
-        (
-          clippedEnd -
-          clippedStart +
-          1
-        ) /
-        visibleDays *
-        100;
-
-
-      const bar =
-        document.createElement(
-          "div"
-        );
-
-
-      bar.className =
-        "task-bar";
-
-
-      bar.style.left =
-        left + "%";
-
-
-      bar.style.width =
-        width + "%";
-
-
-      bar.style.background =
-        task.color ||
-        "#3B82F6";
-
-
-      bar.innerHTML = `
-        <div
-          class="task-progress"
-          style="width:${Number(task.progress) || 0}%"
-        ></div>
-
-        <div class="task-bar-text">
-          ${escapeHtml(task.name)}
-          &nbsp;
-          ${Number(task.progress) || 0}%
-        </div>
-      `;
-
-
-      bar.addEventListener(
-        "click",
-        function () {
-
-          if (
-            !state.draggingTaskId
-          ) {
-
-            showTaskDetail(
-              task.id
-            );
-
-          }
-
-        }
-      );
-
-
-      row.appendChild(
-        bar
-      );
-
-    };
-
-
-  /* ---------------------------------------------------------
-   * 6. 타임라인 전체 재구성
-   * --------------------------------------------------------- */
-
-  window.renderTimeline =
-    function () {
-
-      const timeline =
-        document.getElementById(
-          "timeline"
-        );
-
-      if (!timeline) {
-        return;
-      }
-
-
-      timeline.innerHTML =
-        "";
-
-
-      const inner =
-        document.createElement(
-          "div"
-        );
-
-
-      inner.className =
-        "timeline-inner";
-
-
-      const totalDays =
-        displayTotalDays();
-
-
-      const visibleDays =
-        Math.max(
-          1,
-          state.rangeEnd -
-          state.rangeStart +
-          1
-        );
-
-
-      const width =
-        Math.max(
-          900,
-          visibleDays * 8
-        );
-
-
-      inner.style.width =
-        width + "px";
-
-
-      /* 주 단위 배경 */
-
-      const weeks =
-        Math.ceil(
-          visibleDays / 7
-        );
-
-
-      inner.style.setProperty(
-        "--week-width",
-        (
-          width / weeks
-        ) + "px"
-      );
-
-
-      const weekHeader =
-        document.createElement(
-          "div"
-        );
-
-
-      weekHeader.className =
-        "week-header";
-
-
-      for (
-        let i = 0;
-        i < weeks;
-        i++
-      ) {
-
-        const absoluteDay =
-          state.rangeStart +
-          i * 7;
-
-
-        if (
-          absoluteDay >=
-          totalDays
-        ) {
-          break;
-        }
-
-
-        const date =
-          new Date(
-            displayStartDate()
-          );
-
-
-        date.setDate(
-          date.getDate() +
-          absoluteDay
-        );
-
-
-        const cell =
-          document.createElement(
-            "div"
-          );
-
-
-        cell.className =
-          "week-cell";
-
-
-        cell.textContent =
-          `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
-
-
-        cell.title =
-          dateKey(date);
-
-
-        weekHeader.appendChild(
-          cell
-        );
-
-      }
-
-
-      inner.appendChild(
-        weekHeader
-      );
-
-
-      /* 카테고리 + 작업 */
-
-      groupTasks().forEach(
-        group => {
-
-          const category =
-            document.createElement(
-              "div"
-            );
-
-
-          category.className =
-            "timeline-category";
-
-
-          category.dataset.categoryId =
-            group.id;
-
-
-          category.textContent =
-            group.name;
-
-
-          inner.appendChild(
-            category
-          );
-
-
-          group.tasks.forEach(
-            task => {
-
-              const row =
-                document.createElement(
-                  "div"
-                );
-
-
-              row.className =
-                "timeline-task-row";
-
-
-              renderTaskBar(
-                row,
-                task,
-                totalDays,
-                visibleDays
-              );
-
-
-              inner.appendChild(
-                row
-              );
-
-            }
-          );
-
-        }
-      );
-
-
-      /* 오늘 선 */
-
-      const today =
-        new Date();
-
-
-      if (
-        today >=
-        displayStartDate() &&
-        today <
-        displayEndExclusiveDate()
-      ) {
-
-        const day =
-          absoluteDisplayDay(
-            today
-          );
-
-
-        if (
-          day >=
-          state.rangeStart &&
-          day <=
-          state.rangeEnd
-        ) {
-
-          const line =
-            document.createElement(
-              "div"
-            );
-
-
-          line.className =
-            "today-line";
-
-
-          line.style.left =
-            (
-              (
-                day -
-                state.rangeStart
-              ) /
-              visibleDays *
-              100
-            ) + "%";
-
-
-          inner.appendChild(
-            line
-          );
-
-        }
-
-      }
-
-
-      timeline.appendChild(
-        inner
-      );
-
-
-      syncGanttRows();
-
-    };
-
-
-  /* ---------------------------------------------------------
-   * 7. 작업 → 카테고리 드래그
-   * --------------------------------------------------------- */
-
-  window.setupTaskDrag =
-    function (
-      element,
-      task
-    ) {
-
-      let timer = null;
-
-      let dragging =
-        false;
-
-
-      let pointerId =
-        null;
-
-
-      element.style.touchAction =
-        "none";
-
-
-      element.addEventListener(
-        "pointerdown",
-        function (event) {
-
-          if (
-            event.button !== 0
-          ) {
-            return;
-          }
-
-
-          pointerId =
-            event.pointerId;
-
-
-          timer =
-            setTimeout(
-              function () {
-
-                dragging =
-                  true;
-
-
-                state.draggingTaskId =
-                  task.id;
-
-
-                state.dragOverCategoryId =
-                  null;
-
-
-                element.classList.add(
-                  "dragging",
-                  "long-pressing"
-                );
-
-
-                try {
-
-                  element.setPointerCapture(
-                    pointerId
-                  );
-
-                } catch (_) {}
-
-              },
-              450
-            );
-
-        }
-      );
-
-
-      element.addEventListener(
-        "pointermove",
-        function (event) {
-
-          if (!dragging) {
-            return;
-          }
-
-
-          const category =
-            findCategoryUnderPointer(
-              event.clientX,
-              event.clientY
-            );
-
-
-          clearCategoryDropHighlight();
-
-
-          if (category) {
-
-            state.dragOverCategoryId =
-              category.dataset.categoryId;
-
-
-            category.classList.add(
-              "drag-over-category"
-            );
-
-
-            return;
-
-          }
-
-
-          state.dragOverCategoryId =
-            null;
-
-
-          /* 작업끼리 순서 이동 */
-
-          const cards =
-            [
-              ...document.querySelectorAll(
-                ".task-card"
-              )
-            ];
-
-
-          const target =
-            cards.find(
-              card => {
-
-                if (
-                  card ===
-                  element
-                ) {
-                  return false;
-                }
-
-
-                const rect =
-                  card.getBoundingClientRect();
-
-
-                return (
-                  event.clientY >
-                  rect.top &&
-                  event.clientY <
-                  rect.bottom
-                );
-
-              }
-            );
-
-
-          if (target) {
-
-            reorderLocal(
-              task.id,
-              target.dataset.id
-            );
-
-
-            render();
-
-
-            state.draggingTaskId =
-              task.id;
-
-          }
-
-        }
-      );
-
-
-      element.addEventListener(
-        "pointerup",
-        async function (event) {
-
-          clearTimeout(
-            timer
-          );
-
-
-          if (!dragging) {
-            return;
-          }
-
-
-          const category =
-            findCategoryUnderPointer(
-              event.clientX,
-              event.clientY
-            );
-
-
-          const categoryId =
-            state.dragOverCategoryId ||
-            (
-              category
-                ? category.dataset.categoryId
-                : null
-            );
-
-
-          dragging =
-            false;
-
-
-          element.classList.remove(
-            "dragging",
-            "long-pressing"
-          );
-
-
-          clearCategoryDropHighlight();
-
-
-          try {
-
-            /* 카테고리 이동 */
-
-            if (
-              categoryId &&
-              categoryId !==
-              task.categoryId
-            ) {
-
-              const latest =
-                state.tasks.find(
-                  t =>
-                    t.id ===
-                    task.id
-                ) ||
-                task;
-
-
-              await apiPost(
-                "update",
-                {
-                  data: {
-
-                    id:
-                      latest.id,
-
-                    name:
-                      latest.name,
-
-                    categoryId:
-                      categoryId,
-
-                    start:
-                      latest.start,
-
-                    end:
-                      latest.end,
-
-                    progress:
-                      latest.progress,
-
-                    color:
-                      latest.color,
-
-                    memo:
-                      latest.memo,
-
-                    target:
-                      latest.target,
-
-                    owner:
-                      latest.owner
-
-                  }
-                }
-              );
-
-
-              await loadData();
-
-
-            } else {
-
-              /* 기존 작업 순서 변경 */
-
-              await apiPost(
-                "reorder",
-                {
-                  ids:
-                    state.tasks.map(
-                      t =>
-                        t.id
-                    )
-                }
-              );
-
-
-              await loadData();
-
-            }
-
-
-          } catch (error) {
-
-            alert(
-              "이동 저장 실패\n" +
-              error.message
-            );
-
-
-            await loadData();
-
-          }
-
-
-          state.dragOverCategoryId =
-            null;
-
-
-          setTimeout(
-            function () {
-
-              state.draggingTaskId =
-                null;
-
-            },
-            100
-          );
-
-        }
-      );
-
-
-      element.addEventListener(
-        "pointercancel",
-        function () {
-
-          clearTimeout(
-            timer
-          );
-
-
-          dragging =
-            false;
-
-
-          state.dragOverCategoryId =
-            null;
-
-
-          state.draggingTaskId =
-            null;
-
-
-          clearCategoryDropHighlight();
-
-
-          element.classList.remove(
-            "dragging",
-            "long-pressing"
-          );
-
-        }
-      );
-
-    };
-
-
-  /* ---------------------------------------------------------
-   * 8. 카테고리 드롭 영역 판정
-   * --------------------------------------------------------- */
-
-  window.findCategoryUnderPointer =
-    function (
-      x,
-      y
-    ) {
-
-      const targets =
-        [
-          ...document.querySelectorAll(
-            ".category-label, .timeline-category"
-          )
-        ];
-
-
-      return (
-        targets.find(
-          target => {
-
-            const id =
-              target.dataset.categoryId;
-
-
-            if (!id) {
-              return false;
-            }
-
-
-            const rect =
-              target.getBoundingClientRect();
-
-
-            return (
-              x >= rect.left &&
-              x <= rect.right &&
-              y >= rect.top &&
-              y <= rect.bottom
-            );
-
-          }
-        ) ||
-        null
-      );
-
-    };
-
-
-  window.clearCategoryDropHighlight =
-    function () {
-
-      document
-        .querySelectorAll(
-          ".drag-over-category"
-        )
-        .forEach(
-          element =>
-            element.classList.remove(
-              "drag-over-category"
-            )
-        );
-
-    };
-
-
-  /* ---------------------------------------------------------
-   * 9. 좌측 / 우측 높이 정확히 맞추기
-   * --------------------------------------------------------- */
-
-  window.syncGanttRows =
-    function () {
-
-      const styleId =
-        "gantt-final-layout-fix";
-
-
-      if (
-        document.getElementById(
-          styleId
-        )
-      ) {
-        return;
-      }
-
-
-      const style =
-        document.createElement(
-          "style"
-        );
-
-
-      style.id =
-        styleId;
-
-
-      style.textContent = `
-
-        /* =====================================
-         * 전체 행 높이
-         * ===================================== */
-
-        .task-header {
-
-          height: 66px !important;
-
-          min-height: 66px !important;
-
-          max-height: 66px !important;
-
-          box-sizing: border-box !important;
-
-          display: flex !important;
-
-          align-items: center !important;
-
-        }
-
-
-        .category-label,
-        .timeline-category {
-
-          height: 44px !important;
-
-          min-height: 44px !important;
-
-          max-height: 44px !important;
-
-          box-sizing: border-box !important;
-
-        }
-
-
-        .task-card {
-
-          height: 68px !important;
-
-          min-height: 68px !important;
-
-          max-height: 68px !important;
-
-          flex: 0 0 68px !important;
-
-          box-sizing: border-box !important;
-
-          margin-top: 0 !important;
-
-          margin-bottom: 6px !important;
-
-          overflow: hidden !important;
-
-        }
-
-
-        .timeline-task-row {
-
-          height: 74px !important;
-
-          min-height: 74px !important;
-
-          max-height: 74px !important;
-
-          box-sizing: border-box !important;
-
-          position: relative !important;
-
-        }
-
-
-        .timeline-task-row
-        .task-bar {
-
-          top: 50% !important;
-
-          transform:
-            translateY(-50%) !important;
-
-        }
-
-
-        /* =====================================
-         * 카테고리 드롭 표시
-         * ===================================== */
-
-        .drag-over-category {
-
-          outline:
-            3px dashed #2563eb !important;
-
-          outline-offset:
-            -3px !important;
-
-          background:
-            #eff6ff !important;
-
-        }
-
-
-        /* =====================================
-         * 드래그 중 작업
-         * ===================================== */
-
-        .task-card.dragging {
-
-          opacity:
-            0.55 !important;
-
-          transform:
-            scale(1.02) !important;
-
-          z-index:
-            100 !important;
-
-        }
-
-
-        .task-card.long-pressing {
-
-          user-select:
-            none !important;
-
-        }
-
-
-        /* =====================================
-         * 표시 기간
-         * ===================================== */
-
-        #gantt-display-period {
-
-          display:
-            inline-flex;
-
-          align-items:
-            center;
-
-          gap:
-            6px;
-
-          margin-left:
-            12px;
-
-          padding:
-            6px 9px;
-
-          border:
-            1px solid #e5e7eb;
-
-          border-radius:
-            8px;
-
-          background:
-            #fff;
-
-          font-size:
-            13px;
-
-          vertical-align:
-            middle;
-
-        }
-
-
-        #gantt-display-period select {
-
-          height:
-            30px;
-
-          padding:
-            0 8px;
-
-          border:
-            1px solid #d1d5db;
-
-          border-radius:
-            7px;
-
-          background:
-            #fff;
-
-        }
-
-
-        .display-period-title {
-
-          font-weight:
-            700;
-
-        }
-
-      `;
-
-
-      document.head.appendChild(
-        style
-      );
-
-    };
-
-
-  /* ---------------------------------------------------------
-   * 10. 초기 실행
-   * --------------------------------------------------------- */
-
-  createDisplayPeriodUI();
-
-  syncGanttRows();
-
-
-})();
