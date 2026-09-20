@@ -278,8 +278,7 @@ main {
 }
 
 .timeline-inner {
-  width: 100%;
-  min-width: 0;
+  min-width: 900px;
   position: relative;
 }
 
@@ -295,7 +294,7 @@ main {
 }
 
 .week-cell {
-  min-width: 0px;
+  min-width: 34px;
 
   display: flex;
 
