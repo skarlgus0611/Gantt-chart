@@ -295,7 +295,7 @@ main {
 }
 
 .week-cell {
-  min-width: 34px;
+  min-width: 0px;
 
   display: flex;
 
