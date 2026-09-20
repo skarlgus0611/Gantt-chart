@@ -278,8 +278,8 @@ main {
 }
 
 .timeline-inner {
-  min-width: 900px;
-
+  width: 100%;
+  min-width: 0;
   position: relative;
 }
 
