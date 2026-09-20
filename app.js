@@ -1301,58 +1301,246 @@ function renderTodayLine(
  * 순서대로 1:1 대응시킨다.
  * ========================================================= */
 
-function getOuterHeight(el) {
-  const rect = el.getBoundingClientRect();
-  const style = window.getComputedStyle(el);
-
-  const marginTop = parseFloat(style.marginTop) || 0;
-  const marginBottom = parseFloat(style.marginBottom) || 0;
-
-  return rect.height + marginTop + marginBottom;
-}
-
-
 function syncGanttRows() {
-  const taskColumn = document.querySelector(".task-column");
-  const timelineInner = document.querySelector(".timeline-inner");
 
-  if (!taskColumn || !timelineInner) return;
+  const left =
+    document.getElementById(
+      "taskColumn"
+    );
 
-  const leftRows = Array.from(
-    taskColumn.children
-  ).filter(el =>
-    el.classList.contains("category-label") ||
-    el.classList.contains("task-card")
-  );
+  const timeline =
+    document.getElementById(
+      "timeline"
+    );
 
-  const rightRows = Array.from(
-    timelineInner.children
-  ).filter(el =>
-    el.classList.contains("timeline-category") ||
-    el.classList.contains("timeline-task-row")
-  );
-
-  const count = Math.min(
-    leftRows.length,
-    rightRows.length
-  );
-
-  for (let i = 0; i < count; i++) {
-    const left = leftRows[i];
-    const right = rightRows[i];
-
-    const height = getOuterHeight(left);
-
-    left.style.height = `${height}px`;
-    right.style.height = `${height}px`;
-
-    left.style.minHeight = `${height}px`;
-    right.style.minHeight = `${height}px`;
-
-    left.style.maxHeight = `${height}px`;
-    right.style.maxHeight = `${height}px`;
+  if (!left || !timeline) {
+    return;
   }
+
+
+  const inner =
+    timeline.querySelector(
+      ".timeline-inner"
+    );
+
+  if (!inner) {
+    return;
+  }
+
+
+  /*
+   * Header
+   */
+  const leftHeader =
+    left.querySelector(
+      ".task-header"
+    );
+
+  const rightHeader =
+    inner.querySelector(
+      ".week-header"
+    );
+
+
+  if (
+    leftHeader &&
+    rightHeader
+  ) {
+
+    leftHeader.style.boxSizing =
+      "border-box";
+
+    rightHeader.style.boxSizing =
+      "border-box";
+
+
+    /*
+     * 기존 inline height 제거
+     * → 실제 높이를 다시 측정
+     */
+    leftHeader.style.height = "";
+    leftHeader.style.minHeight = "";
+    leftHeader.style.maxHeight = "";
+
+    rightHeader.style.height = "";
+    rightHeader.style.minHeight = "";
+    rightHeader.style.maxHeight = "";
+
+
+    const height =
+      Math.max(
+        leftHeader.getBoundingClientRect().height,
+        rightHeader.getBoundingClientRect().height
+      );
+
+
+    if (height > 0) {
+
+      [
+        leftHeader,
+        rightHeader
+      ].forEach(
+        element => {
+
+          element.style.height =
+            height + "px";
+
+          element.style.minHeight =
+            height + "px";
+
+          element.style.maxHeight =
+            height + "px";
+        }
+      );
+    }
+  }
+
+
+  /*
+   * 왼쪽 category/task
+   */
+  const leftRows =
+    [
+      ...left.children
+    ].filter(
+      element =>
+        element.classList.contains(
+          "category-label"
+        ) ||
+        element.classList.contains(
+          "task-card"
+        )
+    );
+
+
+  /*
+   * 오른쪽 category/task
+   */
+  const rightRows =
+    [
+      ...inner.children
+    ].filter(
+      element =>
+        element.classList.contains(
+          "timeline-category"
+        ) ||
+        element.classList.contains(
+          "timeline-task-row"
+        )
+    );
+
+
+  /*
+   * 개수가 다르면
+   * 억지로 맞추지 않는다.
+   */
+  if (
+    leftRows.length !==
+    rightRows.length
+  ) {
+
+    console.warn(
+      "Gantt row count mismatch:",
+      leftRows.length,
+      rightRows.length
+    );
+
+    return;
+  }
+
+
+  leftRows.forEach(
+    element => {
+
+      element.style.boxSizing =
+        "border-box";
+
+      element.style.verticalAlign =
+        "top";
+    }
+  );
+
+
+  rightRows.forEach(
+    element => {
+
+      element.style.boxSizing =
+        "border-box";
+
+      element.style.verticalAlign =
+        "top";
+    }
+  );
+
+
+  /*
+   * 각 행을 1:1로 정확히 맞춘다.
+   */
+  leftRows.forEach(
+    (leftRow, index) => {
+
+      const rightRow =
+        rightRows[index];
+
+      /*
+       * 먼저 기존 강제 높이를 제거한다.
+       */
+      leftRow.style.height = "";
+      leftRow.style.minHeight = "";
+      leftRow.style.maxHeight = "";
+
+      rightRow.style.height = "";
+      rightRow.style.minHeight = "";
+      rightRow.style.maxHeight = "";
+
+
+      const leftHeight =
+        leftRow.getBoundingClientRect().height;
+
+      const rightHeight =
+        rightRow.getBoundingClientRect().height;
+
+
+      /*
+       * 둘 중 큰 값을 사용한다.
+       *
+       * 한쪽 내용이 조금 더 높더라도
+       * 양쪽 모두 같은 높이가 된다.
+       */
+      const height =
+        Math.max(
+          leftHeight,
+          rightHeight
+        );
+
+
+      if (height <= 0) {
+        return;
+      }
+
+
+      leftRow.style.height =
+        height + "px";
+
+      leftRow.style.minHeight =
+        height + "px";
+
+      leftRow.style.maxHeight =
+        height + "px";
+
+
+      rightRow.style.height =
+        height + "px";
+
+      rightRow.style.minHeight =
+        height + "px";
+
+      rightRow.style.maxHeight =
+        height + "px";
+    }
+  );
 }
+
 
 /* =========================================================
  * TASK DETAIL
@@ -2496,59 +2684,167 @@ function reorderLocal(
  * ========================================================= */
 
 function updateRange() {
-  const totalDays = daysInYear(state.year);
 
-  let start = Number(state.rangeStart);
-  let end = Number(state.rangeEnd);
+  const minElement =
+    document.getElementById(
+      "rangeMin"
+    );
 
-  // 범위를 연도 전체 안으로 제한
-  start = Math.max(0, Math.min(start, totalDays - 1));
-  end = Math.max(start, Math.min(end, totalDays - 1));
+  const maxElement =
+    document.getElementById(
+      "rangeMax"
+    );
 
-  state.rangeStart = start;
-  state.rangeEnd = end;
 
-  const rangeMin = document.getElementById("rangeMin");
-  const rangeMax = document.getElementById("rangeMax");
-
-  if (rangeMin) {
-    rangeMin.max = totalDays - 1;
-    rangeMin.value = start;
+  if (
+    !minElement ||
+    !maxElement
+  ) {
+    return;
   }
 
-  if (rangeMax) {
-    rangeMax.max = totalDays - 1;
-    rangeMax.value = end;
+
+  let min =
+    Number(
+      minElement.value
+    );
+
+
+  let max =
+    Number(
+      maxElement.value
+    );
+
+
+  const totalDays =
+    daysInYear(
+      state.year
+    );
+
+
+  min =
+    Math.max(
+      0,
+      Math.min(
+        min,
+        totalDays - 1
+      )
+    );
+
+
+  max =
+    Math.max(
+      0,
+      Math.min(
+        max,
+        totalDays - 1
+      )
+    );
+
+
+  /*
+   * 최소/최대가 같아지는 것을 방지
+   */
+  if (min >= max) {
+
+    if (
+      document.activeElement ===
+      minElement
+    ) {
+
+      min =
+        Math.max(
+          0,
+          max - 1
+        );
+
+    } else {
+
+      max =
+        Math.min(
+          totalDays - 1,
+          min + 1
+        );
+    }
   }
 
-  render();
+
+  state.rangeStart =
+    min;
+
+  state.rangeEnd =
+    max;
+
+
+  minElement.value =
+    min;
+
+  maxElement.value =
+    max;
+
+
+  renderTimeline();
+
+
+  requestAnimationFrame(
+    syncGanttRows
+  );
 }
+
 
 /* =========================================================
  * RESET RANGE
  * ========================================================= */
 
 function resetRange() {
-  const totalDays = daysInYear(state.year);
 
-  state.rangeStart = 0;
-  state.rangeEnd = totalDays - 1;
+  const days =
+    daysInYear(
+      state.year
+    );
 
-  const rangeMin = document.getElementById("rangeMin");
-  const rangeMax = document.getElementById("rangeMax");
 
-  if (rangeMin) {
-    rangeMin.max = totalDays - 1;
-    rangeMin.value = 0;
+  state.rangeStart =
+    0;
+
+  state.rangeEnd =
+    days - 1;
+
+
+  const min =
+    document.getElementById(
+      "rangeMin"
+    );
+
+  const max =
+    document.getElementById(
+      "rangeMax"
+    );
+
+
+  if (min) {
+
+    min.min = 0;
+
+    min.max =
+      days - 1;
+
+    min.value = 0;
   }
 
-  if (rangeMax) {
-    rangeMax.max = totalDays - 1;
-    rangeMax.value = totalDays - 1;
-  }
 
-  render();
+  if (max) {
+
+    max.min = 0;
+
+    max.max =
+      days - 1;
+
+    max.value =
+      days - 1;
+  }
 }
+
 
 /* =========================================================
  * YEAR
