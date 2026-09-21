@@ -5,8 +5,10 @@
 
   <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
   >
+
+  <meta name="theme-color" content="#ffffff">
 
   <title>간트차트</title>
 
@@ -32,6 +34,14 @@
     <div class="top-actions">
 
       <button
+        id="keyBtn"
+        type="button"
+        title="편집 키 다시 입력"
+      >
+        편집 키
+      </button>
+
+      <button
         id="reloadBtn"
         type="button"
       >
@@ -39,8 +49,17 @@
       </button>
 
       <button
+        id="fullBtn"
+        type="button"
+        title="확대를 풀고 1년 전체 보기"
+      >
+        전체
+      </button>
+
+      <button
         id="todayBtn"
         type="button"
+        title="오늘 전후 60일 보기"
       >
         오늘
       </button>
@@ -138,7 +157,11 @@
     <section class="zoom-area">
 
       <div class="zoom-label">
-        표시 기간 확대 / 축소
+
+        <span>표시 기간 확대 / 축소</span>
+
+        <span id="rangeLabel"></span>
+
       </div>
 
       <div class="range-slider">
@@ -180,6 +203,18 @@
     ></section>
 
   </main>
+
+
+  <!-- =========================
+       알림 (저장 중 / 완료)
+  ========================= -->
+
+  <div
+    id="toast"
+    class="toast hidden"
+    role="status"
+    aria-live="polite"
+  ></div>
 
 
   <!-- =========================
@@ -279,8 +314,12 @@
         <input
           id="taskColor"
           type="color"
-          value="#3B82F6"
+          value="#3b82f6"
         >
+
+        <small>
+          바꾸지 않으면 카테고리 기본색을 따릅니다.
+        </small>
 
       </label>
 
@@ -345,7 +384,7 @@
 
 
   <!-- =========================
-       카테고리 추가 Modal
+       카테고리 추가 / 수정 Modal
   ========================= -->
 
   <div
@@ -357,7 +396,7 @@
 
       <div class="modal-header">
 
-        <h2>카테고리 추가</h2>
+        <h2 id="categoryModalTitle">카테고리 추가</h2>
 
         <button
           type="button"
@@ -369,6 +408,13 @@
         </button>
 
       </div>
+
+
+      <!-- 수정할 때만 값이 들어간다. 비어 있으면 새로 추가 -->
+      <input
+        id="categoryId"
+        type="hidden"
+      >
 
 
       <label>
@@ -389,7 +435,7 @@
         <input
           id="categoryColor"
           type="color"
-          value="#3B82F6"
+          value="#3b82f6"
         >
 
       </label>
