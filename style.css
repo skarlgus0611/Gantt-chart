@@ -247,9 +247,11 @@ main {
 
   padding: 0 8px 0 14px;
 
-  background: #f8fafc;
+  background: #dde5f0;
 
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid #c5d0df;
+
+  box-shadow: inset 0 1px 0 #c5d0df;
 
   font-size: 13px;
 
@@ -291,7 +293,7 @@ main {
 .category-empty {
   flex: 0 0 auto;
 
-  color: #9ca3af;
+  color: #64748b;
 
   font-size: 11px;
 
@@ -318,7 +320,7 @@ main {
 
   background: transparent;
 
-  color: #94a3b8;
+  color: #64748b;
 
   font-size: 18px;
 
@@ -398,6 +400,24 @@ main {
   opacity: .55;
 
   box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+}
+
+
+/* 끄는 동안: 놓으면 들어갈 카테고리를 강조하고 커서/선택을 정리 */
+
+.category-label.drag-over {
+  background: #bcd3fb;
+
+  box-shadow: inset 4px 0 0 #2563eb;
+}
+
+body.is-dragging,
+body.is-dragging * {
+  cursor: grabbing !important;
+
+  user-select: none;
+
+  -webkit-user-select: none;
 }
 
 
@@ -530,15 +550,55 @@ main {
 
 
 /* =========================
+   월별 뒷배경
+   (흰색 / 옅은 회백색을 달마다 번갈아)
+   헤더 아래부터 맨 아래까지, 막대와 선 뒤에 깔린다.
+========================= */
+
+.month-bands {
+  position: absolute;
+
+  top: 52px;
+
+  bottom: 0;
+
+  left: 0;
+
+  right: 0;
+
+  pointer-events: none;
+}
+
+.month-band {
+  position: absolute;
+
+  top: 0;
+
+  bottom: 0;
+
+  background: #ffffff;
+}
+
+.month-band.alt {
+  background: #eff2f6;
+}
+
+
+/* =========================
    Timeline 카테고리
 ========================= */
 
 .timeline-category {
+  /* position 이 있어야 월별 뒷배경(위치 지정된 요소) 위에 그려진다. */
+  position: relative;
+
   height: 38px;
 
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid #c5d0df;
 
-  background: #f8fafc;
+  box-shadow: inset 0 1px 0 #c5d0df;
+
+  background: #dde5f0;
 }
 
 
@@ -556,7 +616,7 @@ main {
   background-image:
     linear-gradient(
       to right,
-      #edf0f4 1px,
+      #e2e6ec 1px,
       transparent 1px
     );
 
