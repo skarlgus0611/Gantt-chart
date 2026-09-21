@@ -13,6 +13,8 @@ body {
   font-family:
     Arial,
     "Noto Sans KR",
+    "Apple SD Gothic Neo",
+    "Malgun Gothic",
     sans-serif;
 
   background: #f4f6f9;
@@ -35,8 +37,7 @@ body {
 
   background: white;
 
-  border-bottom:
-    1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
 
   display: flex;
 
@@ -71,8 +72,7 @@ body {
 ========================= */
 
 button {
-  border:
-    1px solid #d1d5db;
+  border: 1px solid #d1d5db;
 
   background: white;
 
@@ -87,7 +87,7 @@ button {
   font: inherit;
 }
 
-button:hover {
+button:hover:not(:disabled) {
   background: #f3f4f6;
 }
 
@@ -99,8 +99,27 @@ button.primary {
   border-color: #2563eb;
 }
 
-button:active {
+button.primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+button:active:not(:disabled) {
   transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: .55;
+
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #2563eb;
+
+  outline-offset: 1px;
 }
 
 
@@ -111,7 +130,7 @@ button:active {
 main {
   width: 100%;
 
-  padding: 22px 28px;
+  padding: 22px 28px 48px;
 }
 
 
@@ -156,6 +175,13 @@ main {
 
 /* =========================
    Gantt 전체
+
+   좌우 행 높이는 아래 값으로 고정한다.
+   (JS로 높이를 맞추지 않는다)
+
+     헤더            52px
+     카테고리 행     38px
+     작업 행         64px
 ========================= */
 
 .gantt {
@@ -165,8 +191,7 @@ main {
 
   background: white;
 
-  border:
-    1px solid #e5e7eb;
+  border: 1px solid #e5e7eb;
 
   border-radius: 14px;
 
@@ -183,8 +208,7 @@ main {
 
   flex: 0 0 260px;
 
-  border-right:
-    1px solid #e5e7eb;
+  border-right: 1px solid #e5e7eb;
 
   background: white;
 
@@ -204,8 +228,7 @@ main {
 
   background: #f9fafb;
 
-  border-bottom:
-    1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 
@@ -220,18 +243,29 @@ main {
 
   align-items: center;
 
-  padding: 0 14px;
+  gap: 8px;
+
+  padding: 0 8px 0 14px;
 
   background: #f8fafc;
 
-  border-bottom:
-    1px solid #edf0f4;
+  border-bottom: 1px solid #edf0f4;
 
   font-size: 13px;
 
   font-weight: 700;
 
-  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.cat-dot {
+  flex: 0 0 10px;
+
+  width: 10px;
+
+  height: 10px;
+
+  border-radius: 50%;
 }
 
 .category-label-name {
@@ -243,23 +277,42 @@ main {
 
   min-width: 0;
 
-  flex: 1;
+  flex: 0 1 auto;
+}
+
+.category-label-name[role="button"] {
+  cursor: pointer;
+}
+
+.category-label-name[role="button"]:hover {
+  text-decoration: underline;
+}
+
+.category-empty {
+  flex: 0 0 auto;
+
+  color: #9ca3af;
+
+  font-size: 11px;
+
+  font-weight: 400;
+
+  white-space: nowrap;
 }
 
 
 /* 카테고리 삭제 버튼 */
 
 .category-delete-btn {
-  flex:
-    0 0 24px;
+  flex: 0 0 28px;
 
-  width: 24px;
+  width: 28px;
 
-  height: 24px;
+  height: 28px;
 
   padding: 0;
 
-  margin: 0;
+  margin: 0 0 0 auto;
 
   border: 0;
 
@@ -269,14 +322,14 @@ main {
 
   font-size: 18px;
 
-  line-height: 24px;
+  line-height: 28px;
 
   border-radius: 6px;
 
   cursor: pointer;
 }
 
-.category-delete-btn:hover {
+.category-delete-btn:hover:not(:disabled) {
   background: #fee2e2;
 
   color: #dc2626;
@@ -285,57 +338,107 @@ main {
 
 /* =========================
    작업 카드
+
+   카드의 '보이는 모양'은 ::before 로 그린다.
+   (margin 을 쓰면 행 높이가 오른쪽과 어긋나므로
+    카드 요소 자체는 margin 없이 64px 를 꽉 채운다)
 ========================= */
 
 .task-card {
-  height: 54px;
+  position: relative;
 
-  margin: 5px 8px;
+  height: 64px;
 
-  padding: 0 12px;
+  margin: 0;
 
-  border:
-    1px solid #e5e7eb;
-
-  border-radius: 12px;
-
-  background: white;
+  padding: 0 18px 0 12px;
 
   display: flex;
 
   align-items: center;
 
-  cursor: grab;
+  gap: 4px;
+
+  cursor: pointer;
+
+  outline: none;
+}
+
+.task-card::before {
+  content: "";
+
+  position: absolute;
+
+  inset: 5px 8px;
+
+  border: 1px solid #e5e7eb;
+
+  border-radius: 12px;
+
+  background: white;
 
   transition:
-    transform .15s,
     box-shadow .15s,
     opacity .15s;
-
-  overflow: hidden;
 }
 
-.task-card:hover {
-  box-shadow:
-    0 3px 10px
-    rgba(0, 0, 0, .08);
+.task-card > * {
+  position: relative;
 }
 
-.task-card:active {
+.task-card:hover::before {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .08);
+}
+
+.task-card:focus-visible::before {
+  outline: 2px solid #2563eb;
+}
+
+.task-card.dragging::before {
+  opacity: .55;
+
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+}
+
+
+/* 순서 변경 손잡이: 여기서만 스크롤을 막아서 폰에서 끌 수 있다. */
+
+.drag-handle {
+  flex: 0 0 24px;
+
+  height: 40px;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  color: #9ca3af;
+
+  font-size: 14px;
+
+  letter-spacing: -2px;
+
+  border-radius: 6px;
+
+  cursor: grab;
+
+  touch-action: none;
+
+  user-select: none;
+
+  -webkit-user-select: none;
+}
+
+.drag-handle:hover {
+  background: #f3f4f6;
+
+  color: #6b7280;
+}
+
+.task-card.dragging .drag-handle {
   cursor: grabbing;
-}
-
-.task-card.dragging {
-  opacity: .35;
-
-  transform:
-    scale(.98);
-}
-
-.task-card.long-pressing {
-  box-shadow:
-    0 0 0 3px
-    rgba(37, 99, 235, .16);
 }
 
 .task-name {
@@ -348,6 +451,8 @@ main {
   font-size: 14px;
 
   min-width: 0;
+
+  flex: 1;
 }
 
 
@@ -367,15 +472,14 @@ main {
   position: relative;
 
   background: white;
+
+  -webkit-overflow-scrolling: touch;
 }
 
 
 /*
- * 중요:
- * app.js가 실제 표시 범위에 따라
- * timeline-inner의 width를 직접 계산한다.
- *
- * 따라서 여기서는 고정 min-width를 주지 않는다.
+ * app.js 가 화면 폭과 표시 기간에 따라
+ * timeline-inner 의 width 를 직접 계산한다.
  */
 
 .timeline-inner {
@@ -384,11 +488,14 @@ main {
   min-height: 100%;
 
   width: max-content;
+
+  min-width: 100%;
 }
 
 
 /* =========================
    주간 헤더
+   (칸 너비는 app.js 가 '일수 x 하루 너비'로 정한다)
 ========================= */
 
 .week-header {
@@ -398,8 +505,7 @@ main {
 
   background: #f9fafb;
 
-  border-bottom:
-    1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .week-cell {
@@ -411,12 +517,11 @@ main {
 
   align-items: center;
 
-  font-size: 10px;
+  font-size: 11px;
 
   color: #6b7280;
 
-  border-right:
-    1px solid #edf0f4;
+  border-right: 1px solid #edf0f4;
 
   overflow: hidden;
 
@@ -431,12 +536,9 @@ main {
 .timeline-category {
   height: 38px;
 
-  border-bottom:
-    1px solid #edf0f4;
+  border-bottom: 1px solid #edf0f4;
 
   background: #f8fafc;
-
-  flex-shrink: 0;
 }
 
 
@@ -449,8 +551,7 @@ main {
 
   position: relative;
 
-  border-bottom:
-    1px solid #f1f3f5;
+  border-bottom: 1px solid #f1f3f5;
 
   background-image:
     linear-gradient(
@@ -459,10 +560,7 @@ main {
       transparent 1px
     );
 
-  background-size:
-    var(--week-width) 100%;
-
-  flex-shrink: 0;
+  background-size: var(--week-width) 100%;
 }
 
 
@@ -485,9 +583,7 @@ main {
 
   overflow: hidden;
 
-  box-shadow:
-    0 2px 5px
-    rgba(0, 0, 0, .12);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .12);
 
   transition:
     filter .15s,
@@ -497,9 +593,10 @@ main {
 .task-bar:hover {
   filter: brightness(.95);
 
-  transform:
-    translateY(-1px);
+  transform: translateY(-1px);
 }
+
+/* 진행된 부분은 어둡게 덮어서 밝은 색에서도 구분된다. */
 
 .task-progress {
   position: absolute;
@@ -510,8 +607,7 @@ main {
 
   bottom: 0;
 
-  background:
-    rgba(255, 255, 255, .25);
+  background: rgba(0, 0, 0, .22);
 
   pointer-events: none;
 }
@@ -544,6 +640,12 @@ main {
   text-overflow: ellipsis;
 
   pointer-events: none;
+}
+
+/* 밝은 막대(노랑 등)는 어두운 글자 */
+
+.task-bar.light .task-bar-text {
+  color: #1f2937;
 }
 
 
@@ -579,13 +681,20 @@ main {
 
   background: white;
 
-  border:
-    1px solid #e5e7eb;
+  border: 1px solid #e5e7eb;
 
   border-radius: 12px;
 }
 
 .zoom-label {
+  display: flex;
+
+  justify-content: space-between;
+
+  gap: 12px;
+
+  flex-wrap: wrap;
+
   font-size: 12px;
 
   color: #6b7280;
@@ -654,12 +763,9 @@ main {
 
   background: white;
 
-  border:
-    2px solid #2563eb;
+  border: 2px solid #2563eb;
 
-  box-shadow:
-    0 2px 5px
-    rgba(0, 0, 0, .15);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .15);
 
   pointer-events: auto;
 
@@ -675,12 +781,9 @@ main {
 
   background: white;
 
-  border:
-    2px solid #2563eb;
+  border: 2px solid #2563eb;
 
-  box-shadow:
-    0 2px 5px
-    rgba(0, 0, 0, .15);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .15);
 
   pointer-events: auto;
 
@@ -702,8 +805,7 @@ main {
 
   border-radius: 12px;
 
-  border:
-    1px dashed #cbd5e1;
+  border: 1px dashed #cbd5e1;
 
   background: white;
 
@@ -712,8 +814,8 @@ main {
   font-size: 14px;
 }
 
-.add-box:hover,
-.add-category-box:hover {
+.add-box:hover:not(:disabled),
+.add-category-box:hover:not(:disabled) {
   background: #f8fafc;
 
   border-color: #94a3b8;
@@ -735,14 +837,13 @@ main {
 
   background: white;
 
-  border:
-    1px solid #e5e7eb;
+  border: 1px solid #e5e7eb;
 
   border-radius: 14px;
 
-  box-shadow:
-    0 8px 30px
-    rgba(0, 0, 0, .08);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .08);
+
+  scroll-margin-bottom: 16px;
 }
 
 .hidden {
@@ -763,6 +864,12 @@ main {
   margin: 0;
 
   font-size: 18px;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
 }
 
 .detail-title > button {
@@ -780,8 +887,7 @@ main {
 .detail-grid {
   display: grid;
 
-  grid-template-columns:
-    repeat(4, 1fr);
+  grid-template-columns: repeat(4, 1fr);
 
   gap: 14px;
 }
@@ -810,12 +916,19 @@ main {
 
   padding: 8px;
 
-  border:
-    1px solid #d1d5db;
+  border: 1px solid #d1d5db;
 
   border-radius: 7px;
 
   font: inherit;
+}
+
+.detail-item input[type="color"] {
+  height: 38px;
+
+  padding: 3px;
+
+  cursor: pointer;
 }
 
 .detail-memo {
@@ -839,8 +952,7 @@ main {
 
   padding: 10px;
 
-  border:
-    1px solid #d1d5db;
+  border: 1px solid #d1d5db;
 
   border-radius: 8px;
 
@@ -861,6 +973,41 @@ main {
 
 
 /* =========================
+   알림 (토스트)
+========================= */
+
+.toast {
+  position: fixed;
+
+  left: 50%;
+
+  bottom: calc(24px + env(safe-area-inset-bottom));
+
+  transform: translateX(-50%);
+
+  max-width: calc(100vw - 32px);
+
+  padding: 10px 16px;
+
+  border-radius: 10px;
+
+  background: #111827;
+
+  color: white;
+
+  font-size: 13px;
+
+  z-index: 200;
+
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .25);
+}
+
+.toast.error {
+  background: #b91c1c;
+}
+
+
+/* =========================
    Modal
 ========================= */
 
@@ -869,8 +1016,7 @@ main {
 
   inset: 0;
 
-  background:
-    rgba(15, 23, 42, .45);
+  background: rgba(15, 23, 42, .45);
 
   display: flex;
 
@@ -884,11 +1030,9 @@ main {
 }
 
 .modal-card {
-  width:
-    min(520px, calc(100vw - 30px));
+  width: min(520px, calc(100vw - 30px));
 
-  max-height:
-    calc(100vh - 30px);
+  max-height: calc(100vh - 30px);
 
   overflow-y: auto;
 
@@ -898,9 +1042,7 @@ main {
 
   padding: 22px;
 
-  box-shadow:
-    0 20px 60px
-    rgba(0, 0, 0, .2);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .2);
 }
 
 .modal-header {
@@ -937,6 +1079,18 @@ main {
   font-weight: 600;
 }
 
+.modal-card label small {
+  display: block;
+
+  margin-top: 4px;
+
+  font-size: 11px;
+
+  font-weight: 400;
+
+  color: #94a3b8;
+}
+
 .modal-card input,
 .modal-card select,
 .modal-card textarea {
@@ -948,8 +1102,7 @@ main {
 
   padding: 9px 10px;
 
-  border:
-    1px solid #d1d5db;
+  border: 1px solid #d1d5db;
 
   border-radius: 8px;
 
@@ -973,8 +1126,7 @@ main {
 .date-grid {
   display: grid;
 
-  grid-template-columns:
-    1fr 1fr;
+  grid-template-columns: 1fr 1fr;
 
   gap: 12px;
 }
@@ -1020,7 +1172,7 @@ main {
 @media (max-width: 800px) {
 
   main {
-    padding: 14px;
+    padding: 14px 14px 48px;
   }
 
   .topbar {
@@ -1035,6 +1187,12 @@ main {
     display: none;
   }
 
+  .top-actions button {
+    padding: 7px 10px;
+
+    font-size: 13px;
+  }
+
   .task-column {
     width: 180px;
 
@@ -1042,8 +1200,50 @@ main {
   }
 
   .detail-grid {
-    grid-template-columns:
-      repeat(2, 1fr);
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* 폰에서는 상세창을 화면 아래에 고정된 시트로 띄운다.
+     (페이지 맨 아래에 열리면 눌러도 아무 일도 없는 것처럼 보이므로) */
+  .detail-panel {
+    position: fixed;
+
+    left: 0;
+
+    right: 0;
+
+    bottom: 0;
+
+    margin: 0;
+
+    max-height: 86vh;
+
+    overflow-y: auto;
+
+    border-radius: 16px 16px 0 0;
+
+    border-bottom: 0;
+
+    z-index: 90;
+
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, .2);
+  }
+
+  /* 내용이 길어도 저장/삭제 버튼은 시트 아래에 계속 보인다. */
+  .detail-actions {
+    position: sticky;
+
+    bottom: 0;
+
+    margin-top: 12px;
+
+    padding-top: 12px;
+
+    background: white;
+
+    border-top: 1px solid #f1f3f5;
   }
 
 }
@@ -1052,17 +1252,22 @@ main {
 
   .topbar {
     height: 64px;
+
+    padding: 0 12px;
+  }
+
+  .top-actions {
+    gap: 6px;
   }
 
   .top-actions button {
-    padding:
-      7px 10px;
+    padding: 6px 8px;
 
     font-size: 12px;
   }
 
   main {
-    padding: 10px;
+    padding: 10px 10px 48px;
   }
 
   .task-column {
@@ -1072,17 +1277,25 @@ main {
   }
 
   .task-card {
-    padding: 0 9px;
+    padding: 0 14px 0 10px;
+  }
+
+  .task-name {
+    font-size: 13px;
   }
 
   .detail-grid {
-    grid-template-columns:
-      1fr;
+    grid-template-columns: 1fr 1fr;
+
+    gap: 10px;
+  }
+
+  .detail-grid .detail-item:nth-child(-n + 2) {
+    grid-column: 1 / -1;
   }
 
   .date-grid {
-    grid-template-columns:
-      1fr;
+    grid-template-columns: 1fr;
   }
 
 }
