@@ -5,11 +5,13 @@
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
  *  - 주 헤더 · 배경선 · 막대 · 오늘 선이 모두 같은 '하루 너비' 기준
  *  - 순서 변경: 카드 왼쪽 손잡이(⋮⋮)를 끌어서 이동 (마우스/터치 공통)
+ *    카테고리와 상관없이 옮길 수 있고, 놓은 자리의 카테고리로 바뀜
  *  - 막대 글자색 자동 대비, 진행률은 어두운 반투명으로 표시
  *  - 작업이 없는 카테고리도 표시, 카테고리 이름/색 수정 가능
  *  - 저장 중 버튼 잠금 + 상단 알림(토스트), 중복 제출 방지
  *  - 상세창이 열리면 화면으로 스크롤, 처음 열면 오늘 위치로 스크롤
  *  - 새 작업은 색을 따로 고르지 않으면 카테고리 기본색을 따름
+ *  - 월별 뒷배경 색(흰색/옅은 회백색) 번갈아 표시
  * ========================================================= */
 
 const API_URL =
@@ -611,6 +613,7 @@ function renderTaskColumn() {
     const category = document.createElement("div");
 
     category.className = "category-label";
+    category.dataset.group = group.id;
 
 
     if (group.id) {
@@ -801,6 +804,10 @@ function renderTimeline() {
   renderWeekHeader(inner, visibleDays, dayWidth);
 
 
+  /* 월별 뒷배경 (흰색 / 옅은 회백색 번갈아) */
+  renderMonthBands(inner, dayWidth);
+
+
   /* Category + Task rows */
   groupTasks().forEach(group => {
 
@@ -829,6 +836,58 @@ function renderTimeline() {
   renderTodayLine(inner, totalDays, visibleDays, width);
 
   timeline.appendChild(inner);
+}
+
+
+/* =========================================================
+ * MONTH BANDS
+ *
+ * 월 단위로 뒷배경 색을 번갈아 칠한다.
+ *   1월 흰색 / 2월 옅은 회백색 / 3월 흰색 / 4월 옅은 회백색 ...
+ * 확대해서 일부 기간만 보고 있어도 달마다 색은 그대로다.
+ * ========================================================= */
+
+function renderMonthBands(inner, dayWidth) {
+
+  const layer = document.createElement("div");
+
+  layer.className = "month-bands";
+
+  const yearStart = getYearStart();
+
+  /* 자정 기준 날짜끼리의 차이이므로 반올림해서 하루 단위로 센다. */
+  const dayIndex = date =>
+    Math.round((date.getTime() - yearStart.getTime()) / 86400000);
+
+  for (let month = 0; month < 12; month++) {
+
+    const first = dayIndex(new Date(state.year, month, 1));
+
+    const last = dayIndex(new Date(state.year, month + 1, 0));
+
+    /* 지금 보이는 기간과 겹치는 부분만 그린다. */
+    const from = Math.max(first, state.rangeStart);
+    const to = Math.min(last, state.rangeEnd);
+
+    if (from > to) {
+      continue;
+    }
+
+    const band = document.createElement("div");
+
+    band.className =
+      "month-band" + (month % 2 === 1 ? " alt" : "");
+
+    band.style.left =
+      ((from - state.rangeStart) * dayWidth) + "px";
+
+    band.style.width =
+      ((to - from + 1) * dayWidth) + "px";
+
+    layer.appendChild(band);
+  }
+
+  inner.appendChild(layer);
 }
 
 
@@ -1582,14 +1641,20 @@ async function saveCategory() {
 
 
 /* =========================================================
- * DRAG & DROP  (순서 변경)
+ * DRAG & DROP  (순서 변경 + 카테고리 이동)
  *
  * - 카드 왼쪽의 손잡이(⋮⋮)를 눌러 끈다. (마우스/터치 공통)
+ * - 카테고리와 상관없이 어디로든 옮길 수 있다.
+ *     · 다른 카드의 위쪽 절반에 가져가면 그 앞에, 아래쪽 절반이면 그 뒤에 들어간다.
+ *     · 카테고리 이름 줄에 가져가면 그 카테고리의 맨 위에 들어간다.
+ *       (작업이 없는 카테고리도 여기로 옮길 수 있다)
+ * - 놓으면 그 자리의 카테고리로 작업의 카테고리가 바뀌고 저장된다.
+ *     · 색을 따로 지정하지 않은(기본색인) 작업은 새 카테고리 색을 따른다.
+ *     · 직접 고른 색은 그대로 유지한다.
  * - 손잡이에만 touch-action:none 이 걸려 있어서
  *   카드 나머지 부분에서는 폰에서 평소처럼 스크롤된다.
  * - 끄는 동안에는 화면을 다시 그리지 않고 요소만 옮긴다.
  *   (요소가 교체되면 포인터 이벤트가 끊기기 때문)
- * - 같은 카테고리 안에서만 옮길 수 있다.
  * ========================================================= */
 
 function timelineRowOf(id) {
@@ -1597,6 +1662,58 @@ function timelineRowOf(id) {
   const rows = document.querySelectorAll(".timeline-task-row");
 
   return [...rows].find(row => row.dataset.id === id) || null;
+}
+
+
+/* 왼쪽의 카테고리 행에 대응하는 오른쪽(타임라인) 카테고리 행 */
+function timelineCategoryRowOf(label) {
+
+  const labels =
+    [...document.querySelectorAll("#taskColumn .category-label")];
+
+  const rows =
+    document.querySelectorAll(".timeline-inner .timeline-category");
+
+  return rows[labels.indexOf(label)] || null;
+}
+
+
+/* 카드 바로 위쪽에 있는 카테고리 행 = 카드가 속한 카테고리 */
+function groupLabelOf(card) {
+
+  let element = card.previousElementSibling;
+
+  while (
+    element &&
+    !element.classList.contains("category-label")
+  ) {
+    element = element.previousElementSibling;
+  }
+
+  return element;
+}
+
+
+function groupIdOfCard(card) {
+
+  const label = groupLabelOf(card);
+
+  return label ? (label.dataset.group || "") : "";
+}
+
+
+/* 지금 놓으면 들어가게 될 카테고리를 강조한다. */
+function highlightDropGroup(card) {
+
+  document
+    .querySelectorAll(".category-label.drag-over")
+    .forEach(element => element.classList.remove("drag-over"));
+
+  const label = groupLabelOf(card);
+
+  if (label) {
+    label.classList.add("drag-over");
+  }
 }
 
 
@@ -1637,13 +1754,21 @@ function setupDrag() {
 function startDrag(card, handle, startEvent) {
 
   const id = card.dataset.id;
-  const group = card.dataset.group;
+
+  const originalGroup = groupIdOfCard(card);
 
   let moved = false;
+
+  let lastX = startEvent.clientX;
+  let lastY = startEvent.clientY;
 
   state.draggingTaskId = id;
 
   card.classList.add("dragging");
+
+  document.body.classList.add("is-dragging");
+
+  highlightDropGroup(card);
 
   try {
     handle.setPointerCapture(startEvent.pointerId);
@@ -1652,31 +1777,22 @@ function startDrag(card, handle, startEvent) {
   }
 
 
-  function onMove(event) {
+  /* target 카드의 앞/뒤로 옮긴다. (이미 그 자리면 아무것도 안 함) */
+  function placeNextTo(target, after) {
 
-    const element =
-      document.elementFromPoint(event.clientX, event.clientY);
+    const alreadyThere =
+      after
+        ? target.nextElementSibling === card
+        : target.previousElementSibling === card;
 
-    const target = element && element.closest
-      ? element.closest(".task-card")
-      : null;
-
-    if (
-      !target ||
-      target === card ||
-      target.dataset.group !== group
-    ) {
+    if (alreadyThere) {
       return;
     }
 
     const row = timelineRowOf(id);
     const targetRow = timelineRowOf(target.dataset.id);
 
-    const targetIsAfter =
-      card.compareDocumentPosition(target) &
-      Node.DOCUMENT_POSITION_FOLLOWING;
-
-    if (targetIsAfter) {
+    if (after) {
       target.after(card);
 
       if (row && targetRow) {
@@ -1692,7 +1808,100 @@ function startDrag(card, handle, startEvent) {
     }
 
     moved = true;
+
+    highlightDropGroup(card);
   }
+
+
+  /* 카테고리 행 바로 아래(그 카테고리의 맨 위)로 옮긴다. */
+  function placeUnder(label) {
+
+    if (label.nextElementSibling === card) {
+      return;
+    }
+
+    const row = timelineRowOf(id);
+    const categoryRow = timelineCategoryRowOf(label);
+
+    label.after(card);
+
+    if (row && categoryRow) {
+      categoryRow.after(row);
+    }
+
+    moved = true;
+
+    highlightDropGroup(card);
+  }
+
+
+  /* 포인터 아래에 무엇이 있는지 보고 카드를 옮긴다. */
+  function evaluate(x, y) {
+
+    const element = document.elementFromPoint(x, y);
+
+    const column = document.getElementById("taskColumn");
+
+    if (
+      !element ||
+      !element.closest ||
+      !column ||
+      !column.contains(element)
+    ) {
+      return;
+    }
+
+    const target = element.closest(".task-card");
+
+    if (target) {
+
+      if (target === card) {
+        return;
+      }
+
+      /* 카드의 위쪽 절반이면 그 앞, 아래쪽 절반이면 그 뒤에 들어간다.
+         (같은 카테고리든 다른 카테고리든 같은 규칙) */
+      const rect = target.getBoundingClientRect();
+
+      const after = y > rect.top + rect.height / 2;
+
+      placeNextTo(target, after);
+
+      return;
+    }
+
+    const label = element.closest(".category-label");
+
+    if (label) {
+      placeUnder(label);
+    }
+  }
+
+
+  function onMove(event) {
+
+    lastX = event.clientX;
+    lastY = event.clientY;
+
+    evaluate(lastX, lastY);
+  }
+
+
+  /* 화면 위/아래 가장자리에 가져가면 페이지가 스크롤된다. */
+  const scroller = setInterval(() => {
+
+    const edge = 70;
+
+    if (lastY < edge) {
+      window.scrollBy(0, -14);
+      evaluate(lastX, lastY);
+
+    } else if (lastY > window.innerHeight - edge) {
+      window.scrollBy(0, 14);
+      evaluate(lastX, lastY);
+    }
+
+  }, 16);
 
 
   async function onEnd() {
@@ -1701,7 +1910,15 @@ function startDrag(card, handle, startEvent) {
     window.removeEventListener("pointerup", onEnd);
     window.removeEventListener("pointercancel", onEnd);
 
+    clearInterval(scroller);
+
     card.classList.remove("dragging");
+
+    document.body.classList.remove("is-dragging");
+
+    document
+      .querySelectorAll(".category-label.drag-over")
+      .forEach(element => element.classList.remove("drag-over"));
 
     try {
       handle.releasePointerCapture(startEvent.pointerId);
@@ -1710,21 +1927,7 @@ function startDrag(card, handle, startEvent) {
     }
 
     if (moved) {
-
-      applyDomOrderToState(id, group);
-
-      try {
-
-        await apiPost("reorder", {
-          ids: state.tasks.map(item => item.id)
-        });
-
-      } catch (error) {
-
-        alert("순서 저장 실패\n" + error.message);
-
-        await loadData(false);
-      }
+      await saveDrop(card, id, originalGroup);
     }
 
     /* 손을 뗀 직후의 click 이 상세창을 열지 않도록 잠깐 유지 */
@@ -1740,40 +1943,88 @@ function startDrag(card, handle, startEvent) {
 }
 
 
-/* 화면에서 바뀐 순서를 state.tasks 에 반영한다. */
-function applyDomOrderToState(id, group) {
+/* 화면에서 바뀐 순서·카테고리를 state 에 반영하고 서버에 저장한다. */
+async function saveDrop(card, id, originalGroup) {
 
-  const cards =
-    [...document.querySelectorAll(".task-card")]
-      .filter(item => item.dataset.group === group);
+  const newGroup = groupIdOfCard(card);
 
-  const index = cards.findIndex(item => item.dataset.id === id);
+  const changedCategory = newGroup !== originalGroup;
 
-  const nextCard = cards[index + 1];
-  const prevCard = cards[index - 1];
+  const task = state.tasks.find(item => item.id === id);
 
-  const from = state.tasks.findIndex(task => task.id === id);
-
-  if (from === -1) {
+  if (!task) {
     return;
   }
 
-  const [moved] = state.tasks.splice(from, 1);
+
+  /* 카테고리가 바뀔 때 서버에 보낼 값 */
+  const updateData = { id, categoryId: newGroup };
+
+  /* 색이 옛 카테고리의 기본색과 같으면 '따로 고른 색'이 아니므로
+     비워서 새 카테고리의 기본색을 따르게 한다. */
+  if (
+    changedCategory &&
+    validHex(task.color) === categoryColorOf(originalGroup)
+  ) {
+    updateData.color = "";
+  }
+
+
+  /* 순서: 화면에서 바로 뒤에 오는 카드 앞으로, 없으면 바로 앞 카드 뒤로 */
+  const next = card.nextElementSibling;
+  const prev = card.previousElementSibling;
+
+  const from = state.tasks.findIndex(item => item.id === id);
+
+  const [movedTask] = state.tasks.splice(from, 1);
 
   let to = from;
 
-  if (nextCard) {
-    to = state.tasks.findIndex(task => task.id === nextCard.dataset.id);
-  } else if (prevCard) {
-    to =
-      state.tasks.findIndex(task => task.id === prevCard.dataset.id) + 1;
+  if (next && next.classList.contains("task-card")) {
+    to = state.tasks.findIndex(item => item.id === next.dataset.id);
+
+  } else if (prev && prev.classList.contains("task-card")) {
+    to = state.tasks.findIndex(item => item.id === prev.dataset.id) + 1;
   }
 
   if (to < 0) {
     to = from;
   }
 
-  state.tasks.splice(to, 0, moved);
+  state.tasks.splice(to, 0, movedTask);
+
+  movedTask.categoryId = newGroup;
+
+
+  try {
+
+    if (changedCategory) {
+      await apiPost("update", { data: updateData });
+    }
+
+    await apiPost("reorder", {
+      ids: state.tasks.map(item => item.id)
+    });
+
+    /* 새 카테고리 색 등 서버 기준으로 다시 그린다. */
+    await loadData(false);
+
+    if (changedCategory) {
+
+      const category =
+        state.categories.find(item => item.id === newGroup);
+
+      showToast(
+        `'${category ? category.name : "기타"}' 카테고리로 옮겼습니다.`
+      );
+    }
+
+  } catch (error) {
+
+    alert("순서 저장 실패\n" + error.message);
+
+    await loadData(false);
+  }
 }
 
 
