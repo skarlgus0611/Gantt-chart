@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-09-21-d)
+ * 간트차트 app.js  (v3, 2026-09-21-e)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -27,7 +27,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-09-21-d";
+const APP_VERSION = "2026-09-21-e";
 
 
 /* =========================================================
@@ -414,9 +414,15 @@ function render() {
     (yearNumber || yearTitle).textContent = state.year;
   }
 
+  syncRowRange();
+  applyGanttHeight();
+
   renderTaskColumn();
   renderTimeline();
   updateRangeLabel();
+
+  if (hSlider) hSlider.layout();
+  if (vSlider) vSlider.layout();
 
   if (isYearPickerOpen()) {
     renderYearPicker();
@@ -600,6 +606,81 @@ function groupTasks() {
 
 
 /* =========================================================
+ * ROWS  (카테고리 줄 + 작업 줄을 하나의 순서 있는 목록으로)
+ *
+ * 왼쪽 목록과 오른쪽 타임라인이 항상 같은 순서로 그려지므로,
+ * 세로 범위 슬라이더는 이 하나의 목록에서 구간만 잘라 보여 준다.
+ * ========================================================= */
+
+function buildRows() {
+
+  const rows = [];
+
+  groupTasks().forEach(group => {
+
+    rows.push({ kind: "category", group });
+
+    group.tasks.forEach(task => {
+      rows.push({ kind: "task", group, task });
+    });
+  });
+
+  return rows;
+}
+
+
+/* 전체 줄 수가 바뀌면(연도 변경, 작업 추가/삭제 등) 범위를 전체로 되돌린다. */
+function syncRowRange() {
+
+  const total = buildRows().length;
+
+  if (state.rowsTotal !== total) {
+
+    state.rowsTotal = total;
+    state.rowStart = 0;
+    state.rowEnd = Math.max(0, total - 1);
+
+  } else {
+
+    state.rowStart = Math.max(0, Math.min(state.rowStart, total - 1));
+    state.rowEnd = Math.max(state.rowStart, Math.min(state.rowEnd, total - 1));
+  }
+}
+
+
+function visibleRows() {
+
+  const rows = buildRows();
+
+  return rows.slice(state.rowStart, state.rowEnd + 1);
+}
+
+
+/* 세로 슬라이더로 일부 줄만 보일 때도 .gantt 상자 크기는 항상
+   "전체 줄을 다 보여줄 때"의 높이로 고정한다. (좌우 확대/축소가
+   화면 폭을 그대로 두는 것과 같은 방식) 그래야 줄 수를 줄였을 때
+   생기는 빈 공간에 새로 뭘 그리지 않고, 원래 있던 흰 배경이 그대로
+   보인다. */
+function applyGanttHeight() {
+
+  const gantt = document.querySelector(".gantt");
+
+  if (!gantt) {
+    return;
+  }
+
+  const rowHeight = row => (row.kind === "category" ? 38 : 72);
+
+  const content = buildRows().reduce(
+    (sum, row) => sum + rowHeight(row),
+    0
+  );
+
+  gantt.style.minHeight = (52 + content) + "px";
+}
+
+
+/* =========================================================
  * LEFT TASK COLUMN
  * ========================================================= */
 
@@ -623,144 +704,148 @@ function renderTaskColumn() {
   column.appendChild(header);
 
 
-  groupTasks().forEach(group => {
+  visibleRows().forEach(row => {
 
-    /* Category row */
-    const category = document.createElement("div");
+    if (row.kind === "category") {
 
-    category.className = "category-label";
-    category.dataset.group = group.id;
+      const group = row.group;
 
+      const category = document.createElement("div");
 
-    if (group.id) {
-
-      const dot = document.createElement("span");
-
-      dot.className = "cat-dot";
-      dot.style.background = validHex(group.color) || DEFAULT_COLOR;
-
-      category.appendChild(dot);
-    }
+      category.className = "category-label";
+      category.dataset.group = group.id;
 
 
-    const name = document.createElement("span");
+      if (group.id) {
 
-    name.className = "category-label-name";
-    name.textContent = group.name;
+        const dot = document.createElement("span");
 
-    /* 실제 카테고리는 이름을 눌러 이름/색을 수정한다. */
-    if (group.id) {
+        dot.className = "cat-dot";
+        dot.style.background = validHex(group.color) || DEFAULT_COLOR;
 
-      name.title = "눌러서 이름·색 수정";
-      name.tabIndex = 0;
-      name.setAttribute("role", "button");
+        category.appendChild(dot);
+      }
 
-      name.addEventListener("click", () => {
-        openCategoryModal(group.id);
-      });
 
-      name.addEventListener("keydown", event => {
+      const name = document.createElement("span");
 
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
+      name.className = "category-label-name";
+      name.textContent = group.name;
+
+      /* 실제 카테고리는 이름을 눌러 이름/색을 수정한다. */
+      if (group.id) {
+
+        name.title = "눌러서 이름·색 수정";
+        name.tabIndex = 0;
+        name.setAttribute("role", "button");
+
+        name.addEventListener("click", () => {
           openCategoryModal(group.id);
-        }
-      });
-    }
+        });
 
-    category.appendChild(name);
+        name.addEventListener("keydown", event => {
 
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openCategoryModal(group.id);
+          }
+        });
+      }
 
-    if (group.empty) {
-
-      const note = document.createElement("span");
-
-      note.className = "category-empty";
-      note.textContent = "작업 없음";
-
-      category.appendChild(note);
-    }
+      category.appendChild(name);
 
 
-    /* "기타"는 실제 카테고리가 아니므로 삭제 버튼을 만들지 않는다. */
-    if (group.id) {
+      if (group.empty) {
 
-      const deleteButton = document.createElement("button");
+        const note = document.createElement("span");
 
-      deleteButton.type = "button";
-      deleteButton.className = "category-delete-btn";
-      deleteButton.textContent = "×";
-      deleteButton.title = "카테고리 삭제";
+        note.className = "category-empty";
+        note.textContent = "작업 없음";
 
-      deleteButton.setAttribute(
-        "aria-label",
-        group.name + " 카테고리 삭제"
-      );
-
-      deleteButton.addEventListener("click", event => {
-
-        event.preventDefault();
-        event.stopPropagation();
-
-        deleteCategory(group.id, group.name);
-      });
-
-      category.appendChild(deleteButton);
-    }
-
-    column.appendChild(category);
+        category.appendChild(note);
+      }
 
 
-    /* Tasks */
-    group.tasks.forEach(task => {
+      /* "기타"는 실제 카테고리가 아니므로 삭제 버튼을 만들지 않는다. */
+      if (group.id) {
 
-      const card = document.createElement("div");
+        const deleteButton = document.createElement("button");
 
-      card.className =
-        "task-card" +
-        (state.draggingTaskId === task.id ? " dragging" : "");
+        deleteButton.type = "button";
+        deleteButton.className = "category-delete-btn";
+        deleteButton.textContent = "×";
+        deleteButton.title = "카테고리 삭제";
 
-      card.dataset.id = task.id;
-      card.dataset.group = group.id;
+        deleteButton.setAttribute(
+          "aria-label",
+          group.name + " 카테고리 삭제"
+        );
 
-      card.tabIndex = 0;
-      card.setAttribute("role", "button");
-      card.setAttribute("aria-label", task.name + " 상세 보기");
+        deleteButton.addEventListener("click", event => {
 
-      card.innerHTML = `
-        <span
-          class="drag-handle"
-          title="끌어서 순서 변경"
-          aria-hidden="true"
-        >⋮⋮</span>
-
-        <div class="task-name">
-          ${escapeHtml(task.name)}
-        </div>
-      `;
-
-      card.addEventListener("click", event => {
-
-        if (
-          state.draggingTaskId ||
-          event.target.closest(".drag-handle")
-        ) {
-          return;
-        }
-
-        showTaskDetail(task.id);
-      });
-
-      card.addEventListener("keydown", event => {
-
-        if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          showTaskDetail(task.id);
-        }
-      });
+          event.stopPropagation();
 
-      column.appendChild(card);
+          deleteCategory(group.id, group.name);
+        });
+
+        category.appendChild(deleteButton);
+      }
+
+      column.appendChild(category);
+
+      return;
+    }
+
+    /* Task row */
+    const { group, task } = row;
+
+    const card = document.createElement("div");
+
+    card.className =
+      "task-card" +
+      (state.draggingTaskId === task.id ? " dragging" : "");
+
+    card.dataset.id = task.id;
+    card.dataset.group = group.id;
+
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", task.name + " 상세 보기");
+
+    card.innerHTML = `
+      <span
+        class="drag-handle"
+        title="끌어서 순서 변경"
+        aria-hidden="true"
+      >⋮⋮</span>
+
+      <div class="task-name">
+        ${escapeHtml(task.name)}
+      </div>
+    `;
+
+    card.addEventListener("click", event => {
+
+      if (
+        state.draggingTaskId ||
+        event.target.closest(".drag-handle")
+      ) {
+        return;
+      }
+
+      showTaskDetail(task.id);
     });
+
+    card.addEventListener("keydown", event => {
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        showTaskDetail(task.id);
+      }
+    });
+
+    column.appendChild(card);
   });
 }
 
@@ -830,27 +915,28 @@ function renderTimeline() {
   renderMonthBands(inner, dayWidth);
 
 
-  /* Category + Task rows */
-  groupTasks().forEach(group => {
+  /* Category + Task rows (왼쪽 목록과 같은 순서, 같은 구간) */
+  visibleRows().forEach(item => {
 
-    const categoryRow = document.createElement("div");
+    if (item.kind === "category") {
 
-    categoryRow.className = "timeline-category";
+      const categoryRow = document.createElement("div");
 
-    inner.appendChild(categoryRow);
+      categoryRow.className = "timeline-category";
 
+      inner.appendChild(categoryRow);
 
-    group.tasks.forEach(task => {
+      return;
+    }
 
-      const row = document.createElement("div");
+    const row = document.createElement("div");
 
-      row.className = "timeline-task-row";
-      row.dataset.id = task.id;
+    row.className = "timeline-task-row";
+    row.dataset.id = item.task.id;
 
-      renderTaskBar(row, task, totalDays, visibleDays);
+    renderTaskBar(row, item.task, totalDays, visibleDays);
 
-      inner.appendChild(row);
-    });
+    inner.appendChild(row);
   });
 
 
@@ -2136,65 +2222,162 @@ function updateRangeLabel() {
 }
 
 
-function updateRange() {
-
-  const minElement = document.getElementById("rangeMin");
-  const maxElement = document.getElementById("rangeMax");
-
-  if (!minElement || !maxElement) {
-    return;
-  }
-
-  let min = Number(minElement.value);
-  let max = Number(maxElement.value);
-
-  const totalDays = daysInYear(state.year);
-
-  min = Math.max(0, Math.min(min, totalDays - 1));
-  max = Math.max(0, Math.min(max, totalDays - 1));
-
-  /* 최소/최대가 같아지는 것을 방지 */
-  if (min >= max) {
-
-    if (document.activeElement === minElement) {
-      min = Math.max(0, max - 1);
-    } else {
-      max = Math.min(totalDays - 1, min + 1);
-    }
-  }
-
-  state.rangeStart = min;
-  state.rangeEnd = max;
-
-  minElement.value = min;
-  maxElement.value = max;
-
-  renderTimeline();
-  updateRangeLabel();
-}
-
-
 function resetRange() {
 
   const days = daysInYear(state.year);
 
   state.rangeStart = 0;
   state.rangeEnd = days - 1;
+}
 
-  const min = document.getElementById("rangeMin");
-  const max = document.getElementById("rangeMax");
 
-  if (min) {
-    min.min = 0;
-    min.max = days - 1;
-    min.value = 0;
+/* =========================================================
+ * RANGE SLIDER  (좌우 확대/축소, 상하 표시 범위 공용)
+ *
+ * 손잡이 두 개(a, b)와 그 사이를 잇는 막대로 이루어진, 완전히 직접
+ * 만든 슬라이더다. (이전에는 <input type="range"> 두 개를 겹쳐 쓰다가
+ * 왼쪽 손잡이가 움직이지 않는 문제가 있었다.)
+ *   - 손잡이를 끌면 그 쪽 끝만 움직인다.
+ *   - 가운데 막대를 끌면 두 끝의 간격을 유지한 채 통째로 옮겨진다(평행이동).
+ * ========================================================= */
+
+function buildRangeSlider(container, opts) {
+
+  if (!container) {
+    return null;
   }
 
-  if (max) {
-    max.min = 0;
-    max.max = days - 1;
-    max.value = days - 1;
+  const horizontal = opts.orientation !== "v";
+
+  /* 손잡이 절반이 컨테이너 가장자리 밖으로 나가면(특히 .gantt처럼
+     overflow:hidden인 조상 안에서는) 그 부분이 잘려서 클릭이 안 먹는
+     "죽은 자리"가 생긴다. 양 끝에 손잡이 반지름만큼 여백을 둬서 막는다. */
+  const inset = opts.inset || 0;
+
+  container.innerHTML =
+    '<div class="range-track"></div>' +
+    '<div class="range-bar"></div>' +
+    '<div class="range-handle range-handle-a" tabindex="0" role="slider"></div>' +
+    '<div class="range-handle range-handle-b" tabindex="0" role="slider"></div>';
+
+  const bar = container.querySelector(".range-bar");
+  const handleA = container.querySelector(".range-handle-a");
+  const handleB = container.querySelector(".range-handle-b");
+
+  function unitSize() {
+
+    const rect = container.getBoundingClientRect();
+    const size = Math.max(1, (horizontal ? rect.width : rect.height) - inset * 2);
+    const total = Math.max(1, opts.getTotal());
+
+    return { rect, size, unit: total > 1 ? size / total : size };
   }
+
+  function layout() {
+
+    const { unit } = unitSize();
+    const [start, end] = opts.getRange();
+
+    const p1 = inset + start * unit;
+    const p2 = inset + (end + 1) * unit;
+
+    if (horizontal) {
+
+      bar.style.left = p1 + "px";
+      bar.style.width = Math.max(2, p2 - p1) + "px";
+      handleA.style.left = p1 + "px";
+      handleB.style.left = p2 + "px";
+
+    } else {
+
+      bar.style.top = p1 + "px";
+      bar.style.height = Math.max(2, p2 - p1) + "px";
+      handleA.style.top = p1 + "px";
+      handleB.style.top = p2 + "px";
+    }
+  }
+
+  function unitAt(clientPos) {
+
+    const { rect, unit } = unitSize();
+
+    const rel = (horizontal ? clientPos - rect.left : clientPos - rect.top) - inset;
+
+    const total = opts.getTotal();
+
+    return Math.max(0, Math.min(total - 1, Math.floor(rel / unit)));
+  }
+
+  function pos(event) {
+    return horizontal ? event.clientX : event.clientY;
+  }
+
+  function drag(onMove) {
+
+    function move(event) {
+      onMove(event);
+      layout();
+      opts.onChange();
+    }
+
+    function up() {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    }
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  handleA.addEventListener("pointerdown", event => {
+
+    event.preventDefault();
+
+    drag(e2 => {
+
+      const value = unitAt(pos(e2));
+      const [, end] = opts.getRange();
+
+      opts.setRange(Math.min(value, end), end);
+    });
+  });
+
+  handleB.addEventListener("pointerdown", event => {
+
+    event.preventDefault();
+
+    drag(e2 => {
+
+      const value = unitAt(pos(e2));
+      const [start] = opts.getRange();
+
+      opts.setRange(start, Math.max(value, start));
+    });
+  });
+
+  /* 가운데 막대: 간격을 유지한 채 평행이동 */
+  bar.addEventListener("pointerdown", event => {
+
+    event.preventDefault();
+
+    const { unit } = unitSize();
+    const startPos = pos(event);
+    const [s0, e0] = opts.getRange();
+    const width = e0 - s0;
+
+    drag(e2 => {
+
+      const deltaUnits = Math.round((pos(e2) - startPos) / unit);
+
+      const total = opts.getTotal();
+
+      let start = Math.max(0, Math.min(total - 1 - width, s0 + deltaUnits));
+
+      opts.setRange(start, start + width);
+    });
+  });
+
+  return { layout };
 }
 
 
@@ -2549,21 +2732,6 @@ if (todayBtn) {
     state.rangeStart = start;
     state.rangeEnd = end;
 
-    const rangeMinElement = document.getElementById("rangeMin");
-    const rangeMaxElement = document.getElementById("rangeMax");
-
-    if (rangeMinElement) {
-      rangeMinElement.min = 0;
-      rangeMinElement.max = totalDays - 1;
-      rangeMinElement.value = start;
-    }
-
-    if (rangeMaxElement) {
-      rangeMaxElement.min = 0;
-      rangeMaxElement.max = totalDays - 1;
-      rangeMaxElement.value = end;
-    }
-
     state.scrollToToday = true;
 
     render();
@@ -2679,18 +2847,39 @@ if (keyBtn) {
 }
 
 
-/* 확대/축소 범위 */
-const rangeMin = document.getElementById("rangeMin");
+/* 확대/축소(좌우) + 표시 범위(상하) 슬라이더 */
+let hSlider = null;
+let vSlider = null;
 
-if (rangeMin) {
-  rangeMin.addEventListener("input", updateRange);
-}
+hSlider = buildRangeSlider(document.getElementById("hRangeSlider"), {
+  orientation: "h",
+  inset: 10,
+  getTotal: () => daysInYear(state.year),
+  getRange: () => [state.rangeStart, state.rangeEnd],
+  setRange: (start, end) => {
+    state.rangeStart = start;
+    state.rangeEnd = end;
+  },
+  onChange: () => {
+    renderTimeline();
+    updateRangeLabel();
+  }
+});
 
-const rangeMax = document.getElementById("rangeMax");
-
-if (rangeMax) {
-  rangeMax.addEventListener("input", updateRange);
-}
+vSlider = buildRangeSlider(document.getElementById("vRangeSlider"), {
+  orientation: "v",
+  inset: 8,
+  getTotal: () => Math.max(1, state.rowsTotal || 1),
+  getRange: () => [state.rowStart || 0, state.rowEnd || 0],
+  setRange: (start, end) => {
+    state.rowStart = start;
+    state.rowEnd = end;
+  },
+  onChange: () => {
+    renderTaskColumn();
+    renderTimeline();
+  }
+});
 
 
 /* =========================================================
