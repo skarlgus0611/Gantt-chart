@@ -10,11 +10,20 @@
 
   <meta name="theme-color" content="#ffffff">
 
+  <meta name="app-version" content="2026-09-21-d">
+
   <title>간트차트</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500&family=Sora:wght@700&display=swap"
+    rel="stylesheet"
+  >
 
   <link
     rel="stylesheet"
-    href="style.css"
+    href="style.css?v=2026-09-21-d"
   >
 </head>
 
@@ -26,9 +35,10 @@
 
   <header class="topbar">
 
-    <div>
-      <h1>간트차트</h1>
-      <p>Google Sheets 기반 일정 관리</p>
+    <div class="brand">
+      <span class="brand-main">Gantt Chart</span>
+      <span class="brand-sep">|</span>
+      <span class="brand-sub">Yearly Progress Management</span>
     </div>
 
     <div class="top-actions">
@@ -85,9 +95,15 @@
         ‹
       </button>
 
-      <strong id="yearTitle">
-        2026
-      </strong>
+      <button
+        id="yearTitle"
+        type="button"
+        class="year-title"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+      >
+        <span class="year-num">2026</span>
+      </button>
 
       <button
         id="nextYear"
@@ -469,7 +485,7 @@
        JS
   ========================= -->
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2026-09-21-d"></script>
 
 </body>
 </html>
