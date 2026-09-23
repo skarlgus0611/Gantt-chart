@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-09-21-h)
+ * 간트차트 app.js  (v3, 2026-09-21-i)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -13,6 +13,7 @@
  *  - 새 작업은 색을 따로 고르지 않으면 카테고리 기본색을 따름
  *  - 월별 뒷배경 색(흰색/옅은 회백색) 번갈아 표시
  *  - 연도 숫자를 누르면 연도 선택창, 1년 전체가 화면 폭에 맞춰 한눈에 보임
+ *  - 캡처 버튼: 지금 확대 상태와 무관하게 연도 전체를 이미지로 저장
  * ========================================================= */
 
 const API_URL =
@@ -27,7 +28,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-09-21-h";
+const APP_VERSION = "2026-09-21-i";
 
 
 /* =========================================================
@@ -2552,6 +2553,344 @@ if (nextYear) {
   nextYear.onclick = () => {
     changeYear(1);
   };
+}
+
+
+/* =========================================================
+ * CAPTURE  (지금 확대 상태와 무관하게, 연도 전체를 이미지로 저장)
+ *
+ * 화면의 확대/축소 상태를 그대로 두고, 화면 밖(-99999px)에 그 연도
+ * 전체(1/1~12/31, 모든 카테고리·작업을 원래 크기로)를 따로 그려서
+ * 캡처한 뒤 없앤다. 작업이 많은 연도일수록 이미지가 길어진다.
+ * ========================================================= */
+
+const CAPTURE_PX_PER_DAY = 8;
+
+function buildCaptureChart() {
+
+  const totalDays = daysInYear(state.year);
+  const width = totalDays * CAPTURE_PX_PER_DAY;
+
+  const rows = buildRows(); // 세로 확대와 무관하게 전체 줄
+  const heights = rows.map(rowHeightOf);
+  const contentHeight = heights.reduce((a, b) => a + b, 0);
+
+  const root = document.createElement("div");
+
+  root.className = "gantt capture-gantt";
+  root.style.cssText =
+    "position:fixed; left:-99999px; top:0; width:" +
+    (260 + width) + "px; height:" +
+    (52 + contentHeight) + "px;";
+
+  /* 왼쪽 목록 */
+  const col = document.createElement("div");
+
+  col.className = "task-column";
+
+  const header = document.createElement("div");
+
+  header.className = "task-header";
+  header.textContent = state.year + "년 작업";
+
+  col.appendChild(header);
+
+  const rowsInnerLeft = document.createElement("div");
+
+  rowsInnerLeft.className = "rows-inner";
+
+  col.appendChild(rowsInnerLeft);
+
+  rows.forEach((row, i) => {
+
+    if (row.kind === "category") {
+
+      const group = row.group;
+      const category = document.createElement("div");
+
+      category.className = "category-label";
+      category.style.height = heights[i] + "px";
+
+      if (group.id) {
+
+        const dot = document.createElement("span");
+
+        dot.className = "cat-dot";
+        dot.style.background = validHex(group.color) || DEFAULT_COLOR;
+
+        category.appendChild(dot);
+      }
+
+      const name = document.createElement("span");
+
+      name.className = "category-label-name";
+      name.textContent = group.name;
+
+      category.appendChild(name);
+
+      rowsInnerLeft.appendChild(category);
+
+      return;
+    }
+
+    const task = row.task;
+    const card = document.createElement("div");
+
+    card.className = "task-card";
+    card.style.height = heights[i] + "px";
+
+    card.innerHTML =
+      '<div class="task-name">' + escapeHtml(task.name) + "</div>";
+
+    rowsInnerLeft.appendChild(card);
+  });
+
+
+  /* 오른쪽 타임라인 */
+  const timelineEl = document.createElement("div");
+
+  timelineEl.className = "timeline";
+  timelineEl.style.overflow = "visible";
+
+  const inner = document.createElement("div");
+
+  inner.className = "timeline-inner";
+  inner.style.width = width + "px";
+  inner.style.setProperty(
+    "--week-width",
+    (CAPTURE_PX_PER_DAY * 7) + "px"
+  );
+
+  timelineEl.appendChild(inner);
+
+
+  /* 월 + 주 헤더 (연도 전체 기준) */
+  const headerRow = document.createElement("div");
+
+  headerRow.className = "week-header";
+
+  const monthRow = document.createElement("div");
+
+  monthRow.className = "month-row";
+
+  const monthCols = [];
+  let acc = 0;
+
+  for (let month = 0; month < 12; month++) {
+
+    const days =
+      new Date(state.year, month + 1, 0).getDate();
+
+    const cell = document.createElement("div");
+
+    cell.className =
+      "month-cell" + (month % 2 === 1 ? " alt" : "");
+
+    cell.textContent = (month + 1) + "월";
+
+    monthRow.appendChild(cell);
+    monthCols.push((days * CAPTURE_PX_PER_DAY) + "px");
+
+    acc += days;
+  }
+
+  monthRow.style.gridTemplateColumns = monthCols.join(" ");
+  headerRow.appendChild(monthRow);
+
+  const weekRow = document.createElement("div");
+
+  weekRow.className = "week-row";
+
+  const weekCols = [];
+
+  for (let offset = 0; offset < totalDays; offset += 7) {
+
+    const days = Math.min(7, totalDays - offset);
+    const date = dateFromYearDay(offset);
+    const cell = document.createElement("div");
+
+    cell.className = "week-cell";
+    cell.textContent =
+      (date.getMonth() + 1) + "/" + date.getDate();
+
+    weekRow.appendChild(cell);
+    weekCols.push((days * CAPTURE_PX_PER_DAY) + "px");
+  }
+
+  weekRow.style.gridTemplateColumns = weekCols.join(" ");
+  headerRow.appendChild(weekRow);
+
+  inner.appendChild(headerRow);
+
+
+  /* 월별 뒷배경 */
+  const bands = document.createElement("div");
+
+  bands.className = "month-bands";
+
+  let dayAcc = 0;
+
+  for (let month = 0; month < 12; month++) {
+
+    const days = new Date(state.year, month + 1, 0).getDate();
+    const band = document.createElement("div");
+
+    band.className =
+      "month-band" + (month % 2 === 1 ? " alt" : "");
+
+    band.style.left = (dayAcc * CAPTURE_PX_PER_DAY) + "px";
+    band.style.width = (days * CAPTURE_PX_PER_DAY) + "px";
+
+    bands.appendChild(band);
+    dayAcc += days;
+  }
+
+  inner.appendChild(bands);
+
+
+  /* 줄 */
+  const rowsInnerRight = document.createElement("div");
+
+  rowsInnerRight.className = "rows-inner";
+
+  inner.appendChild(rowsInnerRight);
+
+  rows.forEach((row, i) => {
+
+    if (row.kind === "category") {
+
+      const categoryRow = document.createElement("div");
+
+      categoryRow.className = "timeline-category";
+      categoryRow.style.height = heights[i] + "px";
+
+      rowsInnerRight.appendChild(categoryRow);
+
+      return;
+    }
+
+    const task = row.task;
+    const barRow = document.createElement("div");
+
+    barRow.className = "timeline-task-row";
+    barRow.style.height = heights[i] + "px";
+
+    if (task.start && task.end) {
+
+      const start = dateObj(task.start);
+      const end = dateObj(task.end);
+
+      if (start && end) {
+
+        const yearStart = getYearStart();
+        const yearEnd = getYearEnd();
+        const clippedStart = start < yearStart ? yearStart : start;
+        const clippedEnd = end > yearEnd ? yearEnd : end;
+
+        if (clippedStart <= clippedEnd) {
+
+          const startDay = dayOffsetFromYearStart(clippedStart);
+          const endDay = dayOffsetFromYearStart(clippedEnd);
+
+          const bar = document.createElement("div");
+
+          bar.className = "task-bar";
+
+          const color = validHex(task.color) || DEFAULT_COLOR;
+
+          if (isLightColor(color)) {
+            bar.classList.add("light");
+          }
+
+          const barHeight = Math.max(
+            10,
+            Math.round(heights[i] * (38 / 72))
+          );
+
+          bar.style.top =
+            Math.round((heights[i] - barHeight) / 2) + "px";
+          bar.style.height = barHeight + "px";
+          bar.style.left = (startDay / totalDays * 100) + "%";
+          bar.style.width =
+            ((endDay - startDay + 1) / totalDays * 100) + "%";
+          bar.style.background = color;
+
+          const progress =
+            Math.max(0, Math.min(100, Number(task.progress) || 0));
+
+          bar.innerHTML =
+            '<div class="task-progress" style="width:' +
+            progress + '%"></div>' +
+            '<div class="task-bar-text">' +
+            escapeHtml(task.name) + "&nbsp;" + progress + "%</div>";
+
+          barRow.appendChild(bar);
+        }
+      }
+    }
+
+    rowsInnerRight.appendChild(barRow);
+  });
+
+
+  root.appendChild(col);
+  root.appendChild(timelineEl);
+
+  return root;
+}
+
+
+async function captureChart() {
+
+  const button = document.getElementById("captureBtn");
+
+  if (typeof html2canvas === "undefined") {
+    alert("캡처 기능을 불러오지 못했습니다. 인터넷 연결을 확인하세요.");
+    return;
+  }
+
+  await withBusy(button, "캡처 중…", async () => {
+
+    const root = buildCaptureChart();
+
+    document.body.appendChild(root);
+
+    try {
+
+      // 폰트/레이아웃이 자리 잡을 시간을 아주 조금 준다.
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const canvas = await html2canvas(root, {
+        backgroundColor: "#ffffff",
+        scale: 2
+      });
+
+      const link = document.createElement("a");
+
+      // 한글 파일명은 일부 브라우저/환경에서 저장 시 깨지거나
+      // "download"로만 저장되는 경우가 있어, 영문+숫자로 안전하게 만든다.
+      link.download = "gantt-chart-" + state.year + ".png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+
+      showToast(state.year + "년 전체 차트를 저장했습니다.");
+
+    } catch (error) {
+
+      alert("캡처 실패\n" + error.message);
+
+    } finally {
+
+      root.remove();
+    }
+  });
+}
+
+
+const captureBtn = document.getElementById("captureBtn");
+
+if (captureBtn) {
+  captureBtn.onclick = captureChart;
 }
 
 
