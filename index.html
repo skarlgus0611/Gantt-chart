@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-09-21-d">
+  <meta name="app-version" content="2026-09-21-e">
 
   <title>간트차트</title>
 
@@ -23,7 +23,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-09-21-d"
+    href="style.css?v=2026-09-21-e"
   >
 </head>
 
@@ -137,6 +137,15 @@
         id="timeline"
       ></div>
 
+
+      <!-- 표시 범위(위/아래) 슬라이더: app.js 가 손잡이·막대를 채운다 -->
+
+      <div
+        class="row-range"
+        id="vRangeSlider"
+        aria-label="표시 작업 범위"
+      ></div>
+
     </section>
 
 
@@ -180,31 +189,8 @@
 
       </div>
 
-      <div class="range-slider">
-
-        <div class="range-track"></div>
-
-        <input
-          id="rangeMin"
-          type="range"
-          min="0"
-          max="365"
-          value="0"
-          step="1"
-          aria-label="시작일"
-        >
-
-        <input
-          id="rangeMax"
-          type="range"
-          min="0"
-          max="365"
-          value="364"
-          step="1"
-          aria-label="종료일"
-        >
-
-      </div>
+      <!-- 손잡이·막대는 app.js 가 채운다 -->
+      <div class="range-slider" id="hRangeSlider" aria-label="표시 기간"></div>
 
     </section>
 
@@ -485,7 +471,7 @@
        JS
   ========================= -->
 
-  <script src="app.js?v=2026-09-21-d"></script>
+  <script src="app.js?v=2026-09-21-e"></script>
 
 </body>
 </html>
