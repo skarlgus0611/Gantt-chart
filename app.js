@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-09-21-g)
+ * 간트차트 app.js  (v3, 2026-09-21-h)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -27,7 +27,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-09-21-g";
+const APP_VERSION = "2026-09-21-h";
 
 
 /* =========================================================
@@ -638,61 +638,97 @@ function rowHeightOf(row) {
 }
 
 
-/* 세로 슬라이더는 '몇 번째 줄부터 몇 번째 줄까지 볼지'를 고른다.
-   고른 구간의 줄들은 항상 차트의 고정 높이(state.chartHeight)를
-   꽉 채우도록 크기가 늘거나 줄어든다(가로 확대/축소와 같은 방식).
-   범위를 최대로 벌리면 전체 작업이 압축되어 다 보이고, 좁히면 그
-   구간만 확대되어 자세히 보인다. 전체 줄 수가 바뀌면 범위를
-   전체로 되돌린다. */
+/* 전체 줄을 원래 높이(38/72)로 이어 붙였을 때, 각 줄이 몇 px 지점에서
+   시작해서 몇 px 지점에서 끝나는지. (세로 슬라이더가 다루는 좌표계) */
+function rowCumulative() {
+
+  let acc = 0;
+
+  return buildRows().map(row => {
+
+    const start = acc;
+
+    acc += rowHeightOf(row);
+
+    return { row, start, end: acc };
+  });
+}
+
+
+/* 세로 슬라이더는 '자연 높이 기준으로 어디부터 어디까지 볼지'를
+   연속적인 px 단위로 고른다(줄 단위로 뚝뚝 끊기지 않는다).
+   고른 구간은 차트의 고정 높이(state.chartHeight)를 항상 꽉
+   채우도록 배율이 매끄럽게 바뀐다 - 범위를 벌릴수록 압축되어
+   다 보이고, 좁힐수록 그 구간만 확대되어 자세히 보인다. 전체
+   높이가 바뀌면(연도 변경, 작업 추가/삭제) 범위를 전체로 되돌린다. */
 function syncRowRange() {
 
-  const total = buildRows().length;
+  const total = rowCumulative().reduce((max, r) => Math.max(max, r.end), 0);
 
   if (state.rowsTotal !== total) {
 
     state.rowsTotal = total;
     state.rowStart = 0;
-    state.rowEnd = Math.max(0, total - 1);
+    state.rowEnd = total;
 
   } else {
 
-    state.rowStart = Math.max(0, Math.min(state.rowStart, total - 1));
-    state.rowEnd = Math.max(state.rowStart, Math.min(state.rowEnd, total - 1));
+    state.rowStart = Math.max(0, Math.min(state.rowStart, total));
+    state.rowEnd = Math.max(state.rowStart, Math.min(state.rowEnd, total));
   }
 }
 
 
-/* 지금 고른 구간의 줄들만, 실제 줄 높이(38/72)를 유지한 채 잘라 온다. */
-function selectedRows() {
-  return buildRows().slice(state.rowStart, state.rowEnd + 1);
+/* 고른 구간과 조금이라도 겹치는 줄은 전부 포함한다(경계 줄도 보임). */
+function selectedRowsWithCum() {
+
+  return rowCumulative().filter(
+    r => r.end > state.rowStart && r.start < state.rowEnd
+  );
 }
 
 
-/* 고른 구간의 원래 높이 합을, 차트의 남은 세로 공간(헤더 52px 제외)에
-   꽉 채우기 위한 배율. 각 줄의 실제 표시 높이는 이 배율을 곱해서 정한다. */
+function selectedRows() {
+  return selectedRowsWithCum().map(r => r.row);
+}
+
+
+/* 고른 구간의 '너비'(자연 px)를 차트의 남은 세로 공간에 꽉 채우기
+   위한 배율. 어떤 줄이 경계에서 드나드는지와 무관하게 슬라이더
+   위치만으로 매끄럽게 정해지므로, 손잡이를 조금만 움직여도 배율이
+   그만큼만 매끄럽게 바뀐다(끊기지 않는다). */
 function computeRowScale() {
 
-  const rows = selectedRows();
-
-  const natural = rows.reduce((sum, row) => sum + rowHeightOf(row), 0);
+  const width = Math.max(1, state.rowEnd - state.rowStart);
 
   const available = Math.max(1, state.chartHeight - 52);
 
-  state.rowScale = natural > 0 ? available / natural : 1;
+  state.rowScale = available / width;
 }
 
 
-/* 누적 반올림 방식: 줄마다 따로 반올림하면 오차가 쌓이므로,
-   누적 높이를 반올림해서 그 차이를 각 줄 높이로 쓴다. 합이 항상
-   정확히 맞는다. */
+/* 화면에 보이는 첫 줄의 위쪽 끝을, 창의 맨 위(0px)에 맞추기 위해
+   안쪽 콘텐츠를 위로 밀어 올리는 양(뷰포트 안에서, 배율 적용 후). */
+function rowsOffset(rows) {
+
+  if (!rows.length) {
+    return 0;
+  }
+
+  return (state.rowStart - rows[0].start) * state.rowScale;
+}
+
+
+/* 각 줄의 실제(배율 적용) 표시 높이. 누적 반올림으로 오차가 쌓이지
+   않게 한다. */
 function scaledRowHeights(rows) {
 
   const heights = [];
   let cumulative = 0;
 
-  rows.forEach(row => {
+  rows.forEach(r => {
 
-    cumulative += rowHeightOf(row) * state.rowScale;
+    cumulative += rowHeightOf(r.row) * state.rowScale;
 
     const rounded = Math.round(cumulative);
 
@@ -744,17 +780,30 @@ function renderTaskColumn() {
   column.appendChild(header);
 
 
+  /* 세로 창: 항상 (차트 높이 - 헤더) 만큼만 보인다. 그 안에서
+     콘텐츠를 위로 살짝 밀어(offset) 경계 줄이 매끄럽게 드나든다. */
+  const viewport = document.createElement("div");
+
+  viewport.className = "rows-viewport";
+  viewport.style.height = Math.max(1, state.chartHeight - 52) + "px";
+
+  column.appendChild(viewport);
+
   const rowsInner = document.createElement("div");
 
   rowsInner.className = "rows-inner";
 
-  column.appendChild(rowsInner);
+  viewport.appendChild(rowsInner);
 
-  const rows = selectedRows();
-  const heights = scaledRowHeights(rows);
+  const rowsWithCum = selectedRowsWithCum();
+  const heights = scaledRowHeights(rowsWithCum);
 
-  rows.forEach((row, i) => {
+  rowsInner.style.transform =
+    "translateY(" + (-rowsOffset(rowsWithCum)) + "px)";
 
+  rowsWithCum.forEach((entry, i) => {
+
+    const row = entry.row;
     const h = heights[i];
 
     if (row.kind === "category") {
@@ -964,21 +1013,33 @@ function renderTimeline() {
   renderWeekHeader(inner, visibleDays, dayWidth);
 
 
-  /* 월별 뒷배경 (흰색 / 옅은 회백색 번갈아) - 차트 전체 높이만큼 */
-  renderMonthBands(inner, dayWidth);
+  /* 세로 창: 왼쪽 목록과 정확히 같은 규칙으로 보인다. */
+  const viewport = document.createElement("div");
+
+  viewport.className = "rows-viewport";
+  viewport.style.height = Math.max(1, state.chartHeight - 52) + "px";
+
+  inner.appendChild(viewport);
+
+  /* 월별 뒷배경 (흰색 / 옅은 회백색 번갈아) - 세로 창 안에 고정 */
+  renderMonthBands(viewport, dayWidth);
 
   const rowsInner = document.createElement("div");
 
   rowsInner.className = "rows-inner";
 
-  inner.appendChild(rowsInner);
+  viewport.appendChild(rowsInner);
 
-  const rows = selectedRows();
-  const heights = scaledRowHeights(rows);
+  const rowsWithCum = selectedRowsWithCum();
+  const heights = scaledRowHeights(rowsWithCum);
+
+  rowsInner.style.transform =
+    "translateY(" + (-rowsOffset(rowsWithCum)) + "px)";
 
   /* Category + Task rows (왼쪽 목록과 같은 순서·같은 배율) */
-  rows.forEach((item, i) => {
+  rowsWithCum.forEach((entry, i) => {
 
+    const item = entry.row;
     const h = heights[i];
 
     if (item.kind === "category") {
@@ -1005,8 +1066,8 @@ function renderTimeline() {
   });
 
 
-  /* 오늘 선 */
-  renderTodayLine(inner, totalDays, visibleDays, width);
+  /* 오늘 선 (세로 창에 고정) */
+  renderTodayLine(viewport, totalDays, visibleDays, width);
 
   timeline.appendChild(inner);
 }
