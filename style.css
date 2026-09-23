@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-09-21-g";
+  --css-version: "2026-09-21-h";
 }
 
 * {
@@ -678,7 +678,7 @@ body.is-dragging * {
 .month-bands {
   position: absolute;
 
-  top: 52px;
+  top: 0;
 
   bottom: 0;
 
@@ -840,7 +840,7 @@ body.is-dragging * {
 .today-line {
   position: absolute;
 
-  top: 52px;
+  top: 0;
 
   bottom: 0;
 
@@ -859,6 +859,12 @@ body.is-dragging * {
    - 이 안에서만 잘려 보인다. 안쪽 내용은 항상 전체 줄을 담고
      translateY 로 위치만 옮긴다(연속적 - 경계 줄은 잘린 채 보임).
 ========================= */
+
+.rows-viewport {
+  position: relative;
+
+  overflow: hidden;
+}
 
 .rows-inner {
   position: relative;
