@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-09-21-e)
+ * 간트차트 app.js  (v3, 2026-09-21-f)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -27,7 +27,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-09-21-e";
+const APP_VERSION = "2026-09-21-f";
 
 
 /* =========================================================
@@ -629,30 +629,35 @@ function buildRows() {
 }
 
 
-/* 전체 줄 수가 바뀌면(연도 변경, 작업 추가/삭제 등) 범위를 전체로 되돌린다. */
+function rowHeightOf(row) {
+  return row.kind === "category" ? 38 : 72;
+}
+
+
+function rowsContentHeight() {
+  return buildRows().reduce((sum, row) => sum + rowHeightOf(row), 0);
+}
+
+
+/* 세로 범위는 '몇 번째 줄인지'가 아니라 '위에서 몇 px 지점인지'로 다룬다.
+   그래야 손잡이를 조금만 움직여도 그만큼만 잘려 보이고(연속적),
+   경계에 걸친 일정은 잘린 채로라도 계속 보인다. 전체 높이가 바뀌면
+   (연도 변경, 작업 추가/삭제) 범위를 전체로 되돌린다. */
 function syncRowRange() {
 
-  const total = buildRows().length;
+  const total = rowsContentHeight();
 
   if (state.rowsTotal !== total) {
 
     state.rowsTotal = total;
     state.rowStart = 0;
-    state.rowEnd = Math.max(0, total - 1);
+    state.rowEnd = total;
 
   } else {
 
-    state.rowStart = Math.max(0, Math.min(state.rowStart, total - 1));
-    state.rowEnd = Math.max(state.rowStart, Math.min(state.rowEnd, total - 1));
+    state.rowStart = Math.max(0, Math.min(state.rowStart, total));
+    state.rowEnd = Math.max(state.rowStart, Math.min(state.rowEnd, total));
   }
-}
-
-
-function visibleRows() {
-
-  const rows = buildRows();
-
-  return rows.slice(state.rowStart, state.rowEnd + 1);
 }
 
 
@@ -669,14 +674,7 @@ function applyGanttHeight() {
     return;
   }
 
-  const rowHeight = row => (row.kind === "category" ? 38 : 72);
-
-  const content = buildRows().reduce(
-    (sum, row) => sum + rowHeight(row),
-    0
-  );
-
-  gantt.style.minHeight = (52 + content) + "px";
+  gantt.style.minHeight = (52 + rowsContentHeight()) + "px";
 }
 
 
@@ -695,7 +693,7 @@ function renderTaskColumn() {
   column.innerHTML = "";
 
 
-  /* Header */
+  /* Header (항상 고정, 세로 범위와 무관) */
   const header = document.createElement("div");
 
   header.className = "task-header";
@@ -704,7 +702,24 @@ function renderTaskColumn() {
   column.appendChild(header);
 
 
-  visibleRows().forEach(row => {
+  /* 세로 범위 창: 이 안에서만 잘려 보인다(overflow:hidden).
+     안쪽 rowsInner 는 항상 전체 줄을 다 담고, 위치만 위로 옮겨서
+     원하는 구간이 보이게 한다 - 경계의 일정은 잘린 채로 보인다. */
+  const viewport = document.createElement("div");
+
+  viewport.className = "rows-viewport";
+  viewport.style.height = (state.rowEnd - state.rowStart) + "px";
+
+  const rowsInner = document.createElement("div");
+
+  rowsInner.className = "rows-inner";
+  rowsInner.style.transform = "translateY(" + (-state.rowStart) + "px)";
+
+  viewport.appendChild(rowsInner);
+  column.appendChild(viewport);
+
+
+  buildRows().forEach(row => {
 
     if (row.kind === "category") {
 
@@ -792,7 +807,7 @@ function renderTaskColumn() {
         category.appendChild(deleteButton);
       }
 
-      column.appendChild(category);
+      rowsInner.appendChild(category);
 
       return;
     }
@@ -845,7 +860,7 @@ function renderTaskColumn() {
       }
     });
 
-    column.appendChild(card);
+    rowsInner.appendChild(card);
   });
 }
 
@@ -911,12 +926,28 @@ function renderTimeline() {
   renderWeekHeader(inner, visibleDays, dayWidth);
 
 
+  /* 세로 범위 창: 왼쪽 목록과 똑같은 방식으로 잘라 보여준다.
+     (월별 배경 · 오늘 선은 창에 고정 - 스크롤에 안 딸려간다) */
+  const viewport = document.createElement("div");
+
+  viewport.className = "rows-viewport";
+  viewport.style.height = (state.rowEnd - state.rowStart) + "px";
+
+  inner.appendChild(viewport);
+
   /* 월별 뒷배경 (흰색 / 옅은 회백색 번갈아) */
-  renderMonthBands(inner, dayWidth);
+  renderMonthBands(viewport, dayWidth);
+
+  const rowsInner = document.createElement("div");
+
+  rowsInner.className = "rows-inner";
+  rowsInner.style.transform = "translateY(" + (-state.rowStart) + "px)";
+
+  viewport.appendChild(rowsInner);
 
 
-  /* Category + Task rows (왼쪽 목록과 같은 순서, 같은 구간) */
-  visibleRows().forEach(item => {
+  /* Category + Task rows (왼쪽 목록과 같은 순서, 전체) */
+  buildRows().forEach(item => {
 
     if (item.kind === "category") {
 
@@ -924,7 +955,7 @@ function renderTimeline() {
 
       categoryRow.className = "timeline-category";
 
-      inner.appendChild(categoryRow);
+      rowsInner.appendChild(categoryRow);
 
       return;
     }
@@ -936,12 +967,12 @@ function renderTimeline() {
 
     renderTaskBar(row, item.task, totalDays, visibleDays);
 
-    inner.appendChild(row);
+    rowsInner.appendChild(row);
   });
 
 
-  /* 오늘 선 */
-  renderTodayLine(inner, totalDays, visibleDays, width);
+  /* 오늘 선 (세로 범위 창에 고정) */
+  renderTodayLine(viewport, totalDays, visibleDays, width);
 
   timeline.appendChild(inner);
 }
