@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-09-21-h">
+  <meta name="app-version" content="2026-09-21-i">
 
   <title>간트차트</title>
 
@@ -21,9 +21,12 @@
     rel="stylesheet"
   >
 
+  <!-- 캡처 기능용: DOM을 이미지로 저장 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
   <link
     rel="stylesheet"
-    href="style.css?v=2026-09-21-h"
+    href="style.css?v=2026-09-21-i"
   >
 </head>
 
@@ -72,6 +75,14 @@
         title="오늘 전후 60일 보기"
       >
         오늘
+      </button>
+
+      <button
+        id="captureBtn"
+        type="button"
+        title="지금 확대 상태와 무관하게, 이 연도 전체를 이미지로 저장"
+      >
+        캡처
       </button>
 
     </div>
@@ -482,7 +493,7 @@
        JS
   ========================= -->
 
-  <script src="app.js?v=2026-09-21-h"></script>
+  <script src="app.js?v=2026-09-21-i"></script>
 
 </body>
 </html>
