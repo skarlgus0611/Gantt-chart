@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3)
+ * 간트차트 app.js  (v3, 2026-09-21-d)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -12,12 +12,22 @@
  *  - 상세창이 열리면 화면으로 스크롤, 처음 열면 오늘 위치로 스크롤
  *  - 새 작업은 색을 따로 고르지 않으면 카테고리 기본색을 따름
  *  - 월별 뒷배경 색(흰색/옅은 회백색) 번갈아 표시
+ *  - 연도 숫자를 누르면 연도 선택창, 1년 전체가 화면 폭에 맞춰 한눈에 보임
  * ========================================================= */
 
 const API_URL =
   "https://script.google.com/macros/s/AKfycbx33KL-l94mz08Q8rWJHYrGUXyipmxrm02z3Y26OR20V9q5V2diZRFIzvyFpqio-0Jg8Q/exec";
 
 const DEFAULT_COLOR = "#3b82f6";
+
+/* 주 단위 날짜 라벨을 보여 주려면 한 주 칸이 최소 이만큼(px) 필요하다.
+   1년 전체를 화면 폭에 맞추면 이보다 좁아져서 월 라벨만 보인다. */
+const WEEK_LABEL_MIN_WIDTH = 40;
+
+/* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
+   파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
+   바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
+const APP_VERSION = "2026-09-21-d";
 
 
 /* =========================================================
@@ -399,12 +409,18 @@ function render() {
   const yearTitle = document.getElementById("yearTitle");
 
   if (yearTitle) {
-    yearTitle.textContent = state.year;
+    const yearNumber = yearTitle.querySelector(".year-num");
+
+    (yearNumber || yearTitle).textContent = state.year;
   }
 
   renderTaskColumn();
   renderTimeline();
   updateRangeLabel();
+
+  if (isYearPickerOpen()) {
+    renderYearPicker();
+  }
 
   if (state.scrollToToday) {
     state.scrollToToday = false;
@@ -790,14 +806,20 @@ function renderTimeline() {
 
   const visibleDays = state.rangeEnd - state.rangeStart + 1;
 
-  const width =
-    Math.max(timeline.clientWidth || 900, visibleDays * 8);
+  /* 보이는 기간은 항상 화면 폭에 딱 맞춘다.
+     (1년 전체를 보면 1년이 한눈에 들어오고, 확대하면 그만큼 하루 폭이 커진다) */
+  const width = timeline.clientWidth || 900;
 
   const dayWidth = width / visibleDays;
 
   inner.style.width = width + "px";
 
   inner.style.setProperty("--week-width", (dayWidth * 7) + "px");
+
+  /* 주 칸이 너무 좁으면 주 단위 세로선은 그리지 않는다. (월 배경이 구분해 준다) */
+  if (dayWidth * 7 < WEEK_LABEL_MIN_WIDTH) {
+    inner.classList.add("no-week-lines");
+  }
 
 
   /* 주 헤더 */
@@ -840,18 +862,16 @@ function renderTimeline() {
 
 
 /* =========================================================
- * MONTH BANDS
+ * MONTH SEGMENTS / MONTH BANDS
  *
- * 월 단위로 뒷배경 색을 번갈아 칠한다.
+ * 월별로 뒷배경 색을 번갈아 칠한다.
  *   1월 흰색 / 2월 옅은 회백색 / 3월 흰색 / 4월 옅은 회백색 ...
  * 확대해서 일부 기간만 보고 있어도 달마다 색은 그대로다.
  * ========================================================= */
 
-function renderMonthBands(inner, dayWidth) {
-
-  const layer = document.createElement("div");
-
-  layer.className = "month-bands";
+/* 지금 보이는 기간과 겹치는 달들: [{ month, from, to }]
+   (from / to 는 그 해의 n번째 날, 0부터) */
+function monthSegments() {
 
   const yearStart = getYearStart();
 
@@ -859,19 +879,33 @@ function renderMonthBands(inner, dayWidth) {
   const dayIndex = date =>
     Math.round((date.getTime() - yearStart.getTime()) / 86400000);
 
+  const segments = [];
+
   for (let month = 0; month < 12; month++) {
 
     const first = dayIndex(new Date(state.year, month, 1));
 
     const last = dayIndex(new Date(state.year, month + 1, 0));
 
-    /* 지금 보이는 기간과 겹치는 부분만 그린다. */
     const from = Math.max(first, state.rangeStart);
     const to = Math.min(last, state.rangeEnd);
 
-    if (from > to) {
-      continue;
+    if (from <= to) {
+      segments.push({ month, from, to });
     }
+  }
+
+  return segments;
+}
+
+
+function renderMonthBands(inner, dayWidth) {
+
+  const layer = document.createElement("div");
+
+  layer.className = "month-bands";
+
+  monthSegments().forEach(({ month, from, to }) => {
 
     const band = document.createElement("div");
 
@@ -885,17 +919,19 @@ function renderMonthBands(inner, dayWidth) {
       ((to - from + 1) * dayWidth) + "px";
 
     layer.appendChild(band);
-  }
+  });
 
   inner.appendChild(layer);
 }
 
 
 /* =========================================================
- * WEEK HEADER
+ * HEADER  (월 줄 + 주 줄)
  *
- * 표시 범위의 첫 날부터 7일씩 끊고, 각 칸의 너비를
- * (칸의 일수 x 하루 너비)로 정확히 정한다.
+ * - 1행: 월. 항상 보인다.
+ * - 2행: 주 시작 날짜. 한 주 칸이 충분히 넓을 때만 보인다.
+ * 각 칸의 너비는 (칸의 일수 x 하루 너비)로 정확히 정해서
+ * 배경, 막대, 오늘 선과 어긋나지 않는다.
  * ========================================================= */
 
 function renderWeekHeader(inner, visibleDays, dayWidth) {
@@ -904,8 +940,51 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
 
   header.className = "week-header";
 
-  const columns = [];
 
+  /* 1행: 월 */
+  const monthRow = document.createElement("div");
+
+  monthRow.className = "month-row";
+
+  const monthColumns = [];
+
+  monthSegments().forEach(({ month, from, to }) => {
+
+    const width = (to - from + 1) * dayWidth;
+
+    const cell = document.createElement("div");
+
+    cell.className =
+      "month-cell" + (month % 2 === 1 ? " alt" : "");
+
+    cell.title =
+      `${state.year}-${String(month + 1).padStart(2, "0")}`;
+
+    /* 칸이 좁으면 '9월' 대신 '9', 더 좁으면 글자를 생략 */
+    cell.textContent =
+      width >= 40 ? `${month + 1}월`
+      : width >= 14 ? String(month + 1)
+      : "";
+
+    monthRow.appendChild(cell);
+
+    monthColumns.push(width + "px");
+  });
+
+  monthRow.style.gridTemplateColumns = monthColumns.join(" ");
+
+  header.appendChild(monthRow);
+
+
+  /* 2행: 주 시작 날짜. 칸이 너무 좁아지면 글자 없이 구분선만 남긴다.
+     (헤더 높이를 늘 같게 유지해서 오늘 선 · 월별 뒷배경 위치가 어긋나지 않는다) */
+  const showWeekLabels = dayWidth * 7 >= WEEK_LABEL_MIN_WIDTH;
+
+  const weekRow = document.createElement("div");
+
+  weekRow.className = "week-row" + (showWeekLabels ? "" : " compact");
+
+  const weekColumns = [];
 
   for (let offset = 0; offset < visibleDays; offset += 7) {
 
@@ -918,15 +997,20 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
     const cell = document.createElement("div");
 
     cell.className = "week-cell";
-    cell.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
     cell.title = `${dateKey(date)} ~ ${dateKey(end)}`;
 
-    header.appendChild(cell);
+    if (showWeekLabels) {
+      cell.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
+    }
 
-    columns.push((days * dayWidth) + "px");
+    weekRow.appendChild(cell);
+
+    weekColumns.push((days * dayWidth) + "px");
   }
 
-  header.style.gridTemplateColumns = columns.join(" ");
+  weekRow.style.gridTemplateColumns = weekColumns.join(" ");
+
+  header.appendChild(weekRow);
 
   inner.appendChild(header);
 }
@@ -1603,7 +1687,9 @@ function openCategoryModal(categoryId) {
 
 async function saveCategory() {
 
-  const id = document.getElementById("categoryId").value;
+  const idElement = document.getElementById("categoryId");
+
+  const id = idElement ? idElement.value : "";
 
   const name = document.getElementById("categoryName").value.trim();
 
@@ -2152,6 +2238,293 @@ if (nextYear) {
 
 
 /* =========================================================
+ * YEAR PICKER  (연도 숫자를 누르면 나오는 연도 선택창)
+ *
+ * - 12개 연도를 격자로 보여 준다. 좌우 화살표로 12년씩 넘긴다.
+ * - 선택한 연도는 파랗게, 올해는 테두리로, 일정이 있는 해는 점으로 표시한다.
+ * - 연도를 누르면 그 해의 간트차트가 표시된다.
+ * - 바깥을 누르거나 Esc 를 누르면 닫힌다. 방향키로도 고를 수 있다.
+ * ========================================================= */
+
+let yearPickerStart = new Date().getFullYear() - 5;
+
+
+function yearHasTasks(year) {
+
+  const from = `${year}-01-01`;
+  const to = `${year}-12-31`;
+
+  return state.tasks.some(
+    task =>
+      task.start &&
+      task.end &&
+      task.start <= to &&
+      task.end >= from
+  );
+}
+
+
+function getYearPicker() {
+
+  let picker = document.getElementById("yearPicker");
+
+  if (picker) {
+    return picker;
+  }
+
+  picker = document.createElement("div");
+
+  picker.id = "yearPicker";
+  picker.className = "year-picker hidden";
+
+  picker.setAttribute("role", "dialog");
+  picker.setAttribute("aria-label", "연도 선택");
+
+  (document.querySelector(".control-bar") || document.body)
+    .appendChild(picker);
+
+  /* 창 안쪽을 누를 때는 바깥 클릭으로 취급하지 않는다. */
+  picker.addEventListener("click", event => {
+
+    event.stopPropagation();
+
+    const nav = event.target.closest(".yp-nav");
+
+    if (nav) {
+      yearPickerStart += Number(nav.dataset.page) * 12;
+      renderYearPicker();
+      return;
+    }
+
+    const year = event.target.closest(".yp-year");
+
+    if (year) {
+      selectYear(Number(year.dataset.year));
+      return;
+    }
+
+    if (event.target.closest(".yp-today")) {
+      selectYear(new Date().getFullYear());
+    }
+  });
+
+  picker.addEventListener("keydown", event => {
+
+    const buttons = [...picker.querySelectorAll(".yp-year")];
+
+    const index = buttons.indexOf(document.activeElement);
+
+    if (index === -1) {
+      return;
+    }
+
+    const step = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: -4,
+      ArrowDown: 4
+    }[event.key];
+
+    if (step !== undefined) {
+
+      event.preventDefault();
+
+      if (buttons[index + step]) {
+        buttons[index + step].focus();
+      }
+
+      return;
+    }
+
+    if (event.key === "PageUp" || event.key === "PageDown") {
+
+      event.preventDefault();
+
+      yearPickerStart += (event.key === "PageUp" ? -12 : 12);
+
+      renderYearPicker();
+
+      const next = picker.querySelectorAll(".yp-year")[index];
+
+      if (next) {
+        next.focus();
+      }
+    }
+  });
+
+  return picker;
+}
+
+
+function isYearPickerOpen() {
+
+  const picker = document.getElementById("yearPicker");
+
+  return Boolean(picker && !picker.classList.contains("hidden"));
+}
+
+
+function renderYearPicker() {
+
+  const picker = getYearPicker();
+
+  const thisYear = new Date().getFullYear();
+
+  const years = Array.from({ length: 12 }, (_, i) => yearPickerStart + i);
+
+  picker.innerHTML = `
+
+    <div class="yp-head">
+
+      <button
+        type="button"
+        class="yp-nav"
+        data-page="-1"
+        aria-label="이전 연도 목록"
+      >‹</button>
+
+      <span class="yp-range">${years[0]} – ${years[11]}</span>
+
+      <button
+        type="button"
+        class="yp-nav"
+        data-page="1"
+        aria-label="다음 연도 목록"
+      >›</button>
+
+    </div>
+
+    <div class="yp-grid" role="listbox" aria-label="연도">
+      ${years.map(year => `
+        <button
+          type="button"
+          role="option"
+          class="yp-year${year === state.year ? " selected" : ""}${year === thisYear ? " this-year" : ""}${yearHasTasks(year) ? " has-tasks" : ""}"
+          data-year="${year}"
+          aria-selected="${year === state.year}"
+        >${year}</button>
+      `).join("")}
+    </div>
+
+    <div class="yp-foot">
+
+      <button type="button" class="yp-today">올해로 이동</button>
+
+      <span class="yp-legend"><i></i>일정 있음</span>
+
+    </div>
+
+  `;
+}
+
+
+function openYearPicker() {
+
+  yearPickerStart = state.year - 5;
+
+  renderYearPicker();
+
+  getYearPicker().classList.remove("hidden");
+
+  const trigger = document.getElementById("yearTitle");
+
+  if (trigger) {
+    trigger.setAttribute("aria-expanded", "true");
+  }
+
+  const selected = getYearPicker().querySelector(".yp-year.selected");
+
+  if (selected) {
+    selected.focus();
+  }
+}
+
+
+function closeYearPicker(returnFocus = false) {
+
+  const picker = document.getElementById("yearPicker");
+
+  if (picker) {
+    picker.classList.add("hidden");
+  }
+
+  const trigger = document.getElementById("yearTitle");
+
+  if (trigger) {
+    trigger.setAttribute("aria-expanded", "false");
+
+    if (returnFocus) {
+      trigger.focus();
+    }
+  }
+}
+
+
+function selectYear(year) {
+
+  closeYearPicker(true);
+
+  if (year !== state.year) {
+    changeYear(year - state.year);
+  }
+}
+
+
+const yearTitleButton = document.getElementById("yearTitle");
+
+if (yearTitleButton) {
+
+  yearTitleButton.classList.add("year-title");
+
+  yearTitleButton.setAttribute("aria-haspopup", "dialog");
+  yearTitleButton.setAttribute("aria-expanded", "false");
+
+  /* 예전 index.html 처럼 button 이 아니어도 누를 수 있게 한다. */
+  if (yearTitleButton.tagName !== "BUTTON") {
+
+    yearTitleButton.tabIndex = 0;
+    yearTitleButton.setAttribute("role", "button");
+
+    yearTitleButton.addEventListener("keydown", event => {
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        yearTitleButton.click();
+      }
+    });
+  }
+
+  yearTitleButton.addEventListener("click", event => {
+
+    event.stopPropagation();
+
+    if (isYearPickerOpen()) {
+      closeYearPicker();
+    } else {
+      openYearPicker();
+    }
+  });
+}
+
+
+/* 바깥을 누르면 닫는다. */
+document.addEventListener("click", event => {
+
+  if (!isYearPickerOpen()) {
+    return;
+  }
+
+  const trigger = document.getElementById("yearTitle");
+
+  if (trigger && trigger.contains(event.target)) {
+    return;
+  }
+
+  closeYearPicker();
+});
+
+
+/* =========================================================
  * TODAY / FULL
  * ========================================================= */
 
@@ -2330,6 +2703,12 @@ document.addEventListener("keydown", event => {
     return;
   }
 
+  /* 연도 선택창 */
+  if (isYearPickerOpen()) {
+    closeYearPicker(true);
+    return;
+  }
+
   /* 작업 추가 모달 */
   const taskModal = document.getElementById("taskModal");
 
@@ -2395,8 +2774,62 @@ function escapeAttr(value) {
 
 
 /* =========================================================
+ * VERSION CHECK
+ * ========================================================= */
+
+function checkVersions() {
+
+  const meta = document.querySelector('meta[name="app-version"]');
+
+  const htmlVersion = meta ? meta.content : "(없음)";
+
+  const cssVersion =
+    (
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--css-version") || ""
+    ).replace(/["'\s]/g, "") || "(없음)";
+
+  const same =
+    htmlVersion === APP_VERSION &&
+    cssVersion === APP_VERSION;
+
+  let note = document.getElementById("versionNote");
+
+  if (!note) {
+
+    note = document.createElement("div");
+
+    note.id = "versionNote";
+    note.className = "version-note";
+
+    (document.querySelector("main") || document.body).appendChild(note);
+  }
+
+  if (same) {
+
+    note.classList.remove("mismatch");
+    note.textContent = "화면 버전 " + APP_VERSION;
+
+  } else {
+
+    note.classList.add("mismatch");
+
+    note.textContent =
+      "⚠ 파일 버전이 서로 다릅니다 " +
+      "(index.html: " + htmlVersion +
+      " / app.js: " + APP_VERSION +
+      " / style.css: " + cssVersion + "). " +
+      "세 파일을 모두 새 것으로 올렸는지 확인하고 " +
+      "Ctrl+F5 로 새로고침하세요.";
+  }
+}
+
+
+/* =========================================================
  * INITIALIZE
  * ========================================================= */
+
+checkVersions();
 
 setupDrag();
 
