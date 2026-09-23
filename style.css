@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-09-21-d";
+  --css-version: "2026-09-21-e";
 }
 
 * {
@@ -1079,58 +1079,60 @@ body.is-dragging * {
   margin-bottom: 10px;
 }
 
-.range-slider {
+.range-slider,
+.row-range {
   position: relative;
+}
 
+.range-slider {
   height: 28px;
 }
 
-.range-track {
+/* 손잡이 두 개 + 그 사이를 잇는 막대. app.js 가 만들고 위치를 계산한다. */
+
+.range-slider .range-track,
+.row-range .range-track {
   position: absolute;
-
-  left: 8px;
-
-  right: 8px;
-
-  top: 12px;
-
-  height: 5px;
 
   background: #e5e7eb;
 
   border-radius: 10px;
 }
 
-.range-slider input[type="range"] {
+.range-slider .range-track {
+  left: 10px;
+
+  right: 10px;
+
+  top: 12px;
+
+  height: 5px;
+}
+
+.range-slider .range-bar {
   position: absolute;
 
-  width: 100%;
+  top: 12px;
 
-  height: 28px;
+  height: 5px;
 
-  top: 0;
+  background: #93c5fd;
 
-  left: 0;
+  border-radius: 10px;
 
-  pointer-events: none;
-
-  appearance: none;
-
-  background: none;
-
-  margin: 0;
+  cursor: grab;
 }
 
-.range-slider input[type="range"]::-webkit-slider-runnable-track {
-  background: transparent;
+.range-slider .range-bar:active {
+  cursor: grabbing;
 }
 
-.range-slider input[type="range"]::-moz-range-track {
-  background: transparent;
-}
+.range-slider .range-handle {
+  position: absolute;
 
-.range-slider input[type="range"]::-webkit-slider-thumb {
-  appearance: none;
+  top: 50%;
+
+  transform: translate(-50%, -50%);
 
   width: 20px;
 
@@ -1144,15 +1146,67 @@ body.is-dragging * {
 
   box-shadow: 0 2px 5px rgba(0, 0, 0, .15);
 
-  pointer-events: auto;
+  cursor: grab;
+
+  touch-action: none;
+}
+
+.range-slider .range-handle:active {
+  cursor: grabbing;
+}
+
+
+/* 세로(상하) 표시 범위 슬라이더: .gantt 오른쪽 끝에 붙는 얇은 칸.
+   손잡이가 없는 빈 공간은 새로 칠하지 않고, .gantt 배경(흰색)이 그대로 보인다. */
+
+.row-range {
+  flex: 0 0 22px;
+
+  border-left: 1px solid #e5e7eb;
+}
+
+.row-range .range-track {
+  top: 10px;
+
+  bottom: 10px;
+
+  left: 50%;
+
+  width: 5px;
+
+  transform: translateX(-50%);
+}
+
+.row-range .range-bar {
+  position: absolute;
+
+  left: 50%;
+
+  width: 5px;
+
+  transform: translateX(-50%);
+
+  background: #93c5fd;
+
+  border-radius: 10px;
 
   cursor: grab;
 }
 
-.range-slider input[type="range"]::-moz-range-thumb {
-  width: 20px;
+.row-range .range-bar:active {
+  cursor: grabbing;
+}
 
-  height: 20px;
+.row-range .range-handle {
+  position: absolute;
+
+  left: 50%;
+
+  transform: translate(-50%, -50%);
+
+  width: 16px;
+
+  height: 16px;
 
   border-radius: 50%;
 
@@ -1162,9 +1216,9 @@ body.is-dragging * {
 
   box-shadow: 0 2px 5px rgba(0, 0, 0, .15);
 
-  pointer-events: auto;
+  cursor: ns-resize;
 
-  cursor: grab;
+  touch-action: none;
 }
 
 
