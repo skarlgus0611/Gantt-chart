@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-09-21-f";
+  --css-version: "2026-09-21-g";
 }
 
 * {
@@ -678,7 +678,7 @@ body.is-dragging * {
 .month-bands {
   position: absolute;
 
-  top: 0;
+  top: 52px;
 
   bottom: 0;
 
@@ -840,7 +840,7 @@ body.is-dragging * {
 .today-line {
   position: absolute;
 
-  top: 0;
+  top: 52px;
 
   bottom: 0;
 
@@ -860,14 +860,40 @@ body.is-dragging * {
      translateY 로 위치만 옮긴다(연속적 - 경계 줄은 잘린 채 보임).
 ========================= */
 
-.rows-viewport {
-  position: relative;
-
-  overflow: hidden;
-}
-
 .rows-inner {
   position: relative;
+}
+
+/* 차트 전체 높이 조절 손잡이 */
+
+.gantt-resize {
+  height: 14px;
+
+  margin-top: -2px;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  cursor: ns-resize;
+
+  touch-action: none;
+}
+
+.gantt-resize span {
+  width: 48px;
+
+  height: 5px;
+
+  border-radius: 10px;
+
+  background: #d1d5db;
+}
+
+.gantt-resize:hover span {
+  background: #94a3b8;
 }
 
 
@@ -1779,4 +1805,3 @@ body.is-dragging * {
 
   line-height: 1.5;
 }
-
