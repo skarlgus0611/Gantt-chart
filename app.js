@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-09-21-f)
+ * 간트차트 app.js  (v3, 2026-09-21-g)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -27,7 +27,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-09-21-f";
+const APP_VERSION = "2026-09-21-g";
 
 
 /* =========================================================
@@ -49,7 +49,10 @@ let state = {
   draggingTaskId: null,
 
   // 다음 렌더링 뒤에 '오늘' 위치로 가로 스크롤할지
-  scrollToToday: true
+  scrollToToday: true,
+
+  // 차트 전체 높이(px). 아래쪽 손잡이로 사용자가 직접 조절한다.
+  chartHeight: 420
 };
 
 
@@ -416,6 +419,7 @@ function render() {
 
   syncRowRange();
   applyGanttHeight();
+  computeRowScale();
 
   renderTaskColumn();
   renderTimeline();
@@ -634,30 +638,68 @@ function rowHeightOf(row) {
 }
 
 
-function rowsContentHeight() {
-  return buildRows().reduce((sum, row) => sum + rowHeightOf(row), 0);
-}
-
-
-/* 세로 범위는 '몇 번째 줄인지'가 아니라 '위에서 몇 px 지점인지'로 다룬다.
-   그래야 손잡이를 조금만 움직여도 그만큼만 잘려 보이고(연속적),
-   경계에 걸친 일정은 잘린 채로라도 계속 보인다. 전체 높이가 바뀌면
-   (연도 변경, 작업 추가/삭제) 범위를 전체로 되돌린다. */
+/* 세로 슬라이더는 '몇 번째 줄부터 몇 번째 줄까지 볼지'를 고른다.
+   고른 구간의 줄들은 항상 차트의 고정 높이(state.chartHeight)를
+   꽉 채우도록 크기가 늘거나 줄어든다(가로 확대/축소와 같은 방식).
+   범위를 최대로 벌리면 전체 작업이 압축되어 다 보이고, 좁히면 그
+   구간만 확대되어 자세히 보인다. 전체 줄 수가 바뀌면 범위를
+   전체로 되돌린다. */
 function syncRowRange() {
 
-  const total = rowsContentHeight();
+  const total = buildRows().length;
 
   if (state.rowsTotal !== total) {
 
     state.rowsTotal = total;
     state.rowStart = 0;
-    state.rowEnd = total;
+    state.rowEnd = Math.max(0, total - 1);
 
   } else {
 
-    state.rowStart = Math.max(0, Math.min(state.rowStart, total));
-    state.rowEnd = Math.max(state.rowStart, Math.min(state.rowEnd, total));
+    state.rowStart = Math.max(0, Math.min(state.rowStart, total - 1));
+    state.rowEnd = Math.max(state.rowStart, Math.min(state.rowEnd, total - 1));
   }
+}
+
+
+/* 지금 고른 구간의 줄들만, 실제 줄 높이(38/72)를 유지한 채 잘라 온다. */
+function selectedRows() {
+  return buildRows().slice(state.rowStart, state.rowEnd + 1);
+}
+
+
+/* 고른 구간의 원래 높이 합을, 차트의 남은 세로 공간(헤더 52px 제외)에
+   꽉 채우기 위한 배율. 각 줄의 실제 표시 높이는 이 배율을 곱해서 정한다. */
+function computeRowScale() {
+
+  const rows = selectedRows();
+
+  const natural = rows.reduce((sum, row) => sum + rowHeightOf(row), 0);
+
+  const available = Math.max(1, state.chartHeight - 52);
+
+  state.rowScale = natural > 0 ? available / natural : 1;
+}
+
+
+/* 누적 반올림 방식: 줄마다 따로 반올림하면 오차가 쌓이므로,
+   누적 높이를 반올림해서 그 차이를 각 줄 높이로 쓴다. 합이 항상
+   정확히 맞는다. */
+function scaledRowHeights(rows) {
+
+  const heights = [];
+  let cumulative = 0;
+
+  rows.forEach(row => {
+
+    cumulative += rowHeightOf(row) * state.rowScale;
+
+    const rounded = Math.round(cumulative);
+
+    heights.push(rounded - heights.reduce((a, b) => a + b, 0));
+  });
+
+  return heights;
 }
 
 
@@ -674,7 +716,7 @@ function applyGanttHeight() {
     return;
   }
 
-  gantt.style.minHeight = (52 + rowsContentHeight()) + "px";
+  gantt.style.minHeight = state.chartHeight + "px";
 }
 
 
@@ -702,24 +744,18 @@ function renderTaskColumn() {
   column.appendChild(header);
 
 
-  /* 세로 범위 창: 이 안에서만 잘려 보인다(overflow:hidden).
-     안쪽 rowsInner 는 항상 전체 줄을 다 담고, 위치만 위로 옮겨서
-     원하는 구간이 보이게 한다 - 경계의 일정은 잘린 채로 보인다. */
-  const viewport = document.createElement("div");
-
-  viewport.className = "rows-viewport";
-  viewport.style.height = (state.rowEnd - state.rowStart) + "px";
-
   const rowsInner = document.createElement("div");
 
   rowsInner.className = "rows-inner";
-  rowsInner.style.transform = "translateY(" + (-state.rowStart) + "px)";
 
-  viewport.appendChild(rowsInner);
-  column.appendChild(viewport);
+  column.appendChild(rowsInner);
 
+  const rows = selectedRows();
+  const heights = scaledRowHeights(rows);
 
-  buildRows().forEach(row => {
+  rows.forEach((row, i) => {
+
+    const h = heights[i];
 
     if (row.kind === "category") {
 
@@ -729,6 +765,7 @@ function renderTaskColumn() {
 
       category.className = "category-label";
       category.dataset.group = group.id;
+      category.style.height = h + "px";
 
 
       if (group.id) {
@@ -827,6 +864,7 @@ function renderTaskColumn() {
     card.tabIndex = 0;
     card.setAttribute("role", "button");
     card.setAttribute("aria-label", task.name + " 상세 보기");
+    card.style.height = h + "px";
 
     card.innerHTML = `
       <span
@@ -926,34 +964,29 @@ function renderTimeline() {
   renderWeekHeader(inner, visibleDays, dayWidth);
 
 
-  /* 세로 범위 창: 왼쪽 목록과 똑같은 방식으로 잘라 보여준다.
-     (월별 배경 · 오늘 선은 창에 고정 - 스크롤에 안 딸려간다) */
-  const viewport = document.createElement("div");
-
-  viewport.className = "rows-viewport";
-  viewport.style.height = (state.rowEnd - state.rowStart) + "px";
-
-  inner.appendChild(viewport);
-
-  /* 월별 뒷배경 (흰색 / 옅은 회백색 번갈아) */
-  renderMonthBands(viewport, dayWidth);
+  /* 월별 뒷배경 (흰색 / 옅은 회백색 번갈아) - 차트 전체 높이만큼 */
+  renderMonthBands(inner, dayWidth);
 
   const rowsInner = document.createElement("div");
 
   rowsInner.className = "rows-inner";
-  rowsInner.style.transform = "translateY(" + (-state.rowStart) + "px)";
 
-  viewport.appendChild(rowsInner);
+  inner.appendChild(rowsInner);
 
+  const rows = selectedRows();
+  const heights = scaledRowHeights(rows);
 
-  /* Category + Task rows (왼쪽 목록과 같은 순서, 전체) */
-  buildRows().forEach(item => {
+  /* Category + Task rows (왼쪽 목록과 같은 순서·같은 배율) */
+  rows.forEach((item, i) => {
+
+    const h = heights[i];
 
     if (item.kind === "category") {
 
       const categoryRow = document.createElement("div");
 
       categoryRow.className = "timeline-category";
+      categoryRow.style.height = h + "px";
 
       rowsInner.appendChild(categoryRow);
 
@@ -964,15 +997,16 @@ function renderTimeline() {
 
     row.className = "timeline-task-row";
     row.dataset.id = item.task.id;
+    row.style.height = h + "px";
 
-    renderTaskBar(row, item.task, totalDays, visibleDays);
+    renderTaskBar(row, item.task, totalDays, visibleDays, h);
 
     rowsInner.appendChild(row);
   });
 
 
-  /* 오늘 선 (세로 범위 창에 고정) */
-  renderTodayLine(viewport, totalDays, visibleDays, width);
+  /* 오늘 선 */
+  renderTodayLine(inner, totalDays, visibleDays, width);
 
   timeline.appendChild(inner);
 }
@@ -1144,7 +1178,8 @@ function renderTaskBar(
   row,
   task,
   totalDays,
-  visibleDays
+  visibleDays,
+  rowHeight
 ) {
 
   if (!task.start || !task.end) {
@@ -1193,6 +1228,14 @@ function renderTaskBar(
   const bar = document.createElement("div");
 
   bar.className = "task-bar";
+
+  /* 줄 높이가 확대/축소로 바뀌므로, 막대 굵기와 위치도 그 비율대로 맞춘다.
+     (원래 비율: 72px 줄에 38px 막대, 위아래 여백 17px) */
+  const barHeight = Math.max(10, Math.round((rowHeight || 72) * (38 / 72)));
+  const barTop = Math.round(((rowHeight || 72) - barHeight) / 2);
+
+  bar.style.top = barTop + "px";
+  bar.style.height = barHeight + "px";
 
   const color = validHex(task.color) || DEFAULT_COLOR;
 
@@ -2897,6 +2940,45 @@ hSlider = buildRangeSlider(document.getElementById("hRangeSlider"), {
   }
 });
 
+/* 차트 전체 높이 손잡이: .gantt 맨 아래를 끌면 세로로 늘고 준다. */
+const heightHandle = document.getElementById("chartHeightHandle");
+
+if (heightHandle) {
+
+  const MIN_CHART_HEIGHT = 160;
+  const MAX_CHART_HEIGHT = 1400;
+
+  heightHandle.addEventListener("pointerdown", event => {
+
+    event.preventDefault();
+
+    const startY = event.clientY;
+    const startHeight = state.chartHeight;
+
+    function move(e2) {
+
+      state.chartHeight = Math.max(
+        MIN_CHART_HEIGHT,
+        Math.min(MAX_CHART_HEIGHT, startHeight + (e2.clientY - startY))
+      );
+
+      applyGanttHeight();
+      computeRowScale();
+      renderTaskColumn();
+      renderTimeline();
+    }
+
+    function up() {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    }
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  });
+}
+
+
 vSlider = buildRangeSlider(document.getElementById("vRangeSlider"), {
   orientation: "v",
   inset: 8,
@@ -2907,6 +2989,7 @@ vSlider = buildRangeSlider(document.getElementById("vRangeSlider"), {
     state.rowEnd = end;
   },
   onChange: () => {
+    computeRowScale();
     renderTaskColumn();
     renderTimeline();
   }
