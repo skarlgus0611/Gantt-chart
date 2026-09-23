@@ -1,3 +1,8 @@
+/* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
+:root {
+  --css-version: "2026-09-21-d";
+}
+
 * {
   box-sizing: border-box;
 }
@@ -19,6 +24,15 @@ body {
 
   background: #f4f6f9;
   color: #1f2937;
+}
+
+/* 로고 전용 글꼴. 못 불러오면 본문 글꼴로 자연스럽게 대체된다. */
+.brand-main {
+  font-family: "Sora", Arial, sans-serif;
+}
+
+.brand-sub {
+  font-family: "Manrope", Arial, sans-serif;
 }
 
 body {
@@ -46,24 +60,58 @@ body {
   justify-content: space-between;
 }
 
-.topbar h1 {
-  margin: 0 0 4px;
+.brand {
+  display: flex;
 
-  font-size: 23px;
+  align-items: baseline;
+
+  gap: 10px;
+
+  flex-wrap: wrap;
+
+  line-height: 1.2;
 }
 
-.topbar p {
-  margin: 0;
+.brand-main {
+  font-size: 24px;
 
-  font-size: 13px;
+  font-weight: 700;
+
+  letter-spacing: -.01em;
+
+  color: #111827;
+}
+
+.brand-sep {
+  font-size: 16px;
+
+  font-weight: 300;
+
+  color: #cbd5e1;
+}
+
+.brand-sub {
+  font-size: 14px;
+
+  font-weight: 400;
 
   color: #6b7280;
+
+  letter-spacing: .01em;
 }
 
 .top-actions {
   display: flex;
 
+  flex-shrink: 0;
+
   gap: 8px;
+}
+
+.top-actions button {
+  flex-shrink: 0;
+
+  white-space: nowrap;
 }
 
 
@@ -139,6 +187,8 @@ main {
 ========================= */
 
 .control-bar {
+  position: relative;
+
   height: 48px;
 
   display: flex;
@@ -152,12 +202,38 @@ main {
   margin-bottom: 12px;
 }
 
-.control-bar strong {
+.year-title {
+  min-width: 96px;
+
+  padding: 6px 16px;
+
+  border: 1px solid transparent;
+
+  border-radius: 10px;
+
+  background: transparent;
+
   font-size: 20px;
 
-  min-width: 80px;
+  font-weight: 700;
 
-  text-align: center;
+  color: #111827;
+
+  cursor: pointer;
+
+  transition: background .15s, border-color .15s;
+}
+
+.year-title:hover {
+  background: #f3f4f6;
+
+  border-color: #e5e7eb;
+}
+
+.year-title[aria-expanded="true"] {
+  background: #eef2ff;
+
+  border-color: #c7d2fe;
 }
 
 .control-bar button {
@@ -349,7 +425,7 @@ main {
 .task-card {
   position: relative;
 
-  height: 64px;
+  height: 72px;
 
   margin: 0;
 
@@ -371,7 +447,7 @@ main {
 
   position: absolute;
 
-  inset: 5px 8px;
+  inset: 8px 8px;
 
   border: 1px solid #e5e7eb;
 
@@ -521,11 +597,50 @@ body.is-dragging * {
 .week-header {
   height: 52px;
 
-  display: grid;
+  display: flex;
+
+  flex-direction: column;
 
   background: #f9fafb;
 
   border-bottom: 1px solid #e5e7eb;
+}
+
+.month-row,
+.week-row {
+  display: grid;
+
+  height: 26px;
+}
+
+.month-row {
+  border-bottom: 1px solid #eef0f3;
+}
+
+.month-cell {
+  min-width: 0;
+
+  display: flex;
+
+  justify-content: center;
+
+  align-items: center;
+
+  font-size: 12px;
+
+  font-weight: 700;
+
+  color: #4b5563;
+
+  border-right: 1px solid #e5e7eb;
+
+  overflow: hidden;
+
+  white-space: nowrap;
+}
+
+.month-cell.alt {
+  background: #f1f3f6;
 }
 
 .week-cell {
@@ -546,6 +661,11 @@ body.is-dragging * {
   overflow: hidden;
 
   white-space: nowrap;
+}
+
+/* 칸이 너무 좁아 글자를 못 보여줄 때: 구분선만 옅게 남긴다. */
+.week-row.compact .week-cell {
+  border-right-color: #f4f5f7;
 }
 
 
@@ -607,7 +727,7 @@ body.is-dragging * {
 ========================= */
 
 .timeline-task-row {
-  height: 64px;
+  height: 72px;
 
   position: relative;
 
@@ -623,6 +743,10 @@ body.is-dragging * {
   background-size: var(--week-width) 100%;
 }
 
+.timeline-inner.no-week-lines .timeline-task-row {
+  background-image: none;
+}
+
 
 /* =========================
    작업 막대
@@ -631,7 +755,7 @@ body.is-dragging * {
 .task-bar {
   position: absolute;
 
-  top: 13px;
+  top: 17px;
 
   height: 38px;
 
@@ -727,6 +851,199 @@ body.is-dragging * {
   z-index: 10;
 
   pointer-events: none;
+}
+
+
+/* =========================
+   연도 선택창
+========================= */
+
+.year-picker {
+  position: absolute;
+
+  top: calc(100% + 8px);
+
+  left: 50%;
+
+  transform: translateX(-50%);
+
+  width: 300px;
+
+  padding: 14px;
+
+  background: white;
+
+  border: 1px solid #e5e7eb;
+
+  border-radius: 16px;
+
+  box-shadow: 0 16px 40px rgba(15, 23, 42, .16);
+
+  z-index: 60;
+}
+
+.year-picker.hidden {
+  display: none;
+}
+
+.yp-head {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  margin-bottom: 10px;
+}
+
+.yp-head button.yp-nav {
+  width: 30px;
+
+  height: 30px;
+
+  padding: 0;
+
+  border-radius: 8px;
+
+  font-size: 18px;
+
+  line-height: 1;
+}
+
+.yp-range {
+  font-size: 13px;
+
+  font-weight: 700;
+
+  color: #374151;
+}
+
+.yp-grid {
+  display: grid;
+
+  grid-template-columns: repeat(4, 1fr);
+
+  gap: 6px;
+}
+
+.yp-year {
+  position: relative;
+
+  padding: 10px 0;
+
+  border: 1px solid transparent;
+
+  border-radius: 10px;
+
+  background: #f8fafc;
+
+  color: #374151;
+
+  font-size: 14px;
+
+  font-weight: 600;
+}
+
+.yp-year:hover {
+  background: #eef2ff;
+}
+
+.yp-year.this-year {
+  border-color: #94a3b8;
+}
+
+.yp-year.selected {
+  background: #2563eb;
+
+  border-color: #2563eb;
+
+  color: white;
+}
+
+/* 그 해에 일정이 하나라도 있으면 아래에 작은 점을 표시한다. */
+.yp-year.has-tasks::after {
+  content: "";
+
+  position: absolute;
+
+  left: 50%;
+
+  bottom: 5px;
+
+  width: 4px;
+
+  height: 4px;
+
+  border-radius: 50%;
+
+  background: #f59e0b;
+
+  transform: translateX(-50%);
+}
+
+.yp-year.selected.has-tasks::after {
+  background: white;
+}
+
+.yp-foot {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 10px;
+
+  margin-top: 12px;
+
+  padding-top: 10px;
+
+  border-top: 1px solid #f1f3f5;
+}
+
+.yp-today {
+  flex: 0 0 auto;
+
+  padding: 6px 12px;
+
+  font-size: 12px;
+
+  white-space: nowrap;
+
+  border-radius: 8px;
+}
+
+.yp-legend {
+  flex: 0 0 auto;
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 6px;
+
+  font-size: 11px;
+
+  color: #9ca3af;
+
+  white-space: nowrap;
+}
+
+.yp-legend i {
+  width: 5px;
+
+  height: 5px;
+
+  border-radius: 50%;
+
+  background: #f59e0b;
+}
+
+@media (max-width: 520px) {
+
+  .year-picker {
+    width: min(300px, calc(100vw - 24px));
+  }
 }
 
 
@@ -1243,7 +1560,8 @@ body.is-dragging * {
     font-size: 20px;
   }
 
-  .topbar p {
+  .brand-sub,
+  .brand-sep {
     display: none;
   }
 
@@ -1358,4 +1676,35 @@ body.is-dragging * {
     grid-template-columns: 1fr;
   }
 
+}
+
+
+/* =========================
+   버전 표시 (화면 맨 아래)
+========================= */
+
+.version-note {
+  margin-top: 20px;
+
+  text-align: center;
+
+  font-size: 11px;
+
+  color: #9ca3af;
+}
+
+.version-note.mismatch {
+  padding: 10px 14px;
+
+  border-radius: 10px;
+
+  background: #fef2f2;
+
+  color: #b91c1c;
+
+  font-size: 12px;
+
+  font-weight: 700;
+
+  line-height: 1.5;
 }
