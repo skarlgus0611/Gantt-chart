@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-09-21-n";
+  --css-version: "2026-09-21-o";
 }
 
 * {
@@ -435,7 +435,7 @@ main {
 
   align-items: center;
 
-  gap: 4px;
+  gap: 12px;
 
   background: white;
 
