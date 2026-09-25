@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-09-21-j)
+ * 간트차트 app.js  (v3, 2026-09-21-l)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -28,7 +28,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-09-21-j";
+const APP_VERSION = "2026-09-21-l";
 
 
 /* =========================================================
@@ -698,13 +698,19 @@ function selectedRows() {
    위한 배율. 어떤 줄이 경계에서 드나드는지와 무관하게 슬라이더
    위치만으로 매끄럽게 정해지므로, 손잡이를 조금만 움직여도 배율이
    그만큼만 매끄럽게 바뀐다(끊기지 않는다). */
+/* 세로로 심하게 확대해도 줄이 한없이 커지지는 않게 상한을 둔다.
+   (작업 줄 기준 최대 96px 정도 - 막대는 그대로인데 줄만 텅 비어
+   보이는 걸 막는다) 상한에 걸리면 남는 세로 공간은 그냥 빈 배경으로
+   남는다(새로 뭘 그리지 않음). */
+const MAX_ROW_SCALE = 96 / 72;
+
 function computeRowScale() {
 
   const width = Math.max(1, state.rowEnd - state.rowStart);
 
   const available = Math.max(1, state.chartHeight - 52);
 
-  state.rowScale = available / width;
+  state.rowScale = Math.min(available / width, MAX_ROW_SCALE);
 }
 
 
@@ -1291,13 +1297,12 @@ function renderTaskBar(
 
   bar.className = "task-bar";
 
-  /* 줄 높이가 확대/축소로 바뀌므로, 막대 굵기와 위치도 그 비율대로 맞춘다.
-     (원래 비율: 72px 줄에 38px 막대, 위아래 여백 17px) */
-  const barHeight = Math.max(10, Math.round((rowHeight || 72) * (38 / 72)));
-  const barTop = Math.round(((rowHeight || 72) - barHeight) / 2);
+  /* 막대(색상 박스)는 줄 높이를 그대로 채운다(위아래 여백 없음).
+     줄 사이 구분은 줄 자체의 아래쪽 테두리선이 대신한다. */
+  const h = rowHeight || 72;
 
-  bar.style.top = barTop + "px";
-  bar.style.height = barHeight + "px";
+  bar.style.top = "0px";
+  bar.style.height = h + "px";
 
   const color = validHex(task.color) || DEFAULT_COLOR;
 
@@ -2807,14 +2812,8 @@ function buildCaptureChart() {
             bar.classList.add("light");
           }
 
-          const barHeight = Math.max(
-            10,
-            Math.round(heights[i] * (38 / 72))
-          );
-
-          bar.style.top =
-            Math.round((heights[i] - barHeight) / 2) + "px";
-          bar.style.height = barHeight + "px";
+          bar.style.top = "0px";
+          bar.style.height = heights[i] + "px";
           bar.style.left = (startDay / totalDays * 100) + "%";
           bar.style.width =
             ((endDay - startDay + 1) / totalDays * 100) + "%";
