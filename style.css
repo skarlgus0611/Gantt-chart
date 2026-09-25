@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-09-21-m";
+  --css-version: "2026-09-21-n";
 }
 
 * {
@@ -422,14 +422,14 @@ main {
     카드 요소 자체는 margin 없이 64px 를 꽉 채운다)
 ========================= */
 
-.task-card {
-  position: relative;
+/* 떠 있는 둥근 카드가 아니라, 카테고리 줄과 같은 평평한 한 줄이다. */
 
+.task-card {
   height: 48px;
 
   margin: 0;
 
-  padding: 0 18px 0 12px;
+  padding: 0 18px 0 14px;
 
   display: flex;
 
@@ -437,45 +437,31 @@ main {
 
   gap: 4px;
 
+  background: white;
+
+  border-bottom: 1px solid #f1f3f5;
+
   cursor: pointer;
 
   outline: none;
+
+  transition: background .12s;
 }
 
-.task-card::before {
-  content: "";
-
-  position: absolute;
-
-  inset: 5px 8px;
-
-  border: 1px solid #e5e7eb;
-
-  border-radius: 12px;
-
-  background: white;
-
-  transition:
-    box-shadow .15s,
-    opacity .15s;
+.task-card:hover {
+  background: #f8fafc;
 }
 
-.task-card > * {
-  position: relative;
-}
-
-.task-card:hover::before {
-  box-shadow: 0 3px 10px rgba(0, 0, 0, .08);
-}
-
-.task-card:focus-visible::before {
+.task-card:focus-visible {
   outline: 2px solid #2563eb;
+
+  outline-offset: -2px;
 }
 
-.task-card.dragging::before {
+.task-card.dragging {
   opacity: .55;
 
-  box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+  background: #eef2ff;
 }
 
 
@@ -1849,6 +1835,3 @@ body.is-dragging * {
 
   line-height: 1.5;
 }
-
-
-
