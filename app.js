@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-09-21-l)
+ * 간트차트 app.js  (v3, 2026-09-21-m)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -28,7 +28,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-09-21-l";
+const APP_VERSION = "2026-09-21-m";
 
 
 /* =========================================================
@@ -634,8 +634,12 @@ function buildRows() {
 }
 
 
+/* 기본 줄 높이. 작업 줄을 예전(72px)보다 얇게 만든다. */
+const CATEGORY_ROW_HEIGHT = 38;
+const TASK_ROW_HEIGHT = 48;
+
 function rowHeightOf(row) {
-  return row.kind === "category" ? 38 : 72;
+  return row.kind === "category" ? CATEGORY_ROW_HEIGHT : TASK_ROW_HEIGHT;
 }
 
 
@@ -702,7 +706,9 @@ function selectedRows() {
    (작업 줄 기준 최대 96px 정도 - 막대는 그대로인데 줄만 텅 비어
    보이는 걸 막는다) 상한에 걸리면 남는 세로 공간은 그냥 빈 배경으로
    남는다(새로 뭘 그리지 않음). */
-const MAX_ROW_SCALE = 96 / 72;
+/* 세로로 확대해도 작업 줄이 이 높이(px)를 넘지 않게 한다. */
+const MAX_TASK_ROW_HEIGHT = 96;
+const MAX_ROW_SCALE = MAX_TASK_ROW_HEIGHT / TASK_ROW_HEIGHT;
 
 function computeRowScale() {
 
@@ -927,18 +933,20 @@ function renderTaskColumn() {
         class="drag-handle"
         title="끌어서 순서 변경"
         aria-hidden="true"
-      >⋮⋮</span>
+      ><i></i><i></i><i></i></span>
 
-      <div class="task-name">
-        ${escapeHtml(task.name)}
-      </div>
+      <div
+        class="task-name"
+        title="두 번 눌러 이름 수정"
+      >${escapeHtml(task.name)}</div>
     `;
 
     card.addEventListener("click", event => {
 
       if (
         state.draggingTaskId ||
-        event.target.closest(".drag-handle")
+        event.target.closest(".drag-handle") ||
+        event.target.closest(".task-name-edit")
       ) {
         return;
       }
@@ -954,8 +962,104 @@ function renderTaskColumn() {
       }
     });
 
+    const nameEl = card.querySelector(".task-name");
+
+    nameEl.addEventListener("dblclick", event => {
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      startInlineRename(nameEl, task);
+    });
+
     rowsInner.appendChild(card);
   });
+}
+
+
+/* =========================================================
+ * INLINE RENAME  (작업명을 두 번 눌러 그 자리에서 바로 수정)
+ * ========================================================= */
+
+function startInlineRename(nameEl, task) {
+
+  if (nameEl.querySelector(".task-name-edit")) {
+    return;
+  }
+
+  /* 더블클릭을 이루는 두 번의 클릭이 먼저 카드 클릭으로 처리되어
+     상세창이 열려 있을 수 있다. 이름만 조용히 고치는 게 목적이므로
+     그 상세창은 다시 닫는다. */
+  if (state.selectedTask === task.id) {
+
+    const panel = document.getElementById("detailPanel");
+
+    if (panel && !panel.classList.contains("hidden")) {
+      panel.classList.add("hidden");
+      state.selectedTask = null;
+    }
+  }
+
+  const original = task.name;
+
+  nameEl.textContent = "";
+
+  const input = document.createElement("input");
+
+  input.type = "text";
+  input.className = "task-name-edit";
+  input.value = original;
+
+  nameEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+
+  async function finish(save) {
+
+    if (done) {
+      return;
+    }
+
+    done = true;
+
+    const value = input.value.trim();
+
+    if (save && value && value !== original) {
+
+      nameEl.textContent = value;
+
+      try {
+        await apiPost("update", { data: { id: task.id, name: value } });
+        await loadData(false);
+      } catch (error) {
+        alert("이름 저장 실패\n" + error.message);
+        await loadData(false);
+      }
+
+    } else {
+
+      nameEl.textContent = original;
+    }
+  }
+
+  input.addEventListener("blur", () => finish(true));
+
+  input.addEventListener("keydown", event => {
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      input.blur();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      done = true;
+      nameEl.textContent = original;
+    }
+  });
+
+  input.addEventListener("click", event => event.stopPropagation());
+  input.addEventListener("dblclick", event => event.stopPropagation());
 }
 
 
