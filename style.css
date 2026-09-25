@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-09-21-p";
+  --css-version: "2026-09-21-q";
 }
 
 * {
@@ -530,6 +530,14 @@ body.is-dragging * {
 }
 
 .task-card.dragging .drag-handle {
+  cursor: grabbing;
+}
+
+.category-label.dragging {
+  opacity: .55;
+}
+
+.category-label.dragging .category-drag-handle {
   cursor: grabbing;
 }
 
