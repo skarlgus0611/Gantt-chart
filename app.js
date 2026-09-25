@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-09-21-p)
+ * 간트차트 app.js  (v3, 2026-09-21-q)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -28,7 +28,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-09-21-p";
+const APP_VERSION = "2026-09-21-q";
 
 
 /* =========================================================
@@ -828,6 +828,21 @@ function renderTaskColumn() {
       category.className = "category-label";
       category.dataset.group = group.id;
       category.style.height = h + "px";
+
+
+      /* "기타"는 실제 카테고리가 아니라 순서를 저장할 곳이 없으므로
+         끌 수 없다(손잡이 자체를 넣지 않는다). */
+      if (group.id) {
+
+        const catHandle = document.createElement("span");
+
+        catHandle.className = "drag-handle category-drag-handle";
+        catHandle.title = "끌어서 카테고리 순서 변경 (하위 작업도 함께 이동)";
+        catHandle.setAttribute("aria-hidden", "true");
+        catHandle.innerHTML = "<i></i><i></i><i></i>";
+
+        category.appendChild(catHandle);
+      }
 
 
       if (group.id) {
@@ -2164,14 +2179,220 @@ function setupDrag() {
 
     const card = handle.closest(".task-card");
 
-    if (!card) {
+    if (card) {
+
+      event.preventDefault();
+
+      startDrag(card, handle, event);
+
       return;
     }
 
-    event.preventDefault();
+    const label = handle.closest(".category-label");
 
-    startDrag(card, handle, event);
+    if (label && label.dataset.group) {
+
+      event.preventDefault();
+
+      startCategoryDrag(label, handle, event);
+    }
   });
+}
+
+
+/* =========================================================
+ * CATEGORY DRAG  (카테고리 순서 변경 - 하위 작업은 묶여서 함께 이동)
+ *
+ * 개별 작업처럼 화면의 요소를 직접 옮기지는 않는다. 카테고리와 그
+ * 하위 작업들을 화면에서 하나씩 옮기려면 복잡해지므로, 끄는 동안은
+ * "여기에 놓으면 이 카테고리 앞/뒤로 들어간다"만 강조해서 보여주고,
+ * 실제 순서 변경은 손을 뗄 때 한 번에 반영한다(카테고리 몇 개뿐이라
+ * 다시 그려도 충분히 빠르다). 다른 카테고리의 작업 목록 안으로는
+ * 들어가지 않는다 - 항상 카테고리 단위로만 자리를 바꾼다.
+ * ========================================================= */
+
+function categoryLabelElements() {
+
+  return [
+    ...document.querySelectorAll("#taskColumn .rows-inner > .category-label")
+  ];
+}
+
+
+/* 그 카테고리 이름 줄부터, 다음 카테고리 줄 바로 앞까지(그 카테고리의
+   작업들 전체)를 하나의 블록으로 보고 위/아래 경계를 구한다. */
+function categoryBlockBounds(labelEl) {
+
+  const top = labelEl.getBoundingClientRect().top;
+
+  let next = labelEl.nextElementSibling;
+
+  while (next && !next.classList.contains("category-label")) {
+    next = next.nextElementSibling;
+  }
+
+  const bottom = next
+    ? next.getBoundingClientRect().top
+    : document.querySelector("#taskColumn .rows-inner").getBoundingClientRect().bottom;
+
+  return { top, bottom };
+}
+
+
+function startCategoryDrag(labelEl, handle, startEvent) {
+
+  const groupId = labelEl.dataset.group;
+
+  let targetIndex = state.categories.findIndex(c => c.id === groupId);
+
+  let moved = false;
+
+  labelEl.classList.add("dragging");
+
+  document.body.classList.add("is-dragging");
+
+  try {
+    handle.setPointerCapture(startEvent.pointerId);
+  } catch (error) {
+    // 일부 브라우저에서는 capture가 실패할 수 있다.
+  }
+
+
+  function clearHighlight() {
+
+    document
+      .querySelectorAll(".category-label.drag-over")
+      .forEach(element => element.classList.remove("drag-over"));
+  }
+
+
+  /* 지금 포인터 아래 위치라면, 카테고리 목록에서 몇 번째 자리에
+     들어가게 될지(0 ~ 카테고리 개수) 계산한다. 해당하는 카테고리가
+     없으면(내 카테고리 위이거나 목록 밖이면) null. */
+  function targetAt(x, y) {
+
+    const column = document.getElementById("taskColumn");
+
+    const el = document.elementFromPoint(x, y);
+
+    if (!el || !column || !column.contains(el)) {
+      return null;
+    }
+
+    let label = el.closest(".category-label");
+
+    if (!label) {
+
+      const card = el.closest(".task-card");
+
+      if (card) {
+        label = groupLabelOf(card);
+      }
+    }
+
+    if (!label || label === labelEl || !label.dataset.group) {
+      return null;
+    }
+
+    const bounds = categoryBlockBounds(label);
+    const mid = (bounds.top + bounds.bottom) / 2;
+    const idx = state.categories.findIndex(c => c.id === label.dataset.group);
+
+    return y < mid ? idx : idx + 1;
+  }
+
+
+  function onMove(event) {
+
+    const idx = targetAt(event.clientX, event.clientY);
+
+    clearHighlight();
+
+    if (idx === null) {
+      return;
+    }
+
+    targetIndex = idx;
+    moved = true;
+
+    /* 그 자리에 실제로 놓일 때 바로 위/아래가 되는 카테고리를
+       강조해서, 어디에 들어갈지 미리 보여준다. */
+    const labels = categoryLabelElements();
+    const after = labels[idx - 1];
+    const before = labels[idx] && labels[idx] !== labelEl ? labels[idx] : null;
+
+    if (before) {
+      before.classList.add("drag-over");
+    } else if (after && after !== labelEl) {
+      after.classList.add("drag-over");
+    }
+  }
+
+
+  function onEnd() {
+
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onEnd);
+    window.removeEventListener("pointercancel", onEnd);
+
+    labelEl.classList.remove("dragging");
+    document.body.classList.remove("is-dragging");
+    clearHighlight();
+
+    try {
+      handle.releasePointerCapture(startEvent.pointerId);
+    } catch (error) {
+      // 무시
+    }
+
+    if (moved) {
+      saveCategoryOrder(groupId, targetIndex);
+    }
+  }
+
+
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onEnd);
+  window.addEventListener("pointercancel", onEnd);
+}
+
+
+async function saveCategoryOrder(groupId, targetIndex) {
+
+  const from = state.categories.findIndex(c => c.id === groupId);
+
+  if (from === -1) {
+    return;
+  }
+
+  const [moved] = state.categories.splice(from, 1);
+
+  let to = targetIndex;
+
+  if (to > from) {
+    to -= 1; // 자기 자신을 먼저 뺐으므로 뒤쪽 목표 지점은 하나 당겨진다.
+  }
+
+  to = Math.max(0, Math.min(to, state.categories.length));
+
+  state.categories.splice(to, 0, moved);
+
+  renderTaskColumn();
+  renderTimeline();
+
+  try {
+
+    await apiPost("reorderCategories", {
+      ids: state.categories.map(c => c.id)
+    });
+
+    showToast("카테고리 순서를 저장했습니다.");
+
+  } catch (error) {
+
+    alert("순서 저장 실패\n" + error.message);
+    await loadData(false);
+  }
 }
 
 
