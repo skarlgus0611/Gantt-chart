@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-09-21-o)
+ * 간트차트 app.js  (v3, 2026-09-21-p)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -28,7 +28,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-09-21-o";
+const APP_VERSION = "2026-09-21-p";
 
 
 /* =========================================================
@@ -1047,6 +1047,13 @@ function startInlineRename(nameEl, task) {
   input.addEventListener("blur", () => finish(true));
 
   input.addEventListener("keydown", event => {
+
+    /* 카드 자체가 role="button"이라 스페이스/엔터 키를 누르면
+       카드를 "누른" 것으로 처리하는 리스너가 따로 있다. 이 입력칸
+       안에서 누르는 키는 그쪽으로 새어나가면 안 된다 - 특히
+       스페이스는 그대로 두면 preventDefault 되어 띄어쓰기가
+       입력되지 않는다. */
+    event.stopPropagation();
 
     if (event.key === "Enter") {
       event.preventDefault();
