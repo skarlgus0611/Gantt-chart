@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-09-21-l";
+  --css-version: "2026-09-21-m";
 }
 
 * {
@@ -425,7 +425,7 @@ main {
 .task-card {
   position: relative;
 
-  height: 72px;
+  height: 48px;
 
   margin: 0;
 
@@ -447,7 +447,7 @@ main {
 
   position: absolute;
 
-  inset: 8px 8px;
+  inset: 5px 8px;
 
   border: 1px solid #e5e7eb;
 
@@ -500,23 +500,19 @@ body.is-dragging * {
 /* 순서 변경 손잡이: 여기서만 스크롤을 막아서 폰에서 끌 수 있다. */
 
 .drag-handle {
-  flex: 0 0 24px;
+  flex: 0 0 20px;
 
-  height: 40px;
+  height: 100%;
 
   display: flex;
+
+  flex-direction: column;
 
   align-items: center;
 
   justify-content: center;
 
-  color: #9ca3af;
-
-  font-size: 14px;
-
-  letter-spacing: -2px;
-
-  border-radius: 6px;
+  gap: 3px;
 
   cursor: grab;
 
@@ -525,6 +521,20 @@ body.is-dragging * {
   user-select: none;
 
   -webkit-user-select: none;
+}
+
+/* 손잡이 자체가 눌리는 영역이지, 별도의 박스로 보이면 안 되므로
+   배경/테두리는 넣지 않는다. 카드 전체(둥근 흰 상자)가 유일한 박스다. */
+.drag-handle i {
+  display: block;
+
+  width: 13px;
+
+  height: 2px;
+
+  border-radius: 1px;
+
+  background: #9ca3af;
 }
 
 .drag-handle:hover {
@@ -537,6 +547,10 @@ body.is-dragging * {
   cursor: grabbing;
 }
 
+.drag-handle:hover i {
+  background: #6b7280;
+}
+
 .task-name {
   overflow: hidden;
 
@@ -546,9 +560,33 @@ body.is-dragging * {
 
   font-size: 14px;
 
+  font-weight: 700;
+
+  color: #111827;
+
   min-width: 0;
 
   flex: 1;
+
+  cursor: text;
+}
+
+.task-name-edit {
+  width: 100%;
+
+  padding: 2px 4px;
+
+  border: 1px solid #2563eb;
+
+  border-radius: 5px;
+
+  font: inherit;
+
+  font-weight: 700;
+
+  color: #111827;
+
+  background: white;
 }
 
 
@@ -727,7 +765,7 @@ body.is-dragging * {
 ========================= */
 
 .timeline-task-row {
-  height: 72px;
+  height: 48px;
 
   position: relative;
 
@@ -1811,8 +1849,3 @@ body.is-dragging * {
 
   line-height: 1.5;
 }
-
-
-
-
-
