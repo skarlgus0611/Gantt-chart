@@ -4358,6 +4358,24 @@ function initChartNameUI() {
           await apiPost("updateChart", { data: { id: CHART_ID, name: value } });
           state.chartName = value;
           showToast("차트 이름을 저장했습니다.");
+
+          /* (수정) 이 화면이 모음 페이지 안의 iframe으로 떠 있는 경우,
+             부모(모음) 페이지의 박스 머리글("기본 차트" 줄)은 자기만의
+             캐시(shellChartsCache)를 보고 있어서 여기서 이름을 바꿔도
+             저절로 안 바뀐다. 같은 출처(동일 index.html)라 부모 쪽
+             함수를 직접 불러 목록을 다시 불러오게 한다. */
+          try {
+            if (
+              window.parent &&
+              window.parent !== window &&
+              typeof window.parent.shellLoadCharts === "function"
+            ) {
+              window.parent.shellLoadCharts();
+            }
+          } catch (bridgeError) {
+            // 교차 출처 등으로 못 건드리면 조용히 무시한다 (새로고침하면 어차피 맞는다).
+          }
+
         } catch (error) {
           label.textContent = original;
           showToast(error.message || "이름을 저장하지 못했습니다.", true, 0);
