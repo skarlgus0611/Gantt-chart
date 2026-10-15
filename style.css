@@ -2162,6 +2162,19 @@ body.is-dragging * {
   background: #f3f4f6;
 }
 
+/* 1-수정) 차트 이름을 그 자리에서 바로 고칠 때 쓰는 입력칸 (.task-name-edit와 같은 패턴) */
+.chart-name-edit {
+  width: 9em;
+  max-width: 60vw;
+  padding: 2px 4px;
+  border: 1px solid #2563eb;
+  border-radius: 5px;
+  font: inherit;
+  font-weight: 700;
+  color: #111827;
+  background: white;
+}
+
 /* 2) 모음 페이지 상단 브랜드 영역(기존 .brand를 그대로 재사용하므로 추가 스타일 불필요) */
 
 /* 3) 차트 박스 접기/펼치기 토글 */
