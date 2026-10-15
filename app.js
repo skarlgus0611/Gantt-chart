@@ -37,25 +37,6 @@ let state = {
  * API
  * ========================================================= */
 
-async function apiGet(params = {}) {
-  const query = new URLSearchParams({
-    api: "1",
-    key: EDIT_KEY,
-    ...params
-  });
-
-  const response = await fetch(API_URL + "?" + query.toString());
-
-  const result = await response.json();
-
-  if (!result.ok) {
-    throw new Error(result.error || "API 오류");
-  }
-
-  return result.data;
-}
-
-
 async function apiPost(action, data = {}) {
   const response = await fetch(
     API_URL,
@@ -89,9 +70,9 @@ async function apiPost(action, data = {}) {
  * ========================================================= */
 
 async function loadChartList() {
-  const data = await apiGet({ listCharts: "1" });
+  const res = await apiPost("listCharts");
 
-  state.charts = Array.isArray(data.charts) ? data.charts : [];
+  state.charts = Array.isArray(res.result) ? res.result : [];
 
   return state.charts;
 }
@@ -1275,7 +1256,8 @@ async function loadChartData(chartId, options = {}) {
 
   try {
 
-    const data = await apiGet({ chart: chartId });
+    const res = await apiPost("load", { chartId });
+    const data = res.result || {};
 
     state.chart = data.chart || null;
     state.chartId = data.chart ? data.chart.id : chartId;
