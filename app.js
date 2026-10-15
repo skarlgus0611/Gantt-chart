@@ -17,7 +17,7 @@
  * ========================================================= */
 
 const API_URL =
-  "https://script.google.com/macros/s/AKfycbyexenF9ADWlQ3kBxOEPZ3g9pjb6v9BBUs0uQDc60AW2CMQCsPQipkGVNtMEQ5BGNhGEw/exec";
+  "https://script.google.com/macros/s/AKfycbx33KL-l94mz08Q8rWJHYrGUXyipmxrm02z3Y26OR20V9q5V2diZRFIzvyFpqio-0Jg8Q/exec";
 
 /* ===== 멀티 차트 (추가분) =====
    주소에 ?chart=아이디 가 있으면: 이 창은 "그 차트 하나"를 보여주는
