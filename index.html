@@ -32,6 +32,65 @@
 
 <body>
 
+  <!-- =========================================================
+       ▼▼▼ 멀티 차트 (추가분) ▼▼▼
+       주소에 ?chart=아이디 가 없으면 이 블록(shellView)을 보여주고,
+       아래 기존 화면(chartSingleView)은 숨긴다. JS가 안 돌아도
+       기존 화면이 기본값으로 보이도록 shellView만 숨김 처리해 둔다.
+  ========================================================= -->
+  <div id="shellView" style="display:none">
+
+    <header class="mc-topbar">
+      <h1 class="mc-title">간트차트 모음</h1>
+      <div class="mc-topbar-actions">
+        <button id="mcKeyBtn" class="mc-btn mc-btn-ghost" type="button">키</button>
+        <button id="mcReloadBtn" class="mc-btn mc-btn-ghost" type="button">새로고침</button>
+        <button id="mcManageBtn" class="mc-btn mc-btn-ghost" type="button">차트 관리</button>
+        <button id="mcAddBtn" class="mc-btn mc-btn-primary" type="button">＋ 새 차트</button>
+      </div>
+    </header>
+
+    <main id="mcChartList" class="mc-chart-list"></main>
+
+    <div id="mcEmpty" class="mc-empty hidden">
+      표시할 차트가 없습니다. "＋ 새 차트"를 눌러 추가하세요.
+    </div>
+
+    <div id="mcAddModal" class="mc-modal-backdrop hidden">
+      <div class="mc-modal">
+        <h2>새 차트 추가</h2>
+        <label class="mc-field">
+          <span>차트 이름</span>
+          <input id="mcAddName" type="text" placeholder="예: 시험 준비" maxlength="200">
+        </label>
+        <p class="mc-hint">
+          표시 기간(날짜 범위)과 확대/축소는 차트를 만든 뒤, 그 차트 박스 안에서 바로 설정할 수 있습니다.
+        </p>
+        <div class="mc-modal-actions">
+          <button class="mc-btn mc-btn-ghost" data-close="mcAddModal" type="button">취소</button>
+          <button id="mcAddSaveBtn" class="mc-btn mc-btn-primary" type="button">추가</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="mcManageModal" class="mc-modal-backdrop hidden">
+      <div class="mc-modal mc-modal-wide">
+        <h2>차트 관리</h2>
+        <div id="mcManageRows" class="mc-manage-rows"></div>
+        <div class="mc-modal-actions">
+          <button class="mc-btn mc-btn-ghost" data-close="mcManageModal" type="button">닫기</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="mcToast" class="mc-toast hidden"></div>
+
+  </div>
+  <!-- ▲▲▲ 멀티 차트 (추가분) 끝 ▲▲▲ -->
+
+
+  <div id="chartSingleView">
+
   <!-- =========================
        상단
   ========================= -->
@@ -125,6 +184,24 @@
       </button>
 
     </div>
+
+
+    <!-- =========================================================
+         ▼▼▼ 멀티 차트 (추가분): 이 차트만의 표시 기간 설정 ▼▼▼
+         연도와 무관하게(연도 걸쳐도 됨) 이 차트의 기본 표시 구간을 정함.
+         비워두면 기존처럼 "연도 단위"로 그대로 동작한다.
+    ========================================================= -->
+    <section class="custom-range-area" id="customRangeArea">
+      <div class="custom-range-row">
+        <span class="custom-range-label">표시 기간(이 차트만)</span>
+        <input type="date" id="chartRangeStart" aria-label="표시 시작일">
+        <span class="custom-range-sep">~</span>
+        <input type="date" id="chartRangeEnd" aria-label="표시 종료일">
+        <button type="button" id="chartRangeSaveBtn" class="custom-range-btn">저장</button>
+        <button type="button" id="chartRangeClearBtn" class="custom-range-btn custom-range-btn-ghost hidden">연도 보기로</button>
+      </div>
+    </section>
+    <!-- ▲▲▲ 멀티 차트 (추가분) 끝 ▲▲▲ -->
 
 
     <!-- =========================
@@ -487,6 +564,9 @@
     </div>
 
   </div>
+
+  </div>
+  <!-- /#chartSingleView -->
 
 
   <!-- =========================
