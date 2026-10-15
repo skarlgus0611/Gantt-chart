@@ -4086,10 +4086,15 @@ function shellAutoResize(iframe) {
     try {
       const doc = iframe.contentDocument;
       if (!doc || !doc.documentElement) return;
-      const h = Math.max(
-        doc.documentElement.scrollHeight,
-        doc.body ? doc.body.scrollHeight : 0
-      );
+
+      /* (수정) 기존에는 documentElement.scrollHeight와 body.scrollHeight 중
+         "더 큰 값"을 썼는데, 이 페이지의 html/body는 둘 다 min-height:100%
+         이라서 documentElement.scrollHeight는 실제 내용 높이가 아니라
+         "iframe이 지금 몇 px인지"를 거의 그대로 따라간다. 그러면 한 번
+         커진 높이가 절대 줄어들지 않는 피드백 루프가 생겨서(최댓값만 취하므로),
+         차트 높이를 줄여도 박스 아래에 빈 여백이 계속 남는 버그가 된다.
+         실제 내용 높이는 body.scrollHeight 쪽이 정확하므로 그것만 쓴다. */
+      const h = doc.body ? doc.body.scrollHeight : 0;
       if (h > 0) iframe.style.height = h + "px";
     } catch (error) {
       /* cross-origin 등으로 못 읽으면 기본 높이로 둔다. */
@@ -4285,55 +4290,91 @@ function applyChartNameLabel() {
   }
 }
 
-/** 상단 브랜드 영역의 차트 이름을 눌러서 수정 -> 시트(Charts 탭)에 저장. */
+/** 상단 브랜드 영역의 차트 이름을 눌러서 수정 -> 시트(Charts 탭)에 저장.
+ *  (수정) 브라우저 기본 prompt() 팝업 대신, 작업명을 두 번 눌러 고치는 것과
+ *  같은 방식으로 그 자리에서 바로 입력칸으로 바뀌어 수정한다. */
 function initChartNameUI() {
   const label = document.getElementById("chartNameLabel");
   if (!label) {
     return;
   }
 
-  let saving = false;
+  function startEdit() {
 
-  function edit() {
-    if (saving) {
+    if (label.querySelector(".chart-name-edit")) {
       return;
     }
 
-    const current = state.chartName || label.textContent || "";
-    const next = prompt("차트 이름을 입력하세요", current);
+    const original = state.chartName || label.textContent || "";
 
-    if (next === null) {
-      return; // 취소
+    label.textContent = "";
+
+    const input = document.createElement("input");
+
+    input.type = "text";
+    input.className = "chart-name-edit";
+    input.value = original;
+
+    label.appendChild(input);
+    input.focus();
+    input.select();
+
+    let done = false;
+
+    async function finish(save) {
+
+      if (done) {
+        return;
+      }
+
+      done = true;
+
+      const value = input.value.trim();
+
+      if (save && value && value !== original) {
+
+        label.textContent = value;
+
+        try {
+          await apiPost("updateChart", { data: { id: CHART_ID, name: value } });
+          state.chartName = value;
+          showToast("차트 이름을 저장했습니다.");
+        } catch (error) {
+          label.textContent = original;
+          showToast(error.message || "이름을 저장하지 못했습니다.", true, 0);
+        }
+
+      } else {
+
+        label.textContent = original;
+      }
     }
 
-    const trimmed = next.trim();
+    input.addEventListener("blur", () => finish(true));
 
-    if (!trimmed || trimmed === current) {
-      return;
-    }
+    input.addEventListener("keydown", event => {
 
-    saving = true;
+      event.stopPropagation();
 
-    apiPost("updateChart", { data: { id: CHART_ID, name: trimmed } })
-      .then(() => {
-        state.chartName = trimmed;
-        applyChartNameLabel();
-        showToast("차트 이름을 저장했습니다.");
-      })
-      .catch(error => {
-        showToast(error.message || "이름을 저장하지 못했습니다.", true, 0);
-      })
-      .finally(() => {
-        saving = false;
-      });
+      if (event.key === "Enter") {
+        event.preventDefault();
+        input.blur();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        done = true;
+        label.textContent = original;
+      }
+    });
+
+    input.addEventListener("click", event => event.stopPropagation());
   }
 
-  label.addEventListener("click", edit);
+  label.addEventListener("click", startEdit);
 
   label.addEventListener("keydown", event => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      edit();
+      startEdit();
     }
   });
 }
