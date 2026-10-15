@@ -343,6 +343,16 @@ function dateKey(date) {
 }
 
 
+/* (추가분) 커스텀 표시 기간 제목용 짧은 표기(YY.MM.DD). 줄바꿈 방지용. */
+function shortDateKey(date) {
+  return [
+    String(date.getFullYear()).slice(2),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join(".");
+}
+
+
 function dayOfYear(date) {
   const start = new Date(date.getFullYear(), 0, 1);
 
@@ -483,9 +493,10 @@ function render() {
     const yearNumber = yearTitle.querySelector(".year-num");
 
     /* (추가분) 이 차트에 커스텀 표시 기간이 있으면 연도 대신 그 기간을 보여주고,
-       연도 이동(이전/다음 연도, 연도 선택창)은 의미가 없으므로 숨긴다. */
+       연도 이동(이전/다음 연도, 연도 선택창)은 의미가 없으므로 숨긴다.
+       (수정) 줄바꿈을 막기 위해 YYYY-MM-DD가 아닌 YY.MM.DD로 짧게 표기한다. */
     (yearNumber || yearTitle).textContent = state.customStart
-      ? dateKey(getYearStart()) + " ~ " + dateKey(getYearEnd())
+      ? shortDateKey(getYearStart()) + " ~ " + shortDateKey(getYearEnd())
       : state.year;
   }
 
@@ -4010,15 +4021,40 @@ function shellRenderList() {
       const head = document.createElement("div");
       head.className = "mc-chart-box-head";
 
+      /* (추가분) 접기/펼치기 토글: 펼친 상태엔 ▼ 만, 접힌 상태엔 ▶ + "펼치기". */
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "mc-chart-toggle";
+      toggle.setAttribute("aria-expanded", "true");
+      toggle.title = "접기/펼치기";
+      toggle.innerHTML =
+        '<span class="mc-chart-toggle-arrow">▼</span>' +
+        '<span class="mc-chart-toggle-label"></span>';
+      head.appendChild(toggle);
+
+      const headInfo = document.createElement("div");
+      headInfo.className = "mc-chart-box-headinfo";
+
       const name = document.createElement("div");
       name.className = "mc-chart-box-name";
-      head.appendChild(name);
+      headInfo.appendChild(name);
 
       const range = document.createElement("div");
       range.className = "mc-chart-box-range";
-      head.appendChild(range);
+      headInfo.appendChild(range);
+
+      head.appendChild(headInfo);
 
       box.appendChild(head);
+
+      toggle.addEventListener("click", () => {
+        const collapsed = box.classList.toggle("mc-chart-box-collapsed");
+        toggle.setAttribute("aria-expanded", String(!collapsed));
+        toggle.querySelector(".mc-chart-toggle-arrow").textContent =
+          collapsed ? "▶" : "▼";
+        toggle.querySelector(".mc-chart-toggle-label").textContent =
+          collapsed ? "펼치기" : "";
+      });
 
       const wrap = document.createElement("div");
       wrap.className = "mc-chart-iframe-wrap";
@@ -4229,10 +4265,77 @@ async function loadChartRangeMeta() {
     if (startInput) startInput.value = mine && mine.rangeStart ? mine.rangeStart : "";
     if (endInput) endInput.value = mine && mine.rangeEnd ? mine.rangeEnd : "";
 
+    /* (추가분) 상단 브랜드 영역에 "Gantt Chart" 대신 이 차트의 실제 이름을 표시 */
+    state.chartName =
+      (mine && mine.name) ||
+      (CHART_ID === "default" ? "기본 차트" : "");
+    applyChartNameLabel();
+
   } catch (error) {
     console.error(error);
     // 못 읽어와도 기존(연도 기준) 동작으로 계속 진행한다.
   }
+}
+
+/** 브랜드 영역의 차트 이름 표시를 state.chartName 으로 맞춘다. */
+function applyChartNameLabel() {
+  const label = document.getElementById("chartNameLabel");
+  if (label) {
+    label.textContent = state.chartName || "Gantt Chart";
+  }
+}
+
+/** 상단 브랜드 영역의 차트 이름을 눌러서 수정 -> 시트(Charts 탭)에 저장. */
+function initChartNameUI() {
+  const label = document.getElementById("chartNameLabel");
+  if (!label) {
+    return;
+  }
+
+  let saving = false;
+
+  function edit() {
+    if (saving) {
+      return;
+    }
+
+    const current = state.chartName || label.textContent || "";
+    const next = prompt("차트 이름을 입력하세요", current);
+
+    if (next === null) {
+      return; // 취소
+    }
+
+    const trimmed = next.trim();
+
+    if (!trimmed || trimmed === current) {
+      return;
+    }
+
+    saving = true;
+
+    apiPost("updateChart", { data: { id: CHART_ID, name: trimmed } })
+      .then(() => {
+        state.chartName = trimmed;
+        applyChartNameLabel();
+        showToast("차트 이름을 저장했습니다.");
+      })
+      .catch(error => {
+        showToast(error.message || "이름을 저장하지 못했습니다.", true, 0);
+      })
+      .finally(() => {
+        saving = false;
+      });
+  }
+
+  label.addEventListener("click", edit);
+
+  label.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      edit();
+    }
+  });
 }
 
 function initChartRangeUI() {
@@ -4320,6 +4423,7 @@ if (IS_SHELL_MODE) {
   setupDrag();
 
   initChartRangeUI();
+  initChartNameUI();
 
   /* (추가분) 이 차트의 저장된 커스텀 표시 기간을 먼저 읽어온 뒤에
      범위를 초기화하고 데이터를 불러온다. 커스텀 기간이 없으면
