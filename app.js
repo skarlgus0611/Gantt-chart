@@ -17,7 +17,29 @@
  * ========================================================= */
 
 const API_URL =
-  "https://script.google.com/macros/s/AKfycbx33KL-l94mz08Q8rWJHYrGUXyipmxrm02z3Y26OR20V9q5V2diZRFIzvyFpqio-0Jg8Q/exec";
+  "https://script.google.com/macros/s/AKfycbyexenF9ADWlQ3kBxOEPZ3g9pjb6v9BBUs0uQDc60AW2CMQCsPQipkGVNtMEQ5BGNhGEw/exec";
+
+/* ===== 멀티 차트 (추가분) =====
+   주소에 ?chart=아이디 가 있으면: 이 창은 "그 차트 하나"를 보여주는
+   기존 화면 그대로 동작한다(없으면 'default' = 기존 Tasks/Categories).
+   주소에 ?chart= 가 전혀 없으면: 이 창은 "여러 차트를 쌓아 보여주는 틀(shell)"
+   역할을 한다 (아래 SHELL 섹션 참고). */
+const CHART_PARAM = new URLSearchParams(window.location.search).get("chart");
+const IS_SHELL_MODE = CHART_PARAM === null;
+const CHART_ID = CHART_PARAM || "default";
+
+/* 기존 액션 이름 -> 차트별 액션 이름 매핑. apiGet/apiPost 안에서만 쓰고
+   그 외 호출부(아래 곳곳의 apiPost("update", ...) 등)는 전혀 손대지 않는다. */
+const CHART_ACTION_MAP = {
+  create: "createForChart",
+  update: "updateForChart",
+  delete: "deleteForChart",
+  reorder: "reorderForChart",
+  createCategory: "createCategoryForChart",
+  updateCategory: "updateCategoryForChart",
+  deleteCategory: "deleteCategoryForChart",
+  reorderCategories: "reorderCategoriesForChart"
+};
 
 const DEFAULT_COLOR = "#3b82f6";
 
@@ -41,6 +63,11 @@ let state = {
 
   // 화면은 항상 한 개 연도만 표시한다.
   year: new Date().getFullYear(),
+
+  /* ===== 멀티 차트 (추가분): 이 차트에 연도와 무관한 표시 기간이
+     설정돼 있으면 Date로 들어간다. null이면 위 year 기준(기존 동작). */
+  customStart: null,
+  customEnd: null,
 
   // 선택 연도 내부에서만 확대/축소
   rangeStart: 0,
@@ -163,14 +190,15 @@ async function request(action, data = {}, retried = false) {
 
 
 async function apiGet() {
-  const result = await request("load");
+  const result = await request("loadChart", { chartId: CHART_ID });
 
   return result.data;
 }
 
 
 async function apiPost(action, data = {}) {
-  return request(action, data);
+  const mapped = CHART_ACTION_MAP[action] || action;
+  return request(mapped, { ...data, chartId: CHART_ID });
 }
 
 
@@ -332,15 +360,54 @@ function daysInYear(year) {
 }
 
 
-/* 선택된 연도의 1월 1일 */
+/* 선택된 연도의 1월 1일. (추가분) 이 차트에 연도 무관 표시 기간이
+   설정돼 있으면 그 시작일. 없으면 기존 그대로 연도 1/1. */
 function getYearStart() {
-  return new Date(state.year, 0, 1);
+  return state.customStart ? new Date(state.customStart) : new Date(state.year, 0, 1);
 }
 
 
-/* 선택된 연도의 12월 31일 */
+/* 선택된 연도의 12월 31일. (추가분) 커스텀 기간이 있으면 그 종료일. */
 function getYearEnd() {
-  return new Date(state.year, 11, 31);
+  return state.customEnd ? new Date(state.customEnd) : new Date(state.year, 11, 31);
+}
+
+
+/* (추가분) 지금 표시 중인 "창"(연도 전체 또는 커스텀 기간)의 총 일수.
+   커스텀 기간이 없으면 daysInYear(state.year)와 완전히 같은 값이 나온다. */
+function windowTotalDays() {
+  return Math.round(
+    (getYearEnd().getTime() - getYearStart().getTime()) / 86400000
+  ) + 1;
+}
+
+
+/* (추가분) 지금 창이 걸쳐 있는 달들을, 각 달이 창 안에서 차지하는
+   일수와 함께 돌려준다. 커스텀 기간이 없으면 항상 state.year의
+   1~12월 12개가, 각 달의 실제 날짜수 그대로 나온다(기존과 동일). */
+function windowMonths() {
+  const start = getYearStart();
+  const end = getYearEnd();
+  const out = [];
+  let y = start.getFullYear();
+  let m = start.getMonth();
+  const endY = end.getFullYear();
+  const endM = end.getMonth();
+
+  while (y < endY || (y === endY && m <= endM)) {
+    const monthStart = new Date(y, m, 1);
+    const monthEnd = new Date(y, m + 1, 0);
+    const clippedStart = monthStart < start ? start : monthStart;
+    const clippedEnd = monthEnd > end ? end : monthEnd;
+    const days = Math.round((clippedEnd.getTime() - clippedStart.getTime()) / 86400000) + 1;
+
+    out.push({ year: y, month: m, days });
+
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+
+  return out;
 }
 
 
@@ -354,9 +421,9 @@ function dayOffsetFromYearStart(date) {
 }
 
 
-/* 선택 연도의 n번째 날(0부터) -> Date */
+/* 선택 연도(또는 커스텀 기간)의 n번째 날(0부터) -> Date */
 function dateFromYearDay(day) {
-  const date = new Date(state.year, 0, 1);
+  const date = getYearStart();
 
   date.setDate(date.getDate() + day);
 
@@ -415,8 +482,20 @@ function render() {
   if (yearTitle) {
     const yearNumber = yearTitle.querySelector(".year-num");
 
-    (yearNumber || yearTitle).textContent = state.year;
+    /* (추가분) 이 차트에 커스텀 표시 기간이 있으면 연도 대신 그 기간을 보여주고,
+       연도 이동(이전/다음 연도, 연도 선택창)은 의미가 없으므로 숨긴다. */
+    (yearNumber || yearTitle).textContent = state.customStart
+      ? dateKey(getYearStart()) + " ~ " + dateKey(getYearEnd())
+      : state.year;
   }
+
+  const prevYearBtn = document.getElementById("prevYear");
+  const nextYearBtn = document.getElementById("nextYear");
+  if (prevYearBtn) prevYearBtn.classList.toggle("hidden", !!state.customStart);
+  if (nextYearBtn) nextYearBtn.classList.toggle("hidden", !!state.customStart);
+
+  const clearBtn = document.getElementById("chartRangeClearBtn");
+  if (clearBtn) clearBtn.classList.toggle("hidden", !state.customStart);
 
   syncRowRange();
   applyGanttHeight();
@@ -490,8 +569,10 @@ function scrollTimelineToToday() {
 
 function groupTasks() {
 
-  const yearStart = `${state.year}-01-01`;
-  const yearEnd = `${state.year}-12-31`;
+  /* (추가분) 커스텀 기간이 없으면 getYearStart/getYearEnd가 기존과
+     똑같이 "state.year의 1/1~12/31"을 돌려주므로 결과가 완전히 같다. */
+  const yearStart = dateKey(getYearStart());
+  const yearEnd = dateKey(getYearEnd());
 
   const visibleTasks =
     state.tasks.filter(task => {
@@ -1110,7 +1191,7 @@ function renderTimeline() {
 
 
   /* 화면은 반드시 선택된 한 해만 사용 */
-  const totalDays = daysInYear(state.year);
+  const totalDays = windowTotalDays();
 
 
   /* range 역시 선택 연도 안에서만 움직인다. */
@@ -1219,6 +1300,7 @@ function renderTimeline() {
 function monthSegments() {
 
   const yearStart = getYearStart();
+  const yearEnd = getYearEnd();
 
   /* 자정 기준 날짜끼리의 차이이므로 반올림해서 하루 단위로 센다. */
   const dayIndex = date =>
@@ -1226,18 +1308,28 @@ function monthSegments() {
 
   const segments = [];
 
-  for (let month = 0; month < 12; month++) {
+  /* (추가분) 커스텀 기간이 없으면 이 루프는 예전처럼 state.year의
+     0~11월 12번을 그대로 돈다. 있으면 그 기간이 걸친 달만 돈다
+     (연도를 넘어가도 됨). */
+  let y = yearStart.getFullYear();
+  let m = yearStart.getMonth();
+  const endY = yearEnd.getFullYear();
+  const endM = yearEnd.getMonth();
 
-    const first = dayIndex(new Date(state.year, month, 1));
+  while (y < endY || (y === endY && m <= endM)) {
 
-    const last = dayIndex(new Date(state.year, month + 1, 0));
+    const first = dayIndex(new Date(y, m, 1));
+    const last = dayIndex(new Date(y, m + 1, 0));
 
     const from = Math.max(first, state.rangeStart);
     const to = Math.min(last, state.rangeEnd);
 
     if (from <= to) {
-      segments.push({ month, from, to });
+      segments.push({ month: m, year: y, from, to });
     }
+
+    m++;
+    if (m > 11) { m = 0; y++; }
   }
 
   return segments;
@@ -1293,7 +1385,7 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
 
   const monthColumns = [];
 
-  monthSegments().forEach(({ month, from, to }) => {
+  monthSegments().forEach(({ month, year, from, to }) => {
 
     const width = (to - from + 1) * dayWidth;
 
@@ -1303,7 +1395,7 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
       "month-cell" + (month % 2 === 1 ? " alt" : "");
 
     cell.title =
-      `${state.year}-${String(month + 1).padStart(2, "0")}`;
+      `${year === undefined ? state.year : year}-${String(month + 1).padStart(2, "0")}`;
 
     /* 칸이 좁으면 '9월' 대신 '9', 더 좁으면 글자를 생략 */
     cell.textContent =
@@ -2697,7 +2789,7 @@ function updateRangeLabel() {
 
 function resetRange() {
 
-  const days = daysInYear(state.year);
+  const days = windowTotalDays();
 
   state.rangeStart = 0;
   state.rangeEnd = days - 1;
@@ -2905,7 +2997,7 @@ const CAPTURE_PX_PER_DAY = 8;
 
 function buildCaptureChart() {
 
-  const totalDays = daysInYear(state.year);
+  const totalDays = windowTotalDays();
   const width = totalDays * CAPTURE_PX_PER_DAY;
 
   const rows = buildRows(); // 세로 확대와 무관하게 전체 줄
@@ -2928,7 +3020,10 @@ function buildCaptureChart() {
   const header = document.createElement("div");
 
   header.className = "task-header";
-  header.textContent = state.year + "년 작업";
+  header.textContent =
+    (state.customStart
+      ? dateKey(getYearStart()) + " ~ " + dateKey(getYearEnd())
+      : state.year + "년") + " 작업";
 
   col.appendChild(header);
 
@@ -3013,10 +3108,9 @@ function buildCaptureChart() {
   const monthCols = [];
   let acc = 0;
 
-  for (let month = 0; month < 12; month++) {
-
-    const days =
-      new Date(state.year, month + 1, 0).getDate();
+  /* (추가분) 커스텀 기간이 없으면 windowMonths()가 예전처럼
+     state.year의 1~12월 12개를, 각 달의 실제 날짜수로 돌려준다. */
+  windowMonths().forEach(({ month, days }) => {
 
     const cell = document.createElement("div");
 
@@ -3029,7 +3123,7 @@ function buildCaptureChart() {
     monthCols.push((days * CAPTURE_PX_PER_DAY) + "px");
 
     acc += days;
-  }
+  });
 
   monthRow.style.gridTemplateColumns = monthCols.join(" ");
   headerRow.appendChild(monthRow);
@@ -3072,9 +3166,8 @@ function buildCaptureChart() {
 
   let dayAcc = 0;
 
-  for (let month = 0; month < 12; month++) {
+  windowMonths().forEach(({ month, days }) => {
 
-    const days = new Date(state.year, month + 1, 0).getDate();
     const band = document.createElement("div");
 
     band.className =
@@ -3085,7 +3178,7 @@ function buildCaptureChart() {
 
     bands.appendChild(band);
     dayAcc += days;
-  }
+  });
 
   inner.appendChild(bands);
 
@@ -3533,7 +3626,7 @@ if (todayBtn) {
 
     const day = dayOfYear(today);
 
-    const totalDays = daysInYear(state.year);
+    const totalDays = windowTotalDays();
 
     /* 오늘 전후 30일 (현재 연도를 벗어나지 않는다) */
     const start = Math.max(0, day - 30);
@@ -3664,7 +3757,7 @@ let vSlider = null;
 hSlider = buildRangeSlider(document.getElementById("hRangeSlider"), {
   orientation: "h",
   inset: 10,
-  getTotal: () => daysInYear(state.year),
+  getTotal: () => windowTotalDays(),
   getRange: () => [state.rangeStart, state.rangeEnd],
   setRange: (start, end) => {
     state.rangeStart = start;
@@ -3865,15 +3958,379 @@ function checkVersions() {
 
 
 /* =========================================================
+ * ▼▼▼ 멀티 차트 SHELL (추가분) ▼▼▼
+ * 이 아래부터는 "주소에 ?chart= 가 없을 때"만 쓰이는 코드다.
+ * 기존 함수(request, apiPost, showToast, askKey, clearKey 등)를
+ * 그대로 재사용하고, 새 함수만 추가한다. 기존 간트차트 로직은
+ * 전혀 호출하지 않는다 (그 쪽은 그대로 숨겨 둘 뿐).
+ * ========================================================= */
+
+let shellChartsCache = [];
+
+function shellRangeLabel(chart) {
+  if (chart.rangeStart && chart.rangeEnd) {
+    return chart.rangeStart + " ~ " + chart.rangeEnd;
+  }
+  return "표시 기간: 박스 안에서 설정";
+}
+
+async function shellLoadCharts() {
+  try {
+    const result = await apiPost("listCharts");
+    shellChartsCache = Array.isArray(result.result) ? result.result : [];
+    shellRenderList();
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "차트 목록을 불러오지 못했습니다.", true, 0);
+  }
+}
+
+function shellRenderList() {
+  const root = document.getElementById("mcChartList");
+  const empty = document.getElementById("mcEmpty");
+
+  const existing = {};
+  root.querySelectorAll(".mc-chart-box").forEach((box) => {
+    existing[box.dataset.chartId] = box;
+  });
+
+  const visible = shellChartsCache.filter((c) => !c.hidden);
+  empty.classList.toggle("hidden", visible.length > 0);
+
+  const seen = {};
+  visible.forEach((chart) => {
+    seen[chart.id] = true;
+    let box = existing[chart.id];
+
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "mc-chart-box";
+      box.dataset.chartId = chart.id;
+
+      const head = document.createElement("div");
+      head.className = "mc-chart-box-head";
+
+      const name = document.createElement("div");
+      name.className = "mc-chart-box-name";
+      head.appendChild(name);
+
+      const range = document.createElement("div");
+      range.className = "mc-chart-box-range";
+      head.appendChild(range);
+
+      box.appendChild(head);
+
+      const wrap = document.createElement("div");
+      wrap.className = "mc-chart-iframe-wrap";
+
+      const iframe = document.createElement("iframe");
+      // 같은 index.html 을 ?chart=아이디 로 다시 열면, 그 창은 "그 차트 하나짜리"
+      // 기존 화면 그대로 동작한다 (위 IS_SHELL_MODE 분기 참고).
+      iframe.src = "index.html?chart=" + encodeURIComponent(chart.id);
+      iframe.setAttribute("scrolling", "no");
+      iframe.addEventListener("load", () => shellAutoResize(iframe));
+
+      wrap.appendChild(iframe);
+      box.appendChild(wrap);
+
+      root.appendChild(box);
+    }
+
+    box.querySelector(".mc-chart-box-name").textContent = chart.name;
+    box.querySelector(".mc-chart-box-range").textContent = shellRangeLabel(chart);
+  });
+
+  Object.keys(existing).forEach((id) => {
+    if (!seen[id]) existing[id].remove();
+  });
+}
+
+function shellAutoResize(iframe) {
+  const sync = () => {
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc || !doc.documentElement) return;
+      const h = Math.max(
+        doc.documentElement.scrollHeight,
+        doc.body ? doc.body.scrollHeight : 0
+      );
+      if (h > 0) iframe.style.height = h + "px";
+    } catch (error) {
+      /* cross-origin 등으로 못 읽으면 기본 높이로 둔다. */
+    }
+  };
+
+  sync();
+
+  try {
+    const doc = iframe.contentDocument;
+    if (doc && doc.body && "ResizeObserver" in iframe.contentWindow) {
+      const observer = new iframe.contentWindow.ResizeObserver(sync);
+      observer.observe(doc.body);
+    } else {
+      [300, 800, 1500].forEach((t) => setTimeout(sync, t));
+    }
+  } catch (error) {
+    [300, 800, 1500].forEach((t) => setTimeout(sync, t));
+  }
+}
+
+function shellOpenModal(id) { document.getElementById(id).classList.remove("hidden"); }
+function shellCloseModal(id) { document.getElementById(id).classList.add("hidden"); }
+
+function shellRenderManageRows() {
+  const root = document.getElementById("mcManageRows");
+  root.innerHTML = "";
+
+  shellChartsCache.forEach((chart) => {
+    const row = document.createElement("div");
+    row.className = "mc-manage-row";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = chart.name;
+    nameInput.maxLength = 200;
+    row.appendChild(nameInput);
+
+    if (chart.hidden) {
+      const badge = document.createElement("span");
+      badge.className = "mc-manage-badge";
+      badge.textContent = "숨김";
+      row.appendChild(badge);
+    }
+
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "mc-btn mc-btn-ghost";
+    saveBtn.type = "button";
+    saveBtn.textContent = "이름 저장";
+    saveBtn.addEventListener("click", () => withBusy(saveBtn, "저장 중…", async () => {
+      const newName = nameInput.value.trim();
+      if (!newName) { showToast("이름을 입력하세요.", true); return; }
+      try {
+        await apiPost("updateChart", { data: { id: chart.id, name: newName } });
+        showToast("이름을 바꿨습니다.");
+        await shellLoadCharts();
+        shellRenderManageRows();
+      } catch (error) {
+        showToast(error.message || "변경하지 못했습니다.", true, 0);
+      }
+    }));
+    row.appendChild(saveBtn);
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "mc-btn mc-btn-ghost";
+    toggleBtn.type = "button";
+    toggleBtn.textContent = chart.hidden ? "보이기" : "숨기기";
+    toggleBtn.addEventListener("click", () => withBusy(toggleBtn, "변경 중…", async () => {
+      try {
+        await apiPost("updateChart", { data: { id: chart.id, hidden: !chart.hidden } });
+        showToast(chart.hidden ? "다시 보이게 했습니다." : "숨겼습니다.");
+        await shellLoadCharts();
+        shellRenderManageRows();
+      } catch (error) {
+        showToast(error.message || "변경하지 못했습니다.", true, 0);
+      }
+    }));
+    row.appendChild(toggleBtn);
+
+    if (chart.id !== "default") {
+      const delBtn = document.createElement("button");
+      delBtn.className = "mc-btn mc-btn-danger";
+      delBtn.type = "button";
+      delBtn.textContent = "삭제";
+      delBtn.addEventListener("click", () => withBusy(delBtn, "삭제 중…", async () => {
+        if (!confirm('"' + chart.name + '" 차트를 완전히 삭제할까요? 이 차트의 모든 데이터가 함께 삭제되며 되돌릴 수 없습니다.')) {
+          return;
+        }
+        try {
+          await apiPost("deleteChart", { id: chart.id });
+          showToast("삭제했습니다.");
+          await shellLoadCharts();
+          shellRenderManageRows();
+        } catch (error) {
+          showToast(error.message || "삭제하지 못했습니다.", true, 0);
+        }
+      }));
+      row.appendChild(delBtn);
+    }
+
+    root.appendChild(row);
+  });
+}
+
+function initShell() {
+  document.querySelectorAll("#shellView [data-close]").forEach((btn) => {
+    btn.addEventListener("click", () => shellCloseModal(btn.dataset.close));
+  });
+
+  document.getElementById("mcAddBtn").addEventListener("click", () => {
+    document.getElementById("mcAddName").value = "";
+    shellOpenModal("mcAddModal");
+  });
+
+  document.getElementById("mcAddSaveBtn").addEventListener("click", () => withBusy(
+    document.getElementById("mcAddSaveBtn"), "추가 중…", async () => {
+      const name = document.getElementById("mcAddName").value.trim();
+      if (!name) { showToast("차트 이름을 입력하세요.", true); return; }
+      try {
+        await apiPost("createChart", { data: { name } });
+        shellCloseModal("mcAddModal");
+        showToast("차트를 추가했습니다.");
+        await shellLoadCharts();
+      } catch (error) {
+        showToast(error.message || "추가하지 못했습니다.", true, 0);
+      }
+    }
+  ));
+
+  document.getElementById("mcManageBtn").addEventListener("click", async () => {
+    await shellLoadCharts();
+    shellRenderManageRows();
+    shellOpenModal("mcManageModal");
+  });
+
+  document.getElementById("mcKeyBtn").addEventListener("click", () => {
+    clearKey();
+    if (askKey()) {
+      showToast("키를 저장했습니다.");
+      shellLoadCharts();
+    }
+  });
+
+  document.getElementById("mcReloadBtn").addEventListener("click", () => {
+    shellLoadCharts();
+  });
+
+  shellLoadCharts();
+}
+/* ▲▲▲ 멀티 차트 SHELL (추가분) 끝 ▲▲▲ */
+
+
+/* =========================================================
+ * ▼▼▼ 멀티 차트: 이 차트의 커스텀 표시 기간 (추가분) ▼▼▼
+ * ========================================================= */
+
+/** 이 차트(CHART_ID)의 저장된 표시 기간을 서버에서 읽어 state에 반영하고,
+ *  입력칸도 채워 둔다. 설정된 게 없으면 아무것도 안 바뀐다(기존 동작 그대로). */
+async function loadChartRangeMeta() {
+  try {
+    const result = await apiPost("listCharts");
+    const list = Array.isArray(result.result) ? result.result : [];
+    const mine = list.find(c => c.id === CHART_ID);
+
+    if (mine && mine.rangeStart && mine.rangeEnd) {
+      state.customStart = dateObj(mine.rangeStart);
+      state.customEnd = dateObj(mine.rangeEnd);
+      state.year = state.customStart.getFullYear();
+    }
+
+    const startInput = document.getElementById("chartRangeStart");
+    const endInput = document.getElementById("chartRangeEnd");
+    if (startInput) startInput.value = mine && mine.rangeStart ? mine.rangeStart : "";
+    if (endInput) endInput.value = mine && mine.rangeEnd ? mine.rangeEnd : "";
+
+  } catch (error) {
+    console.error(error);
+    // 못 읽어와도 기존(연도 기준) 동작으로 계속 진행한다.
+  }
+}
+
+function initChartRangeUI() {
+  const saveBtn = document.getElementById("chartRangeSaveBtn");
+  const clearBtn = document.getElementById("chartRangeClearBtn");
+  const startInput = document.getElementById("chartRangeStart");
+  const endInput = document.getElementById("chartRangeEnd");
+
+  if (saveBtn) {
+    saveBtn.addEventListener("click", () => withBusy(saveBtn, "저장 중…", async () => {
+      const startVal = startInput ? startInput.value : "";
+      const endVal = endInput ? endInput.value : "";
+
+      if (!startVal || !endVal) {
+        showToast("시작일과 종료일을 모두 입력하세요.", true);
+        return;
+      }
+      if (endVal < startVal) {
+        showToast("종료일은 시작일보다 빠를 수 없습니다.", true);
+        return;
+      }
+
+      try {
+        await apiPost("updateChart", {
+          data: { id: CHART_ID, rangeStart: startVal, rangeEnd: endVal }
+        });
+        state.customStart = dateObj(startVal);
+        state.customEnd = dateObj(endVal);
+        state.year = state.customStart.getFullYear();
+        resetRange();
+        render();
+        showToast("표시 기간을 저장했습니다.");
+      } catch (error) {
+        showToast(error.message || "저장하지 못했습니다.", true, 0);
+      }
+    }));
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => withBusy(clearBtn, "전환 중…", async () => {
+      try {
+        await apiPost("updateChart", {
+          data: { id: CHART_ID, rangeStart: "", rangeEnd: "" }
+        });
+        state.customStart = null;
+        state.customEnd = null;
+        state.year = new Date().getFullYear();
+        if (startInput) startInput.value = "";
+        if (endInput) endInput.value = "";
+        resetRange();
+        render();
+        showToast("연도 보기로 전환했습니다.");
+      } catch (error) {
+        showToast(error.message || "전환하지 못했습니다.", true, 0);
+      }
+    }));
+  }
+}
+/* ▲▲▲ 멀티 차트: 커스텀 표시 기간 (추가분) 끝 ▲▲▲ */
+
+
+/* =========================================================
  * INITIALIZE
  * ========================================================= */
 
-checkVersions();
+if (IS_SHELL_MODE) {
 
-setupDrag();
+  /* ===== 멀티 차트 (추가분): 주소에 ?chart= 가 없으면, 기존 단일 차트
+     화면(#chartSingleView)은 숨기고 관리 틀(#shellView)만 켠다.
+     기존 초기화(checkVersions/setupDrag/resetRange/loadData)는
+     실행하지 않는다 — 어차피 화면에 안 보이고, 그 대신 아래
+     initShell()이 이 틀 전용 로직을 돈다. ===== */
+  const singleView = document.getElementById("chartSingleView");
+  if (singleView) singleView.style.display = "none";
 
-/* 현재 연도의 전체 범위로 초기화 */
-resetRange();
+  const shellView = document.getElementById("shellView");
+  if (shellView) shellView.style.display = "";
 
-/* 데이터 불러오기 */
-loadData();
+  initShell();
+
+} else {
+
+  checkVersions();
+
+  setupDrag();
+
+  initChartRangeUI();
+
+  /* (추가분) 이 차트의 저장된 커스텀 표시 기간을 먼저 읽어온 뒤에
+     범위를 초기화하고 데이터를 불러온다. 커스텀 기간이 없으면
+     state는 전혀 안 바뀌므로 기존과 완전히 동일하게 동작한다. */
+  (async () => {
+    await loadChartRangeMeta();
+
+    /* 현재 연도(또는 커스텀 기간)의 전체 범위로 초기화 */
+    resetRange();
+
+    /* 데이터 불러오기 */
+    loadData();
+  })();
+}
