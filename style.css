@@ -1843,3 +1843,292 @@ body.is-dragging * {
 
   line-height: 1.5;
 }
+
+/* =========================================================
+ * ▼▼▼ 멀티 차트 (추가분) — 기존 스타일은 위에 한 줄도 안 건드림 ▼▼▼
+ * shellView(상단 관리 틀) 전용 클래스만 새로 추가.
+ * ========================================================= */
+
+#shellView * { box-sizing: border-box; }
+
+#shellView {
+  font-family: "Manrope", "Sora", -apple-system, "Pretendard", sans-serif;
+  background: #f4f6fb;
+  min-height: 100vh;
+}
+
+.mc-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e6ef;
+  flex-wrap: wrap;
+}
+
+.mc-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin: 0;
+  color: #1f2430;
+  font-family: "Sora", sans-serif;
+}
+
+.mc-topbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mc-btn {
+  border: 1px solid #e2e6ef;
+  background: #fff;
+  color: #1f2430;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mc-btn:hover { background: #f0f2f7; }
+
+.mc-btn-primary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+.mc-btn-primary:hover { background: #2f6fde; }
+
+.mc-btn-ghost { background: #fff; }
+
+.mc-btn-danger {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fff;
+}
+
+.mc-btn-danger:hover { background: #fef2f2; }
+
+.mc-chart-list {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.mc-chart-box {
+  background: #ffffff;
+  border: 1px solid #e2e6ef;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(20, 24, 33, 0.06);
+}
+
+.mc-chart-box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #f8f9fc;
+  border-bottom: 1px solid #e2e6ef;
+  gap: 10px;
+}
+
+.mc-chart-box-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: #1f2430;
+}
+
+.mc-chart-box-range {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.mc-chart-iframe-wrap { width: 100%; }
+
+.mc-chart-iframe-wrap iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  min-height: 480px;
+}
+
+.mc-empty {
+  text-align: center;
+  color: #6b7280;
+  padding: 60px 20px;
+  font-size: 14px;
+}
+
+#shellView .hidden { display: none !important; }
+
+.mc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 18, 25, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+
+.mc-modal {
+  background: #fff;
+  border-radius: 16px;
+  padding: 22px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 86vh;
+  overflow: auto;
+}
+
+.mc-modal-wide { max-width: 640px; }
+
+.mc-modal h2 {
+  margin: 0 0 14px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #1f2430;
+}
+
+.mc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.mc-field input {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f2430;
+  border: 1px solid #e2e6ef;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.mc-hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 4px 0 14px;
+  line-height: 1.5;
+}
+
+.mc-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mc-manage-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mc-manage-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e2e6ef;
+  border-radius: 10px;
+  padding: 8px 10px;
+  flex-wrap: wrap;
+}
+
+.mc-manage-row input[type="text"] {
+  flex: 1;
+  min-width: 140px;
+  border: 1px solid #e2e6ef;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.mc-manage-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.mc-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  background: #1f2430;
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  z-index: 200;
+}
+
+.mc-toast.error { background: #ef4444; }
+
+@media (max-width: 640px) {
+  .mc-topbar { padding: 10px 14px; }
+  .mc-chart-list { padding: 12px; gap: 16px; }
+}
+/* ---- 차트별 표시 기간 설정 (추가분) ---- */
+.custom-range-area {
+  padding: 6px 4px 2px;
+}
+
+.custom-range-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.custom-range-label {
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.custom-range-row input[type="date"] {
+  border: 1px solid #e2e6ef;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+.custom-range-btn {
+  border: 1px solid #e2e6ef;
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.custom-range-btn-ghost {
+  background: #fff;
+  color: #1f2430;
+}
+
+.custom-range-btn.hidden { display: none; }
+
+/* ▲▲▲ 멀티 차트 (추가분) 끝 ▲▲▲ */
