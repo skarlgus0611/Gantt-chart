@@ -726,8 +726,11 @@ function buildRows() {
 }
 
 
-/* 기본 줄 높이. 작업 줄을 예전(72px)보다 얇게 만든다. */
-const CATEGORY_ROW_HEIGHT = 38;
+/* 기본 줄 높이. 작업 줄을 예전(72px)보다 얇게 만든다.
+   (수정) 카테고리 줄은 "구분줄" 역할이라 작업 줄(48px)과 더 분명히
+   구분되도록 30px로 줄였다. 드래그 손잡이·색점·이름·삭제 버튼이
+   눌리기엔 넉넉한 하한선. */
+const CATEGORY_ROW_HEIGHT = 30;
 const TASK_ROW_HEIGHT = 48;
 
 function rowHeightOf(row) {
@@ -1048,6 +1051,14 @@ function renderTaskColumn() {
       >${escapeHtml(task.name)}</div>
     `;
 
+    /* (수정) 제목을 더블클릭해서 이름을 고칠 때, 그 첫 번째 클릭만으로
+       상세 패널이 열려버리면(그 안의 scrollIntoView 때문에) 화면이
+       아래로 스크롤된 뒤에야 인라인 입력창이 뜬다. 제목 부분 클릭은
+       더블클릭일 수도 있으니 살짝 늦춰서 열고, 더블클릭으로 확정되면
+       (= 인라인 수정 시작) 그 예약을 취소해 상세 패널이 아예 열리지
+       않게 한다. 제목이 아닌 다른 부분 클릭은 기존처럼 즉시 연다. */
+    let detailOpenTimer = null;
+
     card.addEventListener("click", event => {
 
       if (
@@ -1055,6 +1066,12 @@ function renderTaskColumn() {
         event.target.closest(".drag-handle") ||
         event.target.closest(".task-name-edit")
       ) {
+        return;
+      }
+
+      if (event.target.closest(".task-name")) {
+        clearTimeout(detailOpenTimer);
+        detailOpenTimer = setTimeout(() => showTaskDetail(task.id), 250);
         return;
       }
 
@@ -1075,6 +1092,8 @@ function renderTaskColumn() {
 
       event.preventDefault();
       event.stopPropagation();
+
+      clearTimeout(detailOpenTimer);
 
       startInlineRename(nameEl, task);
     });
