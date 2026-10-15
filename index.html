@@ -41,7 +41,11 @@
   <div id="shellView" style="display:none">
 
     <header class="mc-topbar">
-      <h1 class="mc-title">간트차트 모음</h1>
+      <div class="brand mc-brand">
+        <span class="brand-main">Gantt Chart</span>
+        <span class="brand-sep">|</span>
+        <span class="brand-sub">전체 차트 모음</span>
+      </div>
       <div class="mc-topbar-actions">
         <button id="mcKeyBtn" class="mc-btn mc-btn-ghost" type="button">키</button>
         <button id="mcReloadBtn" class="mc-btn mc-btn-ghost" type="button">새로고침</button>
@@ -75,11 +79,17 @@
 
     <div id="mcManageModal" class="mc-modal-backdrop hidden">
       <div class="mc-modal mc-modal-wide">
-        <h2>차트 관리</h2>
-        <div id="mcManageRows" class="mc-manage-rows"></div>
-        <div class="mc-modal-actions">
-          <button class="mc-btn mc-btn-ghost" data-close="mcManageModal" type="button">닫기</button>
+        <div class="mc-modal-head">
+          <h2>차트 관리</h2>
+          <button
+            class="mc-modal-close"
+            data-close="mcManageModal"
+            type="button"
+            aria-label="닫기"
+            title="닫기"
+          >&times;</button>
         </div>
+        <div id="mcManageRows" class="mc-manage-rows"></div>
       </div>
     </div>
 
@@ -98,20 +108,18 @@
   <header class="topbar">
 
     <div class="brand">
-      <span class="brand-main">Gantt Chart</span>
+      <span
+        class="brand-main"
+        id="chartNameLabel"
+        tabindex="0"
+        role="button"
+        title="눌러서 이 차트 이름 수정"
+      >Gantt Chart</span>
       <span class="brand-sep">|</span>
       <span class="brand-sub">Yearly Progress Management</span>
     </div>
 
     <div class="top-actions">
-
-      <button
-        id="keyBtn"
-        type="button"
-        title="편집 키 다시 입력"
-      >
-        편집 키
-      </button>
 
       <button
         id="reloadBtn"
