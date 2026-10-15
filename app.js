@@ -1,8 +1,34 @@
-const API_URL =
-  "https://script.google.com/macros/s/AKfycbyexenF9ADWlQ3kBxOEPZ3g9pjb6v9BBUs0uQDc60AW2CMQCsPQipkGVNtMEQ5BGNhGEw/exec";
+/* =========================================================
+ * 간트차트 app.js  (v3, 2026-09-21-q)
+ *
+ * 이전 버전 대비 바뀐 점
+ *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
+ *  - 주 헤더 · 배경선 · 막대 · 오늘 선이 모두 같은 '하루 너비' 기준
+ *  - 순서 변경: 카드 왼쪽 손잡이(⋮⋮)를 끌어서 이동 (마우스/터치 공통)
+ *    카테고리와 상관없이 옮길 수 있고, 놓은 자리의 카테고리로 바뀜
+ *  - 막대 글자색 자동 대비, 진행률은 어두운 반투명으로 표시
+ *  - 작업이 없는 카테고리도 표시, 카테고리 이름/색 수정 가능
+ *  - 저장 중 버튼 잠금 + 상단 알림(토스트), 중복 제출 방지
+ *  - 상세창이 열리면 화면으로 스크롤, 처음 열면 오늘 위치로 스크롤
+ *  - 새 작업은 색을 따로 고르지 않으면 카테고리 기본색을 따름
+ *  - 월별 뒷배경 색(흰색/옅은 회백색) 번갈아 표시
+ *  - 연도 숫자를 누르면 연도 선택창, 1년 전체가 화면 폭에 맞춰 한눈에 보임
+ *  - 캡처 버튼: 지금 확대 상태와 무관하게 연도 전체를 이미지로 저장
+ * ========================================================= */
 
-const EDIT_KEY =
-  "21cb42f7a0ea44838dea501764474553";
+const API_URL =
+  "https://script.google.com/macros/s/AKfycbx33KL-l94mz08Q8rWJHYrGUXyipmxrm02z3Y26OR20V9q5V2diZRFIzvyFpqio-0Jg8Q/exec";
+
+const DEFAULT_COLOR = "#3b82f6";
+
+/* 주 단위 날짜 라벨을 보여 주려면 한 주 칸이 최소 이만큼(px) 필요하다.
+   1년 전체를 화면 폭에 맞추면 이보다 좁아져서 월 라벨만 보인다. */
+const WEEK_LABEL_MIN_WIDTH = 40;
+
+/* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
+   파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
+   바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
+const APP_VERSION = "2026-09-21-q";
 
 
 /* =========================================================
@@ -21,61 +47,199 @@ let state = {
   rangeEnd: 364,
 
   selectedTask: null,
-  draggingTaskId: null
+  draggingTaskId: null,
+
+  // 다음 렌더링 뒤에 '오늘' 위치로 가로 스크롤할지
+  scrollToToday: true,
+
+  // 차트 전체 높이(px). 아래쪽 손잡이로 사용자가 직접 조절한다.
+  chartHeight: 420
 };
 
 
 /* =========================================================
  * API
+ *
+ * - 편집 키는 처음 접속할 때 입력받아 이 기기의 브라우저
+ *   (localStorage)에만 저장한다.
+ * - 모든 요청은 POST 다. (키가 주소에 남지 않는다)
  * ========================================================= */
 
-async function apiGet() {
-  const response = await fetch(
-    API_URL +
-    "?api=1&key=" +
-    encodeURIComponent(EDIT_KEY)
-  );
+const KEY_STORAGE = "gantt_edit_key";
 
-  const result = await response.json();
+let editKey = "";
 
-  if (!result.ok) {
+try {
+  editKey = localStorage.getItem(KEY_STORAGE) || "";
+} catch (error) {
+  // 저장소를 못 쓰는 환경이면 접속할 때마다 입력받는다.
+}
+
+
+function askKey(message) {
+  const input = prompt(message || "편집 키를 입력하세요");
+
+  if (!input || !input.trim()) {
+    return "";
+  }
+
+  editKey = input.trim();
+
+  try {
+    localStorage.setItem(KEY_STORAGE, editKey);
+  } catch (error) {
+    // 무시
+  }
+
+  return editKey;
+}
+
+
+function clearKey() {
+  editKey = "";
+
+  try {
+    localStorage.removeItem(KEY_STORAGE);
+  } catch (error) {
+    // 무시
+  }
+}
+
+
+async function request(action, data = {}, retried = false) {
+
+  if (!editKey && !askKey()) {
+    throw new Error("편집 키가 필요합니다.");
+  }
+
+  let response;
+
+  try {
+    response = await fetch(API_URL, {
+      method: "POST",
+
+      // text/plain 이어야 브라우저가 사전 요청(preflight)을 보내지 않는다.
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+
+      body: JSON.stringify({
+        action,
+        key: editKey,
+        ...data
+      })
+    });
+  } catch (error) {
+    throw new Error("서버에 연결하지 못했습니다. 인터넷 연결을 확인하세요.");
+  }
+
+  let result;
+
+  try {
+    result = await response.json();
+  } catch (error) {
     throw new Error(
-      result.error || "API 오류"
+      "서버 응답을 읽을 수 없습니다. " +
+      "배포 주소와 접근 권한(모든 사용자)을 확인하세요."
     );
   }
+
+  if (!result.ok) {
+
+    // 키가 틀리면 한 번만 다시 입력받는다.
+    if (result.error === "Forbidden" && !retried) {
+      clearKey();
+
+      if (askKey("편집 키가 올바르지 않습니다. 다시 입력하세요")) {
+        return request(action, data, true);
+      }
+    }
+
+    throw new Error(result.error || "요청 실패");
+  }
+
+  return result;
+}
+
+
+async function apiGet() {
+  const result = await request("load");
 
   return result.data;
 }
 
 
 async function apiPost(action, data = {}) {
-  const response = await fetch(
-    API_URL,
-    {
-      method: "POST",
+  return request(action, data);
+}
 
-      headers: {
-        "Content-Type":
-          "text/plain;charset=utf-8"
-      },
 
-      body: JSON.stringify({
-        action,
-        key: EDIT_KEY,
-        ...data
-      })
-    }
-  );
+/* =========================================================
+ * TOAST / BUSY
+ * ========================================================= */
 
-  const result = await response.json();
+let toastTimer = null;
 
-  if (!result.ok) {
-    throw new Error(
-      result.error || "저장 실패"
-    );
+
+function showToast(message, isError = false, duration = 2500) {
+
+  const toast = document.getElementById("toast");
+
+  if (!toast) {
+    return;
   }
 
-  return result;
+  toast.textContent = message;
+  toast.classList.toggle("error", isError);
+  toast.classList.remove("hidden");
+
+  clearTimeout(toastTimer);
+
+  if (duration > 0) {
+    toastTimer = setTimeout(() => {
+      toast.classList.add("hidden");
+    }, duration);
+  }
+}
+
+
+function hideToast() {
+
+  const toast = document.getElementById("toast");
+
+  clearTimeout(toastTimer);
+
+  if (toast) {
+    toast.classList.add("hidden");
+  }
+}
+
+
+/* 버튼을 잠근 채로 작업을 실행한다. (이미 처리 중이면 무시 -> 중복 제출 방지) */
+async function withBusy(button, label, task) {
+
+  if (button && button.disabled) {
+    return;
+  }
+
+  const original = button ? button.textContent : "";
+
+  if (button) {
+    button.disabled = true;
+
+    if (label) {
+      button.textContent = label;
+    }
+  }
+
+  try {
+    return await task();
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
 }
 
 
@@ -83,29 +247,47 @@ async function apiPost(action, data = {}) {
  * DATA LOAD
  * ========================================================= */
 
-async function loadData() {
+async function loadData(showProgress = true) {
+
+  const reloadButton = document.getElementById("reloadBtn");
+
+  if (reloadButton) {
+    reloadButton.disabled = true;
+  }
+
+  if (showProgress) {
+    showToast("불러오는 중…", false, 0);
+  }
+
   try {
     const data = await apiGet();
 
     state.tasks =
-      Array.isArray(data.tasks)
-        ? data.tasks
-        : [];
+      Array.isArray(data.tasks) ? data.tasks : [];
 
     state.categories =
-      Array.isArray(data.categories)
-        ? data.categories
-        : [];
+      Array.isArray(data.categories) ? data.categories : [];
 
     render();
 
+    if (showProgress) {
+      hideToast();
+    }
+
   } catch (error) {
     console.error(error);
+
+    hideToast();
 
     alert(
       "데이터를 불러오지 못했습니다.\n" +
       error.message
     );
+
+  } finally {
+    if (reloadButton) {
+      reloadButton.disabled = false;
+    }
   }
 }
 
@@ -117,109 +299,108 @@ async function loadData() {
 function dateObj(value) {
   if (!value) return null;
 
-  const [
-    y,
-    m,
-    d
-  ] = String(value)
-    .split("-")
-    .map(Number);
+  const [y, m, d] =
+    String(value).split("-").map(Number);
 
-  return new Date(
-    y,
-    m - 1,
-    d
-  );
+  return new Date(y, m - 1, d);
 }
 
 
 function dateKey(date) {
   return [
     date.getFullYear(),
-
-    String(
-      date.getMonth() + 1
-    ).padStart(2, "0"),
-
-    String(
-      date.getDate()
-    ).padStart(2, "0")
-
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
   ].join("-");
 }
 
 
 function dayOfYear(date) {
-  const start =
-    new Date(
-      date.getFullYear(),
-      0,
-      1
-    );
+  const start = new Date(date.getFullYear(), 0, 1);
 
   return Math.floor(
-    (
-      date.getTime() -
-      start.getTime()
-    ) /
-    86400000
+    (date.getTime() - start.getTime()) / 86400000
   );
 }
 
 
 function daysInYear(year) {
   return (
-    new Date(
-      year + 1,
-      0,
-      1
-    ).getTime() -
-    new Date(
-      year,
-      0,
-      1
-    ).getTime()
+    new Date(year + 1, 0, 1).getTime() -
+    new Date(year, 0, 1).getTime()
   ) / 86400000;
 }
 
 
-/*
- * 선택된 연도의 1월 1일
- */
+/* 선택된 연도의 1월 1일 */
 function getYearStart() {
-  return new Date(
-    state.year,
-    0,
-    1
-  );
+  return new Date(state.year, 0, 1);
 }
 
 
-/*
- * 선택된 연도의 12월 31일
- */
+/* 선택된 연도의 12월 31일 */
 function getYearEnd() {
-  return new Date(
-    state.year,
-    11,
-    31
-  );
+  return new Date(state.year, 11, 31);
 }
 
 
-/*
- * 선택된 연도 1월 1일부터 몇 번째 날인지
- */
+/* 선택된 연도 1월 1일부터 몇 번째 날인지 */
 function dayOffsetFromYearStart(date) {
   const start = getYearStart();
 
   return Math.floor(
-    (
-      date.getTime() -
-      start.getTime()
-    ) /
-    86400000
+    (date.getTime() - start.getTime()) / 86400000
   );
+}
+
+
+/* 선택 연도의 n번째 날(0부터) -> Date */
+function dateFromYearDay(day) {
+  const date = new Date(state.year, 0, 1);
+
+  date.setDate(date.getDate() + day);
+
+  return date;
+}
+
+
+/* =========================================================
+ * COLOR
+ * ========================================================= */
+
+function validHex(value) {
+  const text = String(value || "").trim();
+
+  return /^#[0-9a-fA-F]{6}$/.test(text) ? text.toLowerCase() : "";
+}
+
+
+/* 밝은 색이면 흰 글자의 대비가 부족하므로 어두운 글자를 쓴다. */
+function isLightColor(hex) {
+
+  const color = validHex(hex);
+
+  if (!color) {
+    return false;
+  }
+
+  const n = parseInt(color.slice(1), 16);
+
+  const channel = value => {
+    const c = value / 255;
+
+    return c <= 0.03928
+      ? c / 12.92
+      : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+
+  const luminance =
+    0.2126 * channel((n >> 16) & 255) +
+    0.7152 * channel((n >> 8) & 255) +
+    0.0722 * channel(n & 255);
+
+  // 흰 글자 대비가 3:1 미만이면 밝은 색으로 본다.
+  return 1.05 / (luminance + 0.05) < 3;
 }
 
 
@@ -229,76 +410,89 @@ function dayOffsetFromYearStart(date) {
 
 function render() {
 
-  const yearTitle =
-    document.getElementById(
-      "yearTitle"
-    );
+  const yearTitle = document.getElementById("yearTitle");
 
   if (yearTitle) {
-    yearTitle.textContent =
-      state.year;
+    const yearNumber = yearTitle.querySelector(".year-num");
+
+    (yearNumber || yearTitle).textContent = state.year;
   }
+
+  syncRowRange();
+  applyGanttHeight();
+  computeRowScale();
 
   renderTaskColumn();
   renderTimeline();
+  updateRangeLabel();
 
-  // 폰트/레이아웃 계산이 끝난 다음 한 번 더 맞춘다.
-  requestAnimationFrame(() => {
-    syncGanttRows();
+  if (hSlider) hSlider.layout();
+  if (vSlider) vSlider.layout();
 
-    requestAnimationFrame(() => {
-      syncGanttRows();
-    });
+  if (isYearPickerOpen()) {
+    renderYearPicker();
+  }
 
-    setTimeout(
-      syncGanttRows,
-      100
-    );
-  });
+  if (state.scrollToToday) {
+    state.scrollToToday = false;
+    scrollTimelineToToday();
+  }
+}
+
+
+/* 오늘이 보이도록 가로 스크롤 */
+function scrollTimelineToToday() {
+
+  const timeline = document.getElementById("timeline");
+
+  const inner =
+    timeline && timeline.querySelector(".timeline-inner");
+
+  if (!timeline || !inner) {
+    return;
+  }
+
+  const today = new Date();
+
+  if (today.getFullYear() !== state.year) {
+    return;
+  }
+
+  const day = dayOfYear(today);
+
+  if (day < state.rangeStart || day > state.rangeEnd) {
+    return;
+  }
+
+  const visibleDays = state.rangeEnd - state.rangeStart + 1;
+
+  const dayWidth =
+    (parseFloat(inner.style.width) || 0) / visibleDays;
+
+  const x = (day - state.rangeStart) * dayWidth;
+
+  timeline.scrollLeft =
+    Math.max(0, x - timeline.clientWidth / 3);
 }
 
 
 /* =========================================================
  * TASK / CATEGORY GROUP
  *
- * 핵심:
- *
  * 1. 선택한 연도에 걸쳐 있는 작업만 표시
- *
- *    시작일 <= 선택연도 12/31
- *    &&
- *    종료일 >= 선택연도 1/1
- *
- * 2. 전년도부터 이어진 작업은 가장 위
- *
+ *    (시작일 <= 선택연도 12/31 && 종료일 >= 선택연도 1/1)
+ * 2. 전년도부터 이어진 작업은 카테고리 안에서 가장 위
  * 3. 그런 작업이 있는 카테고리도 가장 위
- *
- * 4. 다른 연도에만 존재하는 카테고리는 숨김
- *
- * 5. 삭제된 카테고리의 작업은 "기타"
+ * 4. 다른 연도에만 작업이 있는 카테고리는 숨김
+ * 5. 작업이 아예 없는 카테고리는 표시 (추가/수정/삭제할 수 있도록)
+ * 6. 삭제된 카테고리의 작업은 "기타"
  * ========================================================= */
 
 function groupTasks() {
 
-  const yearStart =
-    `${state.year}-01-01`;
+  const yearStart = `${state.year}-01-01`;
+  const yearEnd = `${state.year}-12-31`;
 
-  const yearEnd =
-    `${state.year}-12-31`;
-
-
-  /*
-   * 선택한 연도에 실제로 걸쳐 있는 작업만 가져온다.
-   *
-   * 예:
-   *
-   * 2025-12-20 ~ 2026-01-20
-   * → 2025에도 표시
-   * → 2026에도 표시
-   *
-   * 2025-01-01 ~ 2025-12-31
-   * → 2026에는 표시하지 않음
-   */
   const visibleTasks =
     state.tasks.filter(task => {
 
@@ -313,9 +507,12 @@ function groupTasks() {
     });
 
 
-  /*
-   * 전년도부터 현재 연도로 넘어온 작업
-   */
+  /* 전체 작업 중 하나라도 속해 있는 카테고리 */
+  const usedCategoryIds =
+    new Set(state.tasks.map(task => task.categoryId));
+
+
+  /* 전년도부터 현재 연도로 넘어온 작업 */
   function isContinuing(task) {
     return (
       task.start < yearStart &&
@@ -324,150 +521,251 @@ function groupTasks() {
   }
 
 
-  const groups = [];
+  function sortContinuingFirst(groups) {
+    groups.sort((a, b) => {
 
-
-  /*
-   * 카테고리 순서 자체는
-   * Categories 시트의 순서를 기본적으로 유지한다.
-   *
-   * 단,
-   * 전년도에서 이어진 작업이 하나라도 있는
-   * 카테고리는 최상단으로 이동한다.
-   */
-  state.categories.forEach(
-    category => {
-
-      const tasks =
-        visibleTasks.filter(
-          task =>
-            task.categoryId ===
-            category.id
-        );
-
-      if (!tasks.length) {
-        return;
-      }
-
-
-      const continuing =
-        tasks.filter(
-          isContinuing
-        );
-
-      const newTasks =
-        tasks.filter(
-          task =>
-            !isContinuing(task)
-        );
-
-
-      groups.push({
-        id: category.id,
-
-        name: category.name,
-
-        tasks: [
-          ...continuing,
-          ...newTasks
-        ],
-
-        hasContinuing:
-          continuing.length > 0
-      });
-    }
-  );
-
-
-  /*
-   * 카테고리 안에서
-   * 이어진 작업이 있는 카테고리를 위로
-   */
-  groups.sort(
-    (a, b) => {
-
-      if (
-        a.hasContinuing !==
-        b.hasContinuing
-      ) {
-        return a.hasContinuing
-          ? -1
-          : 1;
+      if (a.hasContinuing !== b.hasContinuing) {
+        return a.hasContinuing ? -1 : 1;
       }
 
       return 0;
+    });
+  }
+
+
+  const groups = [];
+
+
+  state.categories.forEach(category => {
+
+    const tasks =
+      visibleTasks.filter(
+        task => task.categoryId === category.id
+      );
+
+    if (!tasks.length) {
+
+      /* 작업이 아예 없는 카테고리만 빈 상태로 보여 준다. */
+      if (!usedCategoryIds.has(category.id)) {
+        groups.push({
+          id: category.id,
+          name: category.name,
+          color: category.color,
+          tasks: [],
+          hasContinuing: false,
+          empty: true
+        });
+      }
+
+      return;
     }
-  );
+
+    const continuing = tasks.filter(isContinuing);
+    const newTasks = tasks.filter(task => !isContinuing(task));
+
+    groups.push({
+      id: category.id,
+      name: category.name,
+      color: category.color,
+      tasks: [...continuing, ...newTasks],
+      hasContinuing: continuing.length > 0,
+      empty: false
+    });
+  });
 
 
-  /*
-   * 카테고리가 삭제된 작업
-   *
-   * → 기타
-   */
+  sortContinuingFirst(groups);
+
+
+  /* 카테고리가 삭제된 작업 -> 기타 */
   const uncategorized =
     visibleTasks.filter(
       task =>
         !state.categories.some(
-          category =>
-            category.id ===
-            task.categoryId
+          category => category.id === task.categoryId
         )
     );
 
 
   if (uncategorized.length) {
 
-    const continuing =
-      uncategorized.filter(
-        isContinuing
-      );
-
-    const newTasks =
-      uncategorized.filter(
-        task =>
-          !isContinuing(task)
-      );
-
+    const continuing = uncategorized.filter(isContinuing);
+    const newTasks = uncategorized.filter(task => !isContinuing(task));
 
     groups.push({
       id: "",
-
       name: "기타",
-
-      tasks: [
-        ...continuing,
-        ...newTasks
-      ],
-
-      hasContinuing:
-        continuing.length > 0
+      color: "",
+      tasks: [...continuing, ...newTasks],
+      hasContinuing: continuing.length > 0,
+      empty: false
     });
 
-
-    /*
-     * 기타도 이어진 작업이 있으면
-     * 최상단으로 올린다.
-     */
-    groups.sort(
-      (a, b) => {
-
-        if (
-          a.hasContinuing !==
-          b.hasContinuing
-        ) {
-          return a.hasContinuing
-            ? -1
-            : 1;
-        }
-
-        return 0;
-      }
-    );
+    /* 기타도 이어진 작업이 있으면 최상단으로 */
+    sortContinuingFirst(groups);
   }
 
 
   return groups;
+}
+
+
+/* =========================================================
+ * ROWS  (카테고리 줄 + 작업 줄을 하나의 순서 있는 목록으로)
+ *
+ * 왼쪽 목록과 오른쪽 타임라인이 항상 같은 순서로 그려지므로,
+ * 세로 범위 슬라이더는 이 하나의 목록에서 구간만 잘라 보여 준다.
+ * ========================================================= */
+
+function buildRows() {
+
+  const rows = [];
+
+  groupTasks().forEach(group => {
+
+    rows.push({ kind: "category", group });
+
+    group.tasks.forEach(task => {
+      rows.push({ kind: "task", group, task });
+    });
+  });
+
+  return rows;
+}
+
+
+/* 기본 줄 높이. 작업 줄을 예전(72px)보다 얇게 만든다. */
+const CATEGORY_ROW_HEIGHT = 38;
+const TASK_ROW_HEIGHT = 48;
+
+function rowHeightOf(row) {
+  return row.kind === "category" ? CATEGORY_ROW_HEIGHT : TASK_ROW_HEIGHT;
+}
+
+
+/* 전체 줄을 원래 높이(38/72)로 이어 붙였을 때, 각 줄이 몇 px 지점에서
+   시작해서 몇 px 지점에서 끝나는지. (세로 슬라이더가 다루는 좌표계) */
+function rowCumulative() {
+
+  let acc = 0;
+
+  return buildRows().map(row => {
+
+    const start = acc;
+
+    acc += rowHeightOf(row);
+
+    return { row, start, end: acc };
+  });
+}
+
+
+/* 세로 슬라이더는 '자연 높이 기준으로 어디부터 어디까지 볼지'를
+   연속적인 px 단위로 고른다(줄 단위로 뚝뚝 끊기지 않는다).
+   고른 구간은 차트의 고정 높이(state.chartHeight)를 항상 꽉
+   채우도록 배율이 매끄럽게 바뀐다 - 범위를 벌릴수록 압축되어
+   다 보이고, 좁힐수록 그 구간만 확대되어 자세히 보인다. 전체
+   높이가 바뀌면(연도 변경, 작업 추가/삭제) 범위를 전체로 되돌린다. */
+function syncRowRange() {
+
+  const total = rowCumulative().reduce((max, r) => Math.max(max, r.end), 0);
+
+  if (state.rowsTotal !== total) {
+
+    state.rowsTotal = total;
+    state.rowStart = 0;
+    state.rowEnd = total;
+
+  } else {
+
+    state.rowStart = Math.max(0, Math.min(state.rowStart, total));
+    state.rowEnd = Math.max(state.rowStart, Math.min(state.rowEnd, total));
+  }
+}
+
+
+/* 고른 구간과 조금이라도 겹치는 줄은 전부 포함한다(경계 줄도 보임). */
+function selectedRowsWithCum() {
+
+  return rowCumulative().filter(
+    r => r.end > state.rowStart && r.start < state.rowEnd
+  );
+}
+
+
+function selectedRows() {
+  return selectedRowsWithCum().map(r => r.row);
+}
+
+
+/* 고른 구간의 '너비'(자연 px)를 차트의 남은 세로 공간에 꽉 채우기
+   위한 배율. 어떤 줄이 경계에서 드나드는지와 무관하게 슬라이더
+   위치만으로 매끄럽게 정해지므로, 손잡이를 조금만 움직여도 배율이
+   그만큼만 매끄럽게 바뀐다(끊기지 않는다). */
+/* 세로로 심하게 확대해도 줄이 한없이 커지지는 않게 상한을 둔다.
+   (작업 줄 기준 최대 96px 정도 - 막대는 그대로인데 줄만 텅 비어
+   보이는 걸 막는다) 상한에 걸리면 남는 세로 공간은 그냥 빈 배경으로
+   남는다(새로 뭘 그리지 않음). */
+/* 세로로 확대해도 작업 줄이 이 높이(px)를 넘지 않게 한다. */
+const MAX_TASK_ROW_HEIGHT = 96;
+const MAX_ROW_SCALE = MAX_TASK_ROW_HEIGHT / TASK_ROW_HEIGHT;
+
+function computeRowScale() {
+
+  const width = Math.max(1, state.rowEnd - state.rowStart);
+
+  const available = Math.max(1, state.chartHeight - 52);
+
+  state.rowScale = Math.min(available / width, MAX_ROW_SCALE);
+}
+
+
+/* 화면에 보이는 첫 줄의 위쪽 끝을, 창의 맨 위(0px)에 맞추기 위해
+   안쪽 콘텐츠를 위로 밀어 올리는 양(뷰포트 안에서, 배율 적용 후). */
+function rowsOffset(rows) {
+
+  if (!rows.length) {
+    return 0;
+  }
+
+  return (state.rowStart - rows[0].start) * state.rowScale;
+}
+
+
+/* 각 줄의 실제(배율 적용) 표시 높이. 누적 반올림으로 오차가 쌓이지
+   않게 한다. */
+function scaledRowHeights(rows) {
+
+  const heights = [];
+  let cumulative = 0;
+
+  rows.forEach(r => {
+
+    cumulative += rowHeightOf(r.row) * state.rowScale;
+
+    const rounded = Math.round(cumulative);
+
+    heights.push(rounded - heights.reduce((a, b) => a + b, 0));
+  });
+
+  return heights;
+}
+
+
+/* 세로 슬라이더로 일부 줄만 보일 때도 .gantt 상자 크기는 항상
+   "전체 줄을 다 보여줄 때"의 높이로 고정한다. (좌우 확대/축소가
+   화면 폭을 그대로 두는 것과 같은 방식) 그래야 줄 수를 줄였을 때
+   생기는 빈 공간에 새로 뭘 그리지 않고, 원래 있던 흰 배경이 그대로
+   보인다. */
+function applyGanttHeight() {
+
+  const gantt = document.querySelector(".gantt");
+
+  if (!gantt) {
+    return;
+  }
+
+  gantt.style.minHeight = state.chartHeight + "px";
 }
 
 
@@ -477,707 +775,676 @@ function groupTasks() {
 
 function renderTaskColumn() {
 
-  const column =
-    document.getElementById(
-      "taskColumn"
-    );
+  const column = document.getElementById("taskColumn");
 
   if (!column) {
     return;
   }
 
-
   column.innerHTML = "";
 
 
-  /*
-   * Header
-   */
-  const header =
-    document.createElement(
-      "div"
-    );
+  /* Header (항상 고정, 세로 범위와 무관) */
+  const header = document.createElement("div");
 
-  header.className =
-    "task-header";
+  header.className = "task-header";
+  header.textContent = "작업";
 
-  header.textContent =
-    "작업";
-
-  column.appendChild(
-    header
-  );
+  column.appendChild(header);
 
 
-  const groups =
-    groupTasks();
+  /* 세로 창: 항상 (차트 높이 - 헤더) 만큼만 보인다. 그 안에서
+     콘텐츠를 위로 살짝 밀어(offset) 경계 줄이 매끄럽게 드나든다. */
+  const viewport = document.createElement("div");
+
+  viewport.className = "rows-viewport";
+  viewport.style.height = Math.max(1, state.chartHeight - 52) + "px";
+
+  column.appendChild(viewport);
+
+  const rowsInner = document.createElement("div");
+
+  rowsInner.className = "rows-inner";
+
+  viewport.appendChild(rowsInner);
+
+  const rowsWithCum = selectedRowsWithCum();
+  const heights = scaledRowHeights(rowsWithCum);
+
+  rowsInner.style.transform =
+    "translateY(" + (-rowsOffset(rowsWithCum)) + "px)";
+
+  rowsWithCum.forEach((entry, i) => {
+
+    const row = entry.row;
+    const h = heights[i];
+
+    if (row.kind === "category") {
+
+      const group = row.group;
+
+      const category = document.createElement("div");
+
+      category.className = "category-label";
+      category.dataset.group = group.id;
+      category.style.height = h + "px";
 
 
-  groups.forEach(
-    group => {
-
-      /*
-       * Category row
-       */
-      const category =
-        document.createElement(
-          "div"
-        );
-
-      category.className =
-        "category-label";
-
-
-      /*
-       * 카테고리 이름 + 삭제 버튼
-       */
-      const name =
-        document.createElement(
-          "span"
-        );
-
-      name.className =
-        "category-label-name";
-
-      name.textContent =
-        group.name;
-
-
-      category.appendChild(
-        name
-      );
-
-
-      /*
-       * "기타"는 실제 카테고리가 아니므로
-       * 삭제 버튼을 만들지 않는다.
-       */
+      /* "기타"는 실제 카테고리가 아니라 순서를 저장할 곳이 없으므로
+         끌 수 없다(손잡이 자체를 넣지 않는다). */
       if (group.id) {
 
-        const deleteButton =
-          document.createElement(
-            "button"
-          );
+        const catHandle = document.createElement("span");
 
-        deleteButton.type =
-          "button";
+        catHandle.className = "drag-handle category-drag-handle";
+        catHandle.title = "끌어서 카테고리 순서 변경 (하위 작업도 함께 이동)";
+        catHandle.setAttribute("aria-hidden", "true");
+        catHandle.innerHTML = "<i></i><i></i><i></i>";
 
-        deleteButton.className =
-          "category-delete-btn";
-
-        deleteButton.textContent =
-          "×";
-
-        deleteButton.title =
-          "카테고리 삭제";
-
-        deleteButton.setAttribute(
-          "aria-label",
-          group.name +
-          " 카테고리 삭제"
-        );
-
-
-        /*
-         * CSS가 없어도 버튼이
-         * 기본 UI를 망가뜨리지 않도록
-         * 최소한의 스타일을 직접 넣는다.
-         */
-        deleteButton.style.flex =
-          "0 0 auto";
-
-        deleteButton.style.width =
-          "24px";
-
-        deleteButton.style.height =
-          "24px";
-
-        deleteButton.style.padding =
-          "0";
-
-        deleteButton.style.margin =
-          "0";
-
-        deleteButton.style.border =
-          "0";
-
-        deleteButton.style.background =
-          "transparent";
-
-        deleteButton.style.cursor =
-          "pointer";
-
-        deleteButton.style.fontSize =
-          "18px";
-
-        deleteButton.style.lineHeight =
-          "1";
-
-        deleteButton.style.color =
-          "inherit";
-
-
-        deleteButton.addEventListener(
-          "click",
-          event => {
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            deleteCategory(
-              group.id,
-              group.name
-            );
-          }
-        );
-
-
-        category.style.display =
-          "flex";
-
-        category.style.alignItems =
-          "center";
-
-        category.style.justifyContent =
-          "space-between";
-
-        category.style.gap =
-          "8px";
-
-
-        category.appendChild(
-          deleteButton
-        );
+        category.appendChild(catHandle);
       }
 
 
-      column.appendChild(
-        category
-      );
+      if (group.id) {
+
+        const dot = document.createElement("span");
+
+        dot.className = "cat-dot";
+        dot.style.background = validHex(group.color) || DEFAULT_COLOR;
+
+        category.appendChild(dot);
+      }
 
 
-      /*
-       * Tasks
-       */
-      group.tasks.forEach(
-        task => {
+      const name = document.createElement("span");
 
-          const card =
-            document.createElement(
-              "div"
-            );
+      name.className = "category-label-name";
+      name.textContent = group.name;
 
-          card.className =
-            "task-card";
+      /* 실제 카테고리는 이름을 눌러 이름/색을 수정한다. */
+      if (group.id) {
 
-          card.dataset.id =
-            task.id;
+        name.title = "눌러서 이름·색 수정";
+        name.tabIndex = 0;
+        name.setAttribute("role", "button");
 
+        name.addEventListener("click", () => {
+          openCategoryModal(group.id);
+        });
 
-          card.innerHTML = `
-            <div class="task-name">
-              ${escapeHtml(task.name)}
-            </div>
-          `;
+        name.addEventListener("keydown", event => {
 
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openCategoryModal(group.id);
+          }
+        });
+      }
 
-          setupTaskDrag(
-            card,
-            task
-          );
+      category.appendChild(name);
 
 
-          card.addEventListener(
-            "click",
-            () => {
+      if (group.empty) {
 
-              if (
-                state.draggingTaskId
-              ) {
-                return;
-              }
+        const note = document.createElement("span");
 
-              showTaskDetail(
-                task.id
-              );
-            }
-          );
+        note.className = "category-empty";
+        note.textContent = "작업 없음";
+
+        category.appendChild(note);
+      }
 
 
-          column.appendChild(
-            card
-          );
-        }
-      );
+      /* "기타"는 실제 카테고리가 아니므로 삭제 버튼을 만들지 않는다. */
+      if (group.id) {
+
+        const deleteButton = document.createElement("button");
+
+        deleteButton.type = "button";
+        deleteButton.className = "category-delete-btn";
+        deleteButton.textContent = "×";
+        deleteButton.title = "카테고리 삭제";
+
+        deleteButton.setAttribute(
+          "aria-label",
+          group.name + " 카테고리 삭제"
+        );
+
+        deleteButton.addEventListener("click", event => {
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          deleteCategory(group.id, group.name);
+        });
+
+        category.appendChild(deleteButton);
+      }
+
+      rowsInner.appendChild(category);
+
+      return;
     }
-  );
+
+    /* Task row */
+    const { group, task } = row;
+
+    const card = document.createElement("div");
+
+    card.className =
+      "task-card" +
+      (state.draggingTaskId === task.id ? " dragging" : "");
+
+    card.dataset.id = task.id;
+    card.dataset.group = group.id;
+
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", task.name + " 상세 보기");
+    card.style.height = h + "px";
+
+    card.innerHTML = `
+      <span
+        class="drag-handle"
+        title="끌어서 순서 변경"
+        aria-hidden="true"
+      ><i></i><i></i><i></i></span>
+
+      <div
+        class="task-name"
+        title="두 번 눌러 이름 수정"
+      >${escapeHtml(task.name)}</div>
+    `;
+
+    card.addEventListener("click", event => {
+
+      if (
+        state.draggingTaskId ||
+        event.target.closest(".drag-handle") ||
+        event.target.closest(".task-name-edit")
+      ) {
+        return;
+      }
+
+      showTaskDetail(task.id);
+    });
+
+    card.addEventListener("keydown", event => {
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        showTaskDetail(task.id);
+      }
+    });
+
+    const nameEl = card.querySelector(".task-name");
+
+    nameEl.addEventListener("dblclick", event => {
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      startInlineRename(nameEl, task);
+    });
+
+    rowsInner.appendChild(card);
+  });
+}
+
+
+/* =========================================================
+ * INLINE RENAME  (작업명을 두 번 눌러 그 자리에서 바로 수정)
+ * ========================================================= */
+
+function startInlineRename(nameEl, task) {
+
+  if (nameEl.querySelector(".task-name-edit")) {
+    return;
+  }
+
+  /* 더블클릭을 이루는 두 번의 클릭이 먼저 카드 클릭으로 처리되어
+     상세창이 열려 있을 수 있다. 이름만 조용히 고치는 게 목적이므로
+     그 상세창은 다시 닫는다. */
+  if (state.selectedTask === task.id) {
+
+    const panel = document.getElementById("detailPanel");
+
+    if (panel && !panel.classList.contains("hidden")) {
+      panel.classList.add("hidden");
+      state.selectedTask = null;
+    }
+  }
+
+  const original = task.name;
+
+  nameEl.textContent = "";
+
+  const input = document.createElement("input");
+
+  input.type = "text";
+  input.className = "task-name-edit";
+  input.value = original;
+
+  nameEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+
+  async function finish(save) {
+
+    if (done) {
+      return;
+    }
+
+    done = true;
+
+    const value = input.value.trim();
+
+    if (save && value && value !== original) {
+
+      nameEl.textContent = value;
+
+      try {
+        await apiPost("update", { data: { id: task.id, name: value } });
+        await loadData(false);
+      } catch (error) {
+        alert("이름 저장 실패\n" + error.message);
+        await loadData(false);
+      }
+
+    } else {
+
+      nameEl.textContent = original;
+    }
+  }
+
+  input.addEventListener("blur", () => finish(true));
+
+  input.addEventListener("keydown", event => {
+
+    /* 카드 자체가 role="button"이라 스페이스/엔터 키를 누르면
+       카드를 "누른" 것으로 처리하는 리스너가 따로 있다. 이 입력칸
+       안에서 누르는 키는 그쪽으로 새어나가면 안 된다 - 특히
+       스페이스는 그대로 두면 preventDefault 되어 띄어쓰기가
+       입력되지 않는다. */
+    event.stopPropagation();
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      input.blur();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      done = true;
+      nameEl.textContent = original;
+    }
+  });
+
+  input.addEventListener("click", event => event.stopPropagation());
+  input.addEventListener("dblclick", event => event.stopPropagation());
 }
 
 
 /* =========================================================
  * TIMELINE
+ *
+ * 폭 = max(화면 폭, 표시 일수 x 8px)
+ * 하루 너비(dayWidth) = 폭 / 표시 일수
+ * 주 헤더, 배경선, 막대, 오늘 선 모두 이 하루 너비를 기준으로 한다.
  * ========================================================= */
 
 function renderTimeline() {
 
-  const timeline =
-    document.getElementById(
-      "timeline"
-    );
+  const timeline = document.getElementById("timeline");
 
   if (!timeline) {
     return;
   }
 
-
-  timeline.innerHTML =
-    "";
+  timeline.innerHTML = "";
 
 
-  const inner =
-    document.createElement(
-      "div"
-    );
+  const inner = document.createElement("div");
 
-  inner.className =
-    "timeline-inner";
+  inner.className = "timeline-inner";
 
 
-  /*
-   * 화면은 반드시 선택된 한 해만 사용
-   */
-  const totalDays =
-    daysInYear(
-      state.year
-    );
+  /* 화면은 반드시 선택된 한 해만 사용 */
+  const totalDays = daysInYear(state.year);
 
 
-  /*
-   * range 역시 선택 연도 안에서만 움직인다.
-   */
+  /* range 역시 선택 연도 안에서만 움직인다. */
   state.rangeStart =
-    Math.max(
-      0,
-      Math.min(
-        state.rangeStart,
-        totalDays - 1
-      )
-    );
+    Math.max(0, Math.min(state.rangeStart, totalDays - 1));
 
   state.rangeEnd =
     Math.max(
       state.rangeStart,
-      Math.min(
-        state.rangeEnd,
-        totalDays - 1
-      )
+      Math.min(state.rangeEnd, totalDays - 1)
     );
 
 
-  const visibleDays =
-    state.rangeEnd -
-    state.rangeStart +
-    1;
+  const visibleDays = state.rangeEnd - state.rangeStart + 1;
+
+  /* 보이는 기간은 항상 화면 폭에 딱 맞춘다.
+     (1년 전체를 보면 1년이 한눈에 들어오고, 확대하면 그만큼 하루 폭이 커진다) */
+  const width = timeline.clientWidth || 900;
+
+  const dayWidth = width / visibleDays;
+
+  inner.style.width = width + "px";
+
+  inner.style.setProperty("--week-width", (dayWidth * 7) + "px");
+
+  /* 주 칸이 너무 좁으면 주 단위 세로선은 그리지 않는다. (월 배경이 구분해 준다) */
+  if (dayWidth * 7 < WEEK_LABEL_MIN_WIDTH) {
+    inner.classList.add("no-week-lines");
+  }
 
 
-  const width =
-    Math.max(
-      900,
-      visibleDays * 8
-    );
+  /* 주 헤더 */
+  renderWeekHeader(inner, visibleDays, dayWidth);
 
 
-  inner.style.width =
-    width + "px";
+  /* 세로 창: 왼쪽 목록과 정확히 같은 규칙으로 보인다. */
+  const viewport = document.createElement("div");
 
+  viewport.className = "rows-viewport";
+  viewport.style.height = Math.max(1, state.chartHeight - 52) + "px";
 
-  const weekCount =
-    Math.ceil(
-      visibleDays / 7
-    );
+  inner.appendChild(viewport);
 
+  /* 월별 뒷배경 (흰색 / 옅은 회백색 번갈아) - 세로 창 안에 고정 */
+  renderMonthBands(viewport, dayWidth);
 
-  const weekWidth =
-    width /
-    weekCount;
+  const rowsInner = document.createElement("div");
 
+  rowsInner.className = "rows-inner";
 
-  inner.style.setProperty(
-    "--week-width",
-    weekWidth + "px"
-  );
+  viewport.appendChild(rowsInner);
 
+  const rowsWithCum = selectedRowsWithCum();
+  const heights = scaledRowHeights(rowsWithCum);
 
-  /*
-   * 주 헤더
-   */
-  renderWeekHeader(
-    inner,
-    totalDays,
-    visibleDays,
-    width
-  );
+  rowsInner.style.transform =
+    "translateY(" + (-rowsOffset(rowsWithCum)) + "px)";
 
+  /* Category + Task rows (왼쪽 목록과 같은 순서·같은 배율) */
+  rowsWithCum.forEach((entry, i) => {
 
-  /*
-   * Category + Task rows
-   */
-  const groups =
-    groupTasks();
+    const item = entry.row;
+    const h = heights[i];
 
+    if (item.kind === "category") {
 
-  groups.forEach(
-    group => {
+      const categoryRow = document.createElement("div");
 
-      const categoryRow =
-        document.createElement(
-          "div"
-        );
+      categoryRow.className = "timeline-category";
+      categoryRow.style.height = h + "px";
 
-      categoryRow.className =
-        "timeline-category";
+      rowsInner.appendChild(categoryRow);
 
-
-      inner.appendChild(
-        categoryRow
-      );
-
-
-      group.tasks.forEach(
-        task => {
-
-          const row =
-            document.createElement(
-              "div"
-            );
-
-          row.className =
-            "timeline-task-row";
-
-
-          renderTaskBar(
-            row,
-            task,
-            totalDays,
-            visibleDays
-          );
-
-
-          inner.appendChild(
-            row
-          );
-        }
-      );
+      return;
     }
-  );
+
+    const row = document.createElement("div");
+
+    row.className = "timeline-task-row";
+    row.dataset.id = item.task.id;
+    row.style.height = h + "px";
+
+    renderTaskBar(row, item.task, totalDays, visibleDays, h);
+
+    rowsInner.appendChild(row);
+  });
 
 
-  /*
-   * 오늘 선
-   */
-  renderTodayLine(
-    inner,
-    totalDays,
-    visibleDays,
-    width
-  );
+  /* 오늘 선 (세로 창에 고정) */
+  renderTodayLine(viewport, totalDays, visibleDays, width);
 
-
-  timeline.appendChild(
-    inner
-  );
-
-
-  requestAnimationFrame(
-    syncGanttRows
-  );
+  timeline.appendChild(inner);
 }
 
 
 /* =========================================================
- * WEEK HEADER
+ * MONTH SEGMENTS / MONTH BANDS
+ *
+ * 월별로 뒷배경 색을 번갈아 칠한다.
+ *   1월 흰색 / 2월 옅은 회백색 / 3월 흰색 / 4월 옅은 회백색 ...
+ * 확대해서 일부 기간만 보고 있어도 달마다 색은 그대로다.
  * ========================================================= */
 
-function renderWeekHeader(
-  inner,
-  totalDays,
-  visibleDays,
-  width
-) {
+/* 지금 보이는 기간과 겹치는 달들: [{ month, from, to }]
+   (from / to 는 그 해의 n번째 날, 0부터) */
+function monthSegments() {
 
-  const header =
-    document.createElement(
-      "div"
-    );
+  const yearStart = getYearStart();
 
-  header.className =
-    "week-header";
+  /* 자정 기준 날짜끼리의 차이이므로 반올림해서 하루 단위로 센다. */
+  const dayIndex = date =>
+    Math.round((date.getTime() - yearStart.getTime()) / 86400000);
 
+  const segments = [];
 
-  const weeks =
-    Math.ceil(
-      visibleDays / 7
-    );
+  for (let month = 0; month < 12; month++) {
 
+    const first = dayIndex(new Date(state.year, month, 1));
 
-  header.style.gridTemplateColumns =
-    `repeat(${weeks}, minmax(34px, 1fr))`;
+    const last = dayIndex(new Date(state.year, month + 1, 0));
 
+    const from = Math.max(first, state.rangeStart);
+    const to = Math.min(last, state.rangeEnd);
 
-  for (
-    let i = 0;
-    i < weeks;
-    i++
-  ) {
-
-    const absoluteDay =
-      state.rangeStart +
-      i * 7;
-
-
-    if (
-      absoluteDay >=
-      totalDays
-    ) {
-      break;
+    if (from <= to) {
+      segments.push({ month, from, to });
     }
-
-
-    const date =
-      new Date(
-        state.year,
-        0,
-        1
-      );
-
-
-    date.setDate(
-      date.getDate() +
-      absoluteDay
-    );
-
-
-    const end =
-      new Date(date);
-
-
-    end.setDate(
-      end.getDate() + 6
-    );
-
-
-    /*
-     * 연도 밖으로 넘어가는
-     * 주 헤더는 12/31까지만 의미가 있도록
-     * title을 조정한다.
-     */
-    const yearEnd =
-      getYearEnd();
-
-    if (end > yearEnd) {
-      end.setTime(
-        yearEnd.getTime()
-      );
-    }
-
-
-    const cell =
-      document.createElement(
-        "div"
-      );
-
-    cell.className =
-      "week-cell";
-
-
-    cell.textContent =
-      `${date.getMonth() + 1}/${date.getDate()}`;
-
-
-    cell.title =
-      `${dateKey(date)} ~ ${dateKey(end)}`;
-
-
-    header.appendChild(
-      cell
-    );
   }
 
+  return segments;
+}
 
-  inner.appendChild(
-    header
-  );
+
+function renderMonthBands(inner, dayWidth) {
+
+  const layer = document.createElement("div");
+
+  layer.className = "month-bands";
+
+  monthSegments().forEach(({ month, from, to }) => {
+
+    const band = document.createElement("div");
+
+    band.className =
+      "month-band" + (month % 2 === 1 ? " alt" : "");
+
+    band.style.left =
+      ((from - state.rangeStart) * dayWidth) + "px";
+
+    band.style.width =
+      ((to - from + 1) * dayWidth) + "px";
+
+    layer.appendChild(band);
+  });
+
+  inner.appendChild(layer);
+}
+
+
+/* =========================================================
+ * HEADER  (월 줄 + 주 줄)
+ *
+ * - 1행: 월. 항상 보인다.
+ * - 2행: 주 시작 날짜. 한 주 칸이 충분히 넓을 때만 보인다.
+ * 각 칸의 너비는 (칸의 일수 x 하루 너비)로 정확히 정해서
+ * 배경, 막대, 오늘 선과 어긋나지 않는다.
+ * ========================================================= */
+
+function renderWeekHeader(inner, visibleDays, dayWidth) {
+
+  const header = document.createElement("div");
+
+  header.className = "week-header";
+
+
+  /* 1행: 월 */
+  const monthRow = document.createElement("div");
+
+  monthRow.className = "month-row";
+
+  const monthColumns = [];
+
+  monthSegments().forEach(({ month, from, to }) => {
+
+    const width = (to - from + 1) * dayWidth;
+
+    const cell = document.createElement("div");
+
+    cell.className =
+      "month-cell" + (month % 2 === 1 ? " alt" : "");
+
+    cell.title =
+      `${state.year}-${String(month + 1).padStart(2, "0")}`;
+
+    /* 칸이 좁으면 '9월' 대신 '9', 더 좁으면 글자를 생략 */
+    cell.textContent =
+      width >= 40 ? `${month + 1}월`
+      : width >= 14 ? String(month + 1)
+      : "";
+
+    monthRow.appendChild(cell);
+
+    monthColumns.push(width + "px");
+  });
+
+  monthRow.style.gridTemplateColumns = monthColumns.join(" ");
+
+  header.appendChild(monthRow);
+
+
+  /* 2행: 주 시작 날짜. 칸이 너무 좁아지면 글자 없이 구분선만 남긴다.
+     (헤더 높이를 늘 같게 유지해서 오늘 선 · 월별 뒷배경 위치가 어긋나지 않는다) */
+  const showWeekLabels = dayWidth * 7 >= WEEK_LABEL_MIN_WIDTH;
+
+  const weekRow = document.createElement("div");
+
+  weekRow.className = "week-row" + (showWeekLabels ? "" : " compact");
+
+  const weekColumns = [];
+
+  for (let offset = 0; offset < visibleDays; offset += 7) {
+
+    const days = Math.min(7, visibleDays - offset);
+
+    const date = dateFromYearDay(state.rangeStart + offset);
+
+    const end = dateFromYearDay(state.rangeStart + offset + days - 1);
+
+    const cell = document.createElement("div");
+
+    cell.className = "week-cell";
+    cell.title = `${dateKey(date)} ~ ${dateKey(end)}`;
+
+    if (showWeekLabels) {
+      cell.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
+    }
+
+    weekRow.appendChild(cell);
+
+    weekColumns.push((days * dayWidth) + "px");
+  }
+
+  weekRow.style.gridTemplateColumns = weekColumns.join(" ");
+
+  header.appendChild(weekRow);
+
+  inner.appendChild(header);
 }
 
 
 /* =========================================================
  * TASK BAR
  *
- * 중요:
- *
- * 날짜가 여러 해에 걸쳐 있어도
- * 현재 선택한 연도에 맞춰 잘라서 표시한다.
- *
- * 예:
- *
- * 2025-12-20 ~ 2026-01-20
- *
- * 2025 화면:
- * 12/20 ~ 12/31
- *
- * 2026 화면:
- * 01/01 ~ 01/20
+ * 날짜가 여러 해에 걸쳐 있어도 현재 선택한 연도에 맞춰
+ * 잘라서 표시한다.
  * ========================================================= */
 
 function renderTaskBar(
   row,
   task,
   totalDays,
-  visibleDays
+  visibleDays,
+  rowHeight
 ) {
 
-  if (
-    !task.start ||
-    !task.end
-  ) {
+  if (!task.start || !task.end) {
     return;
   }
 
-
-  const start =
-    dateObj(task.start);
-
-  const end =
-    dateObj(task.end);
-
+  const start = dateObj(task.start);
+  const end = dateObj(task.end);
 
   if (!start || !end) {
     return;
   }
 
+  const yearStart = getYearStart();
+  const yearEnd = getYearEnd();
 
-  const yearStart =
-    getYearStart();
+  /* 현재 연도와 전혀 겹치지 않으면 표시하지 않는다. */
+  if (end < yearStart || start > yearEnd) {
+    return;
+  }
 
-  const yearEnd =
-    getYearEnd();
+  /* 현재 연도 안에서 잘라낸다. */
+  const visibleStartDate = start < yearStart ? yearStart : start;
+  const visibleEndDate = end > yearEnd ? yearEnd : end;
 
+  let startDay = dayOffsetFromYearStart(visibleStartDate);
+  let endDay = dayOffsetFromYearStart(visibleEndDate);
 
-  /*
-   * 현재 연도와 전혀 겹치지 않으면
-   * 표시하지 않는다.
-   */
+  /* 현재 확대 범위 안에서 다시 잘라낸다. */
   if (
-    end < yearStart ||
-    start > yearEnd
+    endDay < state.rangeStart ||
+    startDay > state.rangeEnd
   ) {
     return;
   }
 
-
-  /*
-   * 현재 연도 안에서 잘라낸다.
-   */
-  const visibleStartDate =
-    start < yearStart
-      ? yearStart
-      : start;
-
-
-  const visibleEndDate =
-    end > yearEnd
-      ? yearEnd
-      : end;
-
-
-  let startDay =
-    dayOffsetFromYearStart(
-      visibleStartDate
-    );
-
-
-  let endDay =
-    dayOffsetFromYearStart(
-      visibleEndDate
-    );
-
-
-  /*
-   * 현재 확대 범위 안에서 다시 잘라낸다.
-   */
-  if (
-    endDay <
-    state.rangeStart ||
-    startDay >
-    state.rangeEnd
-  ) {
-    return;
-  }
-
-
-  startDay =
-    Math.max(
-      startDay,
-      state.rangeStart
-    );
-
-
-  endDay =
-    Math.min(
-      endDay,
-      state.rangeEnd
-    );
-
+  startDay = Math.max(startDay, state.rangeStart);
+  endDay = Math.min(endDay, state.rangeEnd);
 
   const left =
-    (
-      startDay -
-      state.rangeStart
-    ) /
-    visibleDays *
-    100;
-
+    (startDay - state.rangeStart) / visibleDays * 100;
 
   const width =
-    (
-      endDay -
-      startDay +
-      1
-    ) /
-    visibleDays *
-    100;
+    (endDay - startDay + 1) / visibleDays * 100;
 
+  const bar = document.createElement("div");
 
-  const bar =
-    document.createElement(
-      "div"
-    );
+  bar.className = "task-bar";
 
-  bar.className =
-    "task-bar";
+  /* 막대(색상 박스)는 줄 높이를 그대로 채운다(위아래 여백 없음).
+     줄 사이 구분은 줄 자체의 아래쪽 테두리선이 대신한다. */
+  const h = rowHeight || 72;
 
+  bar.style.top = "0px";
+  bar.style.height = h + "px";
 
-  bar.style.left =
-    left + "%";
+  const color = validHex(task.color) || DEFAULT_COLOR;
 
-  bar.style.width =
-    width + "%";
+  if (isLightColor(color)) {
+    bar.classList.add("light");
+  }
 
+  bar.style.left = left + "%";
+  bar.style.width = width + "%";
+  bar.style.background = color;
 
-  bar.style.background =
-    task.color ||
-    "#3B82F6";
-
+  bar.title =
+    `${task.name}\n${task.start} ~ ${task.end}`;
 
   const progress =
-    Math.max(
-      0,
-      Math.min(
-        100,
-        Number(task.progress) || 0
-      )
-    );
-
+    Math.max(0, Math.min(100, Number(task.progress) || 0));
 
   bar.innerHTML = `
     <div
@@ -1192,23 +1459,14 @@ function renderTaskBar(
     </div>
   `;
 
+  bar.addEventListener("click", event => {
 
-  bar.addEventListener(
-    "click",
-    event => {
+    event.stopPropagation();
 
-      event.stopPropagation();
+    showTaskDetail(task.id);
+  });
 
-      showTaskDetail(
-        task.id
-      );
-    }
-  );
-
-
-  row.appendChild(
-    bar
-  );
+  row.appendChild(bar);
 }
 
 
@@ -1223,322 +1481,30 @@ function renderTodayLine(
   width
 ) {
 
-  const today =
-    new Date();
+  const today = new Date();
 
+  /* 현재 선택한 연도와 다르면 오늘 선을 그리지 않는다. */
+  if (today.getFullYear() !== state.year) {
+    return;
+  }
 
-  /*
-   * 현재 선택한 연도와 다르면
-   * 오늘 선을 그리지 않는다.
-   */
+  const todayDay = dayOfYear(today);
+
   if (
-    today.getFullYear() !==
-    state.year
+    todayDay < state.rangeStart ||
+    todayDay > state.rangeEnd
   ) {
     return;
   }
 
+  const line = document.createElement("div");
 
-  const todayDay =
-    dayOfYear(today);
-
-
-  if (
-    todayDay <
-    state.rangeStart ||
-    todayDay >
-    state.rangeEnd
-  ) {
-    return;
-  }
-
-
-  const line =
-    document.createElement(
-      "div"
-    );
-
-  line.className =
-    "today-line";
-
+  line.className = "today-line";
 
   line.style.left =
-    (
-      (
-        todayDay -
-        state.rangeStart
-      ) /
-      visibleDays *
-      100
-    ) + "%";
+    ((todayDay - state.rangeStart) / visibleDays * 100) + "%";
 
-
-  inner.appendChild(
-    line
-  );
-}
-
-
-/* =========================================================
- * LEFT / RIGHT ROW HEIGHT SYNC
- *
- * 왼쪽:
- *
- * task-header
- * category-label
- * task-card
- * category-label
- * task-card
- *
- * 오른쪽:
- *
- * week-header
- * timeline-category
- * timeline-task-row
- * timeline-category
- * timeline-task-row
- *
- * 순서대로 1:1 대응시킨다.
- * ========================================================= */
-
-function syncGanttRows() {
-
-  const left =
-    document.getElementById(
-      "taskColumn"
-    );
-
-  const timeline =
-    document.getElementById(
-      "timeline"
-    );
-
-  if (!left || !timeline) {
-    return;
-  }
-
-
-  const inner =
-    timeline.querySelector(
-      ".timeline-inner"
-    );
-
-  if (!inner) {
-    return;
-  }
-
-
-  /*
-   * Header
-   */
-  const leftHeader =
-    left.querySelector(
-      ".task-header"
-    );
-
-  const rightHeader =
-    inner.querySelector(
-      ".week-header"
-    );
-
-
-  if (
-    leftHeader &&
-    rightHeader
-  ) {
-
-    leftHeader.style.boxSizing =
-      "border-box";
-
-    rightHeader.style.boxSizing =
-      "border-box";
-
-
-    /*
-     * 기존 inline height 제거
-     * → 실제 높이를 다시 측정
-     */
-    leftHeader.style.height = "";
-    leftHeader.style.minHeight = "";
-    leftHeader.style.maxHeight = "";
-
-    rightHeader.style.height = "";
-    rightHeader.style.minHeight = "";
-    rightHeader.style.maxHeight = "";
-
-
-    const height =
-      Math.max(
-        leftHeader.getBoundingClientRect().height,
-        rightHeader.getBoundingClientRect().height
-      );
-
-
-    if (height > 0) {
-
-      [
-        leftHeader,
-        rightHeader
-      ].forEach(
-        element => {
-
-          element.style.height =
-            height + "px";
-
-          element.style.minHeight =
-            height + "px";
-
-          element.style.maxHeight =
-            height + "px";
-        }
-      );
-    }
-  }
-
-
-  /*
-   * 왼쪽 category/task
-   */
-  const leftRows =
-    [
-      ...left.children
-    ].filter(
-      element =>
-        element.classList.contains(
-          "category-label"
-        ) ||
-        element.classList.contains(
-          "task-card"
-        )
-    );
-
-
-  /*
-   * 오른쪽 category/task
-   */
-  const rightRows =
-    [
-      ...inner.children
-    ].filter(
-      element =>
-        element.classList.contains(
-          "timeline-category"
-        ) ||
-        element.classList.contains(
-          "timeline-task-row"
-        )
-    );
-
-
-  /*
-   * 개수가 다르면
-   * 억지로 맞추지 않는다.
-   */
-  if (
-    leftRows.length !==
-    rightRows.length
-  ) {
-
-    console.warn(
-      "Gantt row count mismatch:",
-      leftRows.length,
-      rightRows.length
-    );
-
-    return;
-  }
-
-
-  leftRows.forEach(
-    element => {
-
-      element.style.boxSizing =
-        "border-box";
-
-      element.style.verticalAlign =
-        "top";
-    }
-  );
-
-
-  rightRows.forEach(
-    element => {
-
-      element.style.boxSizing =
-        "border-box";
-
-      element.style.verticalAlign =
-        "top";
-    }
-  );
-
-
-  /*
-   * 각 행을 1:1로 정확히 맞춘다.
-   */
-  leftRows.forEach(
-    (leftRow, index) => {
-
-      const rightRow =
-        rightRows[index];
-
-      /*
-       * 먼저 기존 강제 높이를 제거한다.
-       */
-      leftRow.style.height = "";
-      leftRow.style.minHeight = "";
-      leftRow.style.maxHeight = "";
-
-      rightRow.style.height = "";
-      rightRow.style.minHeight = "";
-      rightRow.style.maxHeight = "";
-
-
-      const leftHeight =
-        leftRow.getBoundingClientRect().height;
-
-      const rightHeight =
-        rightRow.getBoundingClientRect().height;
-
-
-      /*
-       * 둘 중 큰 값을 사용한다.
-       *
-       * 한쪽 내용이 조금 더 높더라도
-       * 양쪽 모두 같은 높이가 된다.
-       */
-      const height =
-        Math.max(
-          leftHeight,
-          rightHeight
-        );
-
-
-      if (height <= 0) {
-        return;
-      }
-
-
-      leftRow.style.height =
-        height + "px";
-
-      leftRow.style.minHeight =
-        height + "px";
-
-      leftRow.style.maxHeight =
-        height + "px";
-
-
-      rightRow.style.height =
-        height + "px";
-
-      rightRow.style.minHeight =
-        height + "px";
-
-      rightRow.style.maxHeight =
-        height + "px";
-    }
-  );
+  inner.appendChild(line);
 }
 
 
@@ -1548,60 +1514,36 @@ function syncGanttRows() {
 
 function showTaskDetail(id) {
 
-  const task =
-    state.tasks.find(
-      item =>
-        item.id === id
-    );
-
+  const task = state.tasks.find(item => item.id === id);
 
   if (!task) {
     return;
   }
 
+  state.selectedTask = id;
 
-  state.selectedTask =
-    id;
-
-
-  const panel =
-    document.getElementById(
-      "detailPanel"
-    );
-
+  const panel = document.getElementById("detailPanel");
 
   if (!panel) {
     return;
   }
 
+  panel.classList.remove("hidden");
 
-  panel.classList.remove(
-    "hidden"
-  );
+  /* 색을 바꾸지 않으면 서버에 색을 보내지 않는다. (기본색 따르기 유지) */
+  panel.dataset.originalColor = validHex(task.color);
 
 
-  /*
-   * 카테고리가 삭제된 작업도
-   * 상세창에서 "기타"로 볼 수 있게 한다.
-   */
+  /* 카테고리가 삭제된 작업도 상세창에서 "기타"로 볼 수 있게 한다. */
   const categoryOptions = [
 
-    `
-      <option value="">
-        기타
-      </option>
-    `,
+    `<option value="">기타</option>`,
 
     ...state.categories.map(
       category => `
         <option
           value="${escapeAttr(category.id)}"
-          ${
-            category.id ===
-            task.categoryId
-              ? "selected"
-              : ""
-          }
+          ${category.id === task.categoryId ? "selected" : ""}
         >
           ${escapeHtml(category.name)}
         </option>
@@ -1615,16 +1557,13 @@ function showTaskDetail(id) {
 
     <div class="detail-title">
 
-      <h2>
-        ${escapeHtml(task.name)}
-      </h2>
+      <h2>${escapeHtml(task.name)}</h2>
 
       <button
         id="closeDetail"
         type="button"
-      >
-        ×
-      </button>
+        aria-label="닫기"
+      >×</button>
 
     </div>
 
@@ -1632,60 +1571,27 @@ function showTaskDetail(id) {
     <div class="detail-grid">
 
       <div class="detail-item">
-
         <span>작업명</span>
-
-        <input
-          id="detailName"
-          value="${escapeAttr(task.name)}"
-        >
-
+        <input id="detailName" value="${escapeAttr(task.name)}">
       </div>
 
-
       <div class="detail-item">
-
         <span>카테고리</span>
-
-        <select
-          id="detailCategory"
-        >
-          ${categoryOptions}
-        </select>
-
+        <select id="detailCategory">${categoryOptions}</select>
       </div>
 
-
       <div class="detail-item">
-
         <span>시작일</span>
-
-        <input
-          id="detailStart"
-          type="date"
-          value="${escapeAttr(task.start)}"
-        >
-
+        <input id="detailStart" type="date" value="${escapeAttr(task.start)}">
       </div>
 
-
       <div class="detail-item">
-
         <span>종료일</span>
-
-        <input
-          id="detailEnd"
-          type="date"
-          value="${escapeAttr(task.end)}"
-        >
-
+        <input id="detailEnd" type="date" value="${escapeAttr(task.end)}">
       </div>
 
-
       <div class="detail-item">
-
         <span>진행률</span>
-
         <input
           id="detailProgress"
           type="number"
@@ -1693,126 +1599,73 @@ function showTaskDetail(id) {
           max="100"
           value="${Number(task.progress) || 0}"
         >
-
       </div>
 
-
       <div class="detail-item">
-
         <span>막대 색상</span>
-
         <input
           id="detailColor"
           type="color"
-          value="${escapeAttr(
-            task.color || "#3B82F6"
-          )}"
+          value="${escapeAttr(validHex(task.color) || DEFAULT_COLOR)}"
         >
-
       </div>
 
-
       <div class="detail-item">
-
         <span>대상처</span>
-
-        <input
-          id="detailTarget"
-          value="${escapeAttr(task.target)}"
-        >
-
+        <input id="detailTarget" value="${escapeAttr(task.target)}">
       </div>
 
-
       <div class="detail-item">
-
         <span>담당자</span>
-
-        <input
-          id="detailOwner"
-          value="${escapeAttr(task.owner)}"
-        >
-
+        <input id="detailOwner" value="${escapeAttr(task.owner)}">
       </div>
 
     </div>
 
 
     <div class="detail-memo">
-
       <span>메모</span>
-
-      <textarea
-        id="detailMemo"
-      >${escapeHtml(task.memo)}</textarea>
-
+      <textarea id="detailMemo">${escapeHtml(task.memo)}</textarea>
     </div>
 
 
     <div class="detail-actions">
 
-      <button
-        id="deleteTaskBtn"
-        type="button"
-      >
-        삭제
-      </button>
+      <button id="deleteTaskBtn" type="button">삭제</button>
 
-      <button
-        id="saveDetailBtn"
-        class="primary"
-        type="button"
-      >
-        저장
-      </button>
+      <button id="saveDetailBtn" class="primary" type="button">저장</button>
 
     </div>
 
   `;
 
 
-  const closeButton =
-    document.getElementById(
-      "closeDetail"
-    );
+  const closeButton = document.getElementById("closeDetail");
 
   if (closeButton) {
-    closeButton.onclick =
-      () => {
-
-        panel.classList.add(
-          "hidden"
-        );
-
-      };
+    closeButton.onclick = () => {
+      panel.classList.add("hidden");
+    };
   }
 
-
-  const saveButton =
-    document.getElementById(
-      "saveDetailBtn"
-    );
+  const saveButton = document.getElementById("saveDetailBtn");
 
   if (saveButton) {
-    saveButton.onclick =
-      () =>
-        saveTaskDetail(
-          task.id
-        );
+    saveButton.onclick = () => saveTaskDetail(task.id);
   }
 
-
-  const deleteButton =
-    document.getElementById(
-      "deleteTaskBtn"
-    );
+  const deleteButton = document.getElementById("deleteTaskBtn");
 
   if (deleteButton) {
-    deleteButton.onclick =
-      () =>
-        deleteTask(
-          task.id
-        );
+    deleteButton.onclick = () => deleteTask(task.id);
+  }
+
+  /* 화면 아래쪽에 열리므로 보이는 위치로 스크롤한다. */
+  if (typeof panel.scrollIntoView === "function") {
+    panel.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest"
+    });
   }
 }
 
@@ -1823,120 +1676,77 @@ function showTaskDetail(id) {
 
 async function saveTaskDetail(id) {
 
-  try {
+  const panel = document.getElementById("detailPanel");
 
-    const data = {
+  const button = document.getElementById("saveDetailBtn");
 
-      id,
+  const data = {
 
-      name:
-        document.getElementById(
-          "detailName"
-        ).value.trim(),
+    id,
 
-      categoryId:
-        document.getElementById(
-          "detailCategory"
-        ).value,
+    name: document.getElementById("detailName").value.trim(),
 
-      start:
-        document.getElementById(
-          "detailStart"
-        ).value,
+    categoryId: document.getElementById("detailCategory").value,
 
-      end:
-        document.getElementById(
-          "detailEnd"
-        ).value,
+    start: document.getElementById("detailStart").value,
 
-      progress:
-        document.getElementById(
-          "detailProgress"
-        ).value,
+    end: document.getElementById("detailEnd").value,
 
-      color:
-        document.getElementById(
-          "detailColor"
-        ).value,
+    progress: document.getElementById("detailProgress").value,
 
-      memo:
-        document.getElementById(
-          "detailMemo"
-        ).value,
+    memo: document.getElementById("detailMemo").value,
 
-      target:
-        document.getElementById(
-          "detailTarget"
-        ).value,
+    target: document.getElementById("detailTarget").value,
 
-      owner:
-        document.getElementById(
-          "detailOwner"
-        ).value
-    };
+    owner: document.getElementById("detailOwner").value
+  };
 
 
-    if (!data.name) {
+  /* 색을 바꿨을 때만 보낸다. */
+  const color = document.getElementById("detailColor").value;
 
-      alert(
-        "작업명을 입력해주세요."
-      );
-
-      return;
-    }
-
-
-    if (
-      !data.start ||
-      !data.end
-    ) {
-
-      alert(
-        "시작일과 종료일을 입력해주세요."
-      );
-
-      return;
-    }
-
-
-    if (
-      data.start >
-      data.end
-    ) {
-
-      alert(
-        "종료일은 시작일보다 빠를 수 없습니다."
-      );
-
-      return;
-    }
-
-
-    await apiPost(
-      "update",
-      {
-        data
-      }
-    );
-
-
-    await loadData();
-
-
-    /*
-     * 삭제/수정 후에도
-     * 상세창을 다시 보여준다.
-     */
-    showTaskDetail(id);
-
-
-  } catch (error) {
-
-    alert(
-      "저장 실패\n" +
-      error.message
-    );
+  if (
+    color.toLowerCase() !==
+    ((panel && panel.dataset.originalColor) || "")
+  ) {
+    data.color = color;
   }
+
+
+  if (!data.name) {
+    alert("작업명을 입력해주세요.");
+    return;
+  }
+
+  if (!data.start || !data.end) {
+    alert("시작일과 종료일을 입력해주세요.");
+    return;
+  }
+
+  if (data.start > data.end) {
+    alert("종료일은 시작일보다 빠를 수 없습니다.");
+    return;
+  }
+
+
+  await withBusy(button, "저장 중…", async () => {
+
+    try {
+
+      await apiPost("update", { data });
+
+      await loadData(false);
+
+      /* 수정 후에도 상세창을 다시 보여준다. */
+      showTaskDetail(id);
+
+      showToast("저장했습니다.");
+
+    } catch (error) {
+
+      alert("저장 실패\n" + error.message);
+    }
+  });
 }
 
 
@@ -1946,140 +1756,91 @@ async function saveTaskDetail(id) {
 
 async function deleteTask(id) {
 
-  if (
-    !confirm(
-      "이 작업을 삭제할까요?"
-    )
-  ) {
+  if (!confirm("이 작업을 삭제할까요?")) {
     return;
   }
 
+  const button = document.getElementById("deleteTaskBtn");
 
-  try {
+  await withBusy(button, "삭제 중…", async () => {
 
-    await apiPost(
-      "delete",
-      {
-        id
+    try {
+
+      await apiPost("delete", { id });
+
+      state.selectedTask = null;
+
+      const panel = document.getElementById("detailPanel");
+
+      if (panel) {
+        panel.classList.add("hidden");
       }
-    );
 
+      await loadData(false);
 
-    state.selectedTask =
-      null;
+      showToast("삭제했습니다.");
 
+    } catch (error) {
 
-    const panel =
-      document.getElementById(
-        "detailPanel"
-      );
-
-
-    if (panel) {
-      panel.classList.add(
-        "hidden"
-      );
+      alert("삭제 실패\n" + error.message);
     }
-
-
-    await loadData();
-
-
-  } catch (error) {
-
-    alert(
-      "삭제 실패\n" +
-      error.message
-    );
-  }
+  });
 }
 
 
 /* =========================================================
  * DELETE CATEGORY
  *
- * 백엔드의 deleteCategory가
- * 카테고리 행만 삭제하므로
- * 해당 카테고리의 작업은 삭제되지 않는다.
- *
- * → 이후 화면에서는 "기타"로 표시된다.
+ * 카테고리 행만 삭제된다. 그 카테고리의 작업은 삭제되지 않고
+ * 이후 화면에서 "기타"로 표시된다.
  * ========================================================= */
 
-async function deleteCategory(
-  id,
-  name
-) {
+async function deleteCategory(id, name) {
 
   if (!id) {
     return;
   }
 
-
-  const confirmed =
-    confirm(
-      `"${name}" 카테고리를 삭제할까요?\n\n` +
-      "카테고리에 속해 있던 작업은 삭제되지 않고 " +
-      "'기타'로 남습니다."
-    );
-
+  const confirmed = confirm(
+    `"${name}" 카테고리를 삭제할까요?\n\n` +
+    "카테고리에 속해 있던 작업은 삭제되지 않고 " +
+    "'기타'로 남습니다."
+  );
 
   if (!confirmed) {
     return;
   }
 
-
   try {
 
-    await apiPost(
-      "deleteCategory",
-      {
-        id
-      }
-    );
+    showToast("삭제 중…", false, 0);
 
+    await apiPost("deleteCategory", { id });
 
-    /*
-     * 삭제된 카테고리를 선택 중이었다면
-     * 상세창을 닫는다.
-     */
+    /* 삭제된 카테고리의 작업을 보고 있었다면 상세창을 닫는다. */
     const selected =
-      state.tasks.find(
-        task =>
-          task.id ===
-          state.selectedTask
-      );
+      state.tasks.find(task => task.id === state.selectedTask);
 
+    if (selected && selected.categoryId === id) {
 
-    if (
-      selected &&
-      selected.categoryId === id
-    ) {
-
-      const panel =
-        document.getElementById(
-          "detailPanel"
-        );
+      const panel = document.getElementById("detailPanel");
 
       if (panel) {
-        panel.classList.add(
-          "hidden"
-        );
+        panel.classList.add("hidden");
       }
 
-      state.selectedTask =
-        null;
+      state.selectedTask = null;
     }
 
+    await loadData(false);
 
-    await loadData();
-
+    showToast("카테고리를 삭제했습니다.");
 
   } catch (error) {
 
-    alert(
-      "카테고리 삭제 실패\n" +
-      error.message
-    );
+    hideToast();
+
+    alert("카테고리 삭제 실패\n" + error.message);
   }
 }
 
@@ -2088,28 +1849,56 @@ async function deleteCategory(
  * ADD TASK
  * ========================================================= */
 
+function setFieldValue(id, value) {
+
+  const element = document.getElementById(id);
+
+  if (element) {
+    element.value = value;
+  }
+}
+
+
+/* 선택된 카테고리의 기본색 (없으면 기본 파랑) */
+function categoryColorOf(categoryId) {
+
+  const category =
+    state.categories.find(item => item.id === categoryId);
+
+  return (category && validHex(category.color)) || DEFAULT_COLOR;
+}
+
+
+/* 색을 직접 고르지 않았다면 색 입력칸이 카테고리 기본색을 미리 보여 준다. */
+function syncTaskColor() {
+
+  const colorInput = document.getElementById("taskColor");
+  const categorySelect = document.getElementById("taskCategory");
+
+  if (!colorInput || !categorySelect) {
+    return;
+  }
+
+  if (colorInput.dataset.touched === "1") {
+    return;
+  }
+
+  colorInput.value = categoryColorOf(categorySelect.value);
+}
+
+
 function openTaskModal() {
 
-  const select =
-    document.getElementById(
-      "taskCategory"
-    );
-
+  const select = document.getElementById("taskCategory");
 
   if (select) {
 
     select.innerHTML =
-      `
-        <option value="">
-          기타
-        </option>
-      ` +
+      `<option value="">기타</option>` +
       state.categories
         .map(
           category => `
-            <option
-              value="${escapeAttr(category.id)}"
-            >
+            <option value="${escapeAttr(category.id)}">
               ${escapeHtml(category.name)}
             </option>
           `
@@ -2117,562 +1906,770 @@ function openTaskModal() {
         .join("");
   }
 
+  const todayString = dateKey(new Date());
 
-  const today =
-    new Date();
+  setFieldValue("taskStart", todayString);
+  setFieldValue("taskEnd", todayString);
+  setFieldValue("taskName", "");
+  setFieldValue("taskProgress", 0);
+  setFieldValue("taskMemo", "");
+  setFieldValue("taskTarget", "");
+  setFieldValue("taskOwner", "");
 
-  const todayString =
-    dateKey(today);
+  const colorInput = document.getElementById("taskColor");
 
-
-  const taskStart =
-    document.getElementById(
-      "taskStart"
-    );
-
-  if (taskStart) {
-    taskStart.value =
-      todayString;
+  if (colorInput) {
+    colorInput.dataset.touched = "0";
   }
 
+  syncTaskColor();
 
-  const taskEnd =
-    document.getElementById(
-      "taskEnd"
-    );
-
-  if (taskEnd) {
-    taskEnd.value =
-      todayString;
-  }
-
-
-  const taskName =
-    document.getElementById(
-      "taskName"
-    );
-
-  if (taskName) {
-    taskName.value = "";
-  }
-
-
-  const taskProgress =
-    document.getElementById(
-      "taskProgress"
-    );
-
-  if (taskProgress) {
-    taskProgress.value = 0;
-  }
-
-
-  const taskMemo =
-    document.getElementById(
-      "taskMemo"
-    );
-
-  if (taskMemo) {
-    taskMemo.value = "";
-  }
-
-
-  const taskTarget =
-    document.getElementById(
-      "taskTarget"
-    );
-
-  if (taskTarget) {
-    taskTarget.value = "";
-  }
-
-
-  const taskOwner =
-    document.getElementById(
-      "taskOwner"
-    );
-
-  if (taskOwner) {
-    taskOwner.value = "";
-  }
-
-
-  const modal =
-    document.getElementById(
-      "taskModal"
-    );
+  const modal = document.getElementById("taskModal");
 
   if (modal) {
-    modal.classList.remove(
-      "hidden"
-    );
+    modal.classList.remove("hidden");
   }
 }
 
 
 async function saveNewTask() {
 
-  const name =
-    document.getElementById(
-      "taskName"
-    ).value.trim();
-
+  const name = document.getElementById("taskName").value.trim();
 
   if (!name) {
-
-    alert(
-      "작업명을 입력해주세요."
-    );
-
+    alert("작업명을 입력해주세요.");
     return;
   }
 
+  const start = document.getElementById("taskStart").value;
+  const end = document.getElementById("taskEnd").value;
 
-  const start =
-    document.getElementById(
-      "taskStart"
-    ).value;
-
-
-  const end =
-    document.getElementById(
-      "taskEnd"
-    ).value;
-
-
-  if (
-    !start ||
-    !end
-  ) {
-
-    alert(
-      "시작일과 종료일을 입력해주세요."
-    );
-
+  if (!start || !end) {
+    alert("시작일과 종료일을 입력해주세요.");
     return;
   }
 
-
-  if (
-    start > end
-  ) {
-
-    alert(
-      "종료일은 시작일보다 빠를 수 없습니다."
-    );
-
+  if (start > end) {
+    alert("종료일은 시작일보다 빠를 수 없습니다.");
     return;
   }
 
+  const colorInput = document.getElementById("taskColor");
 
-  try {
+  /* 색을 직접 고르지 않았다면 빈 값을 보내 카테고리 기본색을 따르게 한다. */
+  const color =
+    colorInput && colorInput.dataset.touched === "1"
+      ? colorInput.value
+      : "";
 
-    await apiPost(
-      "create",
-      {
+  const button = document.getElementById("saveTaskBtn");
+
+  await withBusy(button, "저장 중…", async () => {
+
+    try {
+
+      await apiPost("create", {
         data: {
 
           name,
 
-          categoryId:
-            document.getElementById(
-              "taskCategory"
-            ).value,
+          categoryId: document.getElementById("taskCategory").value,
 
           start,
 
           end,
 
-          progress:
-            document.getElementById(
-              "taskProgress"
-            ).value,
+          progress: document.getElementById("taskProgress").value,
 
-          color:
-            document.getElementById(
-              "taskColor"
-            ).value,
+          color,
 
-          memo:
-            document.getElementById(
-              "taskMemo"
-            ).value,
+          memo: document.getElementById("taskMemo").value,
 
-          target:
-            document.getElementById(
-              "taskTarget"
-            ).value,
+          target: document.getElementById("taskTarget").value,
 
-          owner:
-            document.getElementById(
-              "taskOwner"
-            ).value
+          owner: document.getElementById("taskOwner").value
         }
-      }
-    );
+      });
 
+      closeModal("taskModal");
 
-    closeModal(
-      "taskModal"
-    );
+      await loadData(false);
 
+      showToast("작업을 추가했습니다.");
 
-    await loadData();
+    } catch (error) {
 
-
-  } catch (error) {
-
-    alert(
-      "작업 추가 실패\n" +
-      error.message
-    );
-  }
+      alert("작업 추가 실패\n" + error.message);
+    }
+  });
 }
 
 
 /* =========================================================
- * ADD CATEGORY
+ * ADD / EDIT CATEGORY
  * ========================================================= */
 
-function openCategoryModal() {
+/* categoryId 가 있으면 수정, 없으면 새로 추가 */
+function openCategoryModal(categoryId) {
 
-  const name =
-    document.getElementById(
-      "categoryName"
-    );
+  const category =
+    categoryId
+      ? state.categories.find(item => item.id === categoryId)
+      : null;
 
-  if (name) {
-    name.value = "";
+  setFieldValue("categoryId", category ? category.id : "");
+  setFieldValue("categoryName", category ? category.name : "");
+  setFieldValue(
+    "categoryColor",
+    category ? (validHex(category.color) || DEFAULT_COLOR) : DEFAULT_COLOR
+  );
+
+  const title = document.getElementById("categoryModalTitle");
+
+  if (title) {
+    title.textContent = category ? "카테고리 수정" : "카테고리 추가";
   }
 
-
-  const modal =
-    document.getElementById(
-      "categoryModal"
-    );
+  const modal = document.getElementById("categoryModal");
 
   if (modal) {
-    modal.classList.remove(
-      "hidden"
-    );
+    modal.classList.remove("hidden");
   }
 }
 
 
-async function saveNewCategory() {
+async function saveCategory() {
 
-  const name =
-    document.getElementById(
-      "categoryName"
-    ).value.trim();
+  const idElement = document.getElementById("categoryId");
 
+  const id = idElement ? idElement.value : "";
+
+  const name = document.getElementById("categoryName").value.trim();
 
   if (!name) {
+    alert("카테고리명을 입력해주세요.");
+    return;
+  }
 
-    alert(
-      "카테고리명을 입력해주세요."
-    );
+  const color = document.getElementById("categoryColor").value;
 
+  const button = document.getElementById("saveCategoryBtn");
+
+  await withBusy(button, "저장 중…", async () => {
+
+    try {
+
+      if (id) {
+        await apiPost("updateCategory", { data: { id, name, color } });
+      } else {
+        await apiPost("createCategory", { data: { name, color } });
+      }
+
+      closeModal("categoryModal");
+
+      await loadData(false);
+
+      showToast(id ? "카테고리를 수정했습니다." : "카테고리를 추가했습니다.");
+
+    } catch (error) {
+
+      alert("카테고리 저장 실패\n" + error.message);
+    }
+  });
+}
+
+
+/* =========================================================
+ * DRAG & DROP  (순서 변경 + 카테고리 이동)
+ *
+ * - 카드 왼쪽의 손잡이(⋮⋮)를 눌러 끈다. (마우스/터치 공통)
+ * - 카테고리와 상관없이 어디로든 옮길 수 있다.
+ *     · 다른 카드의 위쪽 절반에 가져가면 그 앞에, 아래쪽 절반이면 그 뒤에 들어간다.
+ *     · 카테고리 이름 줄에 가져가면 그 카테고리의 맨 위에 들어간다.
+ *       (작업이 없는 카테고리도 여기로 옮길 수 있다)
+ * - 놓으면 그 자리의 카테고리로 작업의 카테고리가 바뀌고 저장된다.
+ *     · 색을 따로 지정하지 않은(기본색인) 작업은 새 카테고리 색을 따른다.
+ *     · 직접 고른 색은 그대로 유지한다.
+ * - 손잡이에만 touch-action:none 이 걸려 있어서
+ *   카드 나머지 부분에서는 폰에서 평소처럼 스크롤된다.
+ * - 끄는 동안에는 화면을 다시 그리지 않고 요소만 옮긴다.
+ *   (요소가 교체되면 포인터 이벤트가 끊기기 때문)
+ * ========================================================= */
+
+function timelineRowOf(id) {
+
+  const rows = document.querySelectorAll(".timeline-task-row");
+
+  return [...rows].find(row => row.dataset.id === id) || null;
+}
+
+
+/* 왼쪽의 카테고리 행에 대응하는 오른쪽(타임라인) 카테고리 행 */
+function timelineCategoryRowOf(label) {
+
+  const labels =
+    [...document.querySelectorAll("#taskColumn .category-label")];
+
+  const rows =
+    document.querySelectorAll(".timeline-inner .timeline-category");
+
+  return rows[labels.indexOf(label)] || null;
+}
+
+
+/* 카드 바로 위쪽에 있는 카테고리 행 = 카드가 속한 카테고리 */
+function groupLabelOf(card) {
+
+  let element = card.previousElementSibling;
+
+  while (
+    element &&
+    !element.classList.contains("category-label")
+  ) {
+    element = element.previousElementSibling;
+  }
+
+  return element;
+}
+
+
+function groupIdOfCard(card) {
+
+  const label = groupLabelOf(card);
+
+  return label ? (label.dataset.group || "") : "";
+}
+
+
+/* 지금 놓으면 들어가게 될 카테고리를 강조한다. */
+function highlightDropGroup(card) {
+
+  document
+    .querySelectorAll(".category-label.drag-over")
+    .forEach(element => element.classList.remove("drag-over"));
+
+  const label = groupLabelOf(card);
+
+  if (label) {
+    label.classList.add("drag-over");
+  }
+}
+
+
+function setupDrag() {
+
+  const column = document.getElementById("taskColumn");
+
+  if (!column) {
+    return;
+  }
+
+  column.addEventListener("pointerdown", event => {
+
+    const handle =
+      event.target.closest && event.target.closest(".drag-handle");
+
+    if (!handle) {
+      return;
+    }
+
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    const card = handle.closest(".task-card");
+
+    if (card) {
+
+      event.preventDefault();
+
+      startDrag(card, handle, event);
+
+      return;
+    }
+
+    const label = handle.closest(".category-label");
+
+    if (label && label.dataset.group) {
+
+      event.preventDefault();
+
+      startCategoryDrag(label, handle, event);
+    }
+  });
+}
+
+
+/* =========================================================
+ * CATEGORY DRAG  (카테고리 순서 변경 - 하위 작업은 묶여서 함께 이동)
+ *
+ * 개별 작업처럼 화면의 요소를 직접 옮기지는 않는다. 카테고리와 그
+ * 하위 작업들을 화면에서 하나씩 옮기려면 복잡해지므로, 끄는 동안은
+ * "여기에 놓으면 이 카테고리 앞/뒤로 들어간다"만 강조해서 보여주고,
+ * 실제 순서 변경은 손을 뗄 때 한 번에 반영한다(카테고리 몇 개뿐이라
+ * 다시 그려도 충분히 빠르다). 다른 카테고리의 작업 목록 안으로는
+ * 들어가지 않는다 - 항상 카테고리 단위로만 자리를 바꾼다.
+ * ========================================================= */
+
+function categoryLabelElements() {
+
+  return [
+    ...document.querySelectorAll("#taskColumn .rows-inner > .category-label")
+  ];
+}
+
+
+/* 그 카테고리 이름 줄부터, 다음 카테고리 줄 바로 앞까지(그 카테고리의
+   작업들 전체)를 하나의 블록으로 보고 위/아래 경계를 구한다. */
+function categoryBlockBounds(labelEl) {
+
+  const top = labelEl.getBoundingClientRect().top;
+
+  let next = labelEl.nextElementSibling;
+
+  while (next && !next.classList.contains("category-label")) {
+    next = next.nextElementSibling;
+  }
+
+  const bottom = next
+    ? next.getBoundingClientRect().top
+    : document.querySelector("#taskColumn .rows-inner").getBoundingClientRect().bottom;
+
+  return { top, bottom };
+}
+
+
+function startCategoryDrag(labelEl, handle, startEvent) {
+
+  const groupId = labelEl.dataset.group;
+
+  let targetIndex = state.categories.findIndex(c => c.id === groupId);
+
+  let moved = false;
+
+  labelEl.classList.add("dragging");
+
+  document.body.classList.add("is-dragging");
+
+  try {
+    handle.setPointerCapture(startEvent.pointerId);
+  } catch (error) {
+    // 일부 브라우저에서는 capture가 실패할 수 있다.
+  }
+
+
+  function clearHighlight() {
+
+    document
+      .querySelectorAll(".category-label.drag-over")
+      .forEach(element => element.classList.remove("drag-over"));
+  }
+
+
+  /* 지금 포인터 아래 위치라면, 카테고리 목록에서 몇 번째 자리에
+     들어가게 될지(0 ~ 카테고리 개수) 계산한다. 해당하는 카테고리가
+     없으면(내 카테고리 위이거나 목록 밖이면) null. */
+  function targetAt(x, y) {
+
+    const column = document.getElementById("taskColumn");
+
+    const el = document.elementFromPoint(x, y);
+
+    if (!el || !column || !column.contains(el)) {
+      return null;
+    }
+
+    let label = el.closest(".category-label");
+
+    if (!label) {
+
+      const card = el.closest(".task-card");
+
+      if (card) {
+        label = groupLabelOf(card);
+      }
+    }
+
+    if (!label || label === labelEl || !label.dataset.group) {
+      return null;
+    }
+
+    const bounds = categoryBlockBounds(label);
+    const mid = (bounds.top + bounds.bottom) / 2;
+    const idx = state.categories.findIndex(c => c.id === label.dataset.group);
+
+    return y < mid ? idx : idx + 1;
+  }
+
+
+  function onMove(event) {
+
+    const idx = targetAt(event.clientX, event.clientY);
+
+    clearHighlight();
+
+    if (idx === null) {
+      return;
+    }
+
+    targetIndex = idx;
+    moved = true;
+
+    /* 그 자리에 실제로 놓일 때 바로 위/아래가 되는 카테고리를
+       강조해서, 어디에 들어갈지 미리 보여준다. */
+    const labels = categoryLabelElements();
+    const after = labels[idx - 1];
+    const before = labels[idx] && labels[idx] !== labelEl ? labels[idx] : null;
+
+    if (before) {
+      before.classList.add("drag-over");
+    } else if (after && after !== labelEl) {
+      after.classList.add("drag-over");
+    }
+  }
+
+
+  function onEnd() {
+
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onEnd);
+    window.removeEventListener("pointercancel", onEnd);
+
+    labelEl.classList.remove("dragging");
+    document.body.classList.remove("is-dragging");
+    clearHighlight();
+
+    try {
+      handle.releasePointerCapture(startEvent.pointerId);
+    } catch (error) {
+      // 무시
+    }
+
+    if (moved) {
+      saveCategoryOrder(groupId, targetIndex);
+    }
+  }
+
+
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onEnd);
+  window.addEventListener("pointercancel", onEnd);
+}
+
+
+async function saveCategoryOrder(groupId, targetIndex) {
+
+  const from = state.categories.findIndex(c => c.id === groupId);
+
+  if (from === -1) {
+    return;
+  }
+
+  const [moved] = state.categories.splice(from, 1);
+
+  let to = targetIndex;
+
+  if (to > from) {
+    to -= 1; // 자기 자신을 먼저 뺐으므로 뒤쪽 목표 지점은 하나 당겨진다.
+  }
+
+  to = Math.max(0, Math.min(to, state.categories.length));
+
+  state.categories.splice(to, 0, moved);
+
+  renderTaskColumn();
+  renderTimeline();
+
+  try {
+
+    await apiPost("reorderCategories", {
+      ids: state.categories.map(c => c.id)
+    });
+
+    showToast("카테고리 순서를 저장했습니다.");
+
+  } catch (error) {
+
+    alert("순서 저장 실패\n" + error.message);
+    await loadData(false);
+  }
+}
+
+
+function startDrag(card, handle, startEvent) {
+
+  const id = card.dataset.id;
+
+  const originalGroup = groupIdOfCard(card);
+
+  let moved = false;
+
+  let lastX = startEvent.clientX;
+  let lastY = startEvent.clientY;
+
+  state.draggingTaskId = id;
+
+  card.classList.add("dragging");
+
+  document.body.classList.add("is-dragging");
+
+  highlightDropGroup(card);
+
+  try {
+    handle.setPointerCapture(startEvent.pointerId);
+  } catch (error) {
+    // 일부 브라우저에서는 capture가 실패할 수 있다.
+  }
+
+
+  /* target 카드의 앞/뒤로 옮긴다. (이미 그 자리면 아무것도 안 함) */
+  function placeNextTo(target, after) {
+
+    const alreadyThere =
+      after
+        ? target.nextElementSibling === card
+        : target.previousElementSibling === card;
+
+    if (alreadyThere) {
+      return;
+    }
+
+    const row = timelineRowOf(id);
+    const targetRow = timelineRowOf(target.dataset.id);
+
+    if (after) {
+      target.after(card);
+
+      if (row && targetRow) {
+        targetRow.after(row);
+      }
+
+    } else {
+      target.before(card);
+
+      if (row && targetRow) {
+        targetRow.before(row);
+      }
+    }
+
+    moved = true;
+
+    highlightDropGroup(card);
+  }
+
+
+  /* 카테고리 행 바로 아래(그 카테고리의 맨 위)로 옮긴다. */
+  function placeUnder(label) {
+
+    if (label.nextElementSibling === card) {
+      return;
+    }
+
+    const row = timelineRowOf(id);
+    const categoryRow = timelineCategoryRowOf(label);
+
+    label.after(card);
+
+    if (row && categoryRow) {
+      categoryRow.after(row);
+    }
+
+    moved = true;
+
+    highlightDropGroup(card);
+  }
+
+
+  /* 포인터 아래에 무엇이 있는지 보고 카드를 옮긴다. */
+  function evaluate(x, y) {
+
+    const element = document.elementFromPoint(x, y);
+
+    const column = document.getElementById("taskColumn");
+
+    if (
+      !element ||
+      !element.closest ||
+      !column ||
+      !column.contains(element)
+    ) {
+      return;
+    }
+
+    const target = element.closest(".task-card");
+
+    if (target) {
+
+      if (target === card) {
+        return;
+      }
+
+      /* 카드의 위쪽 절반이면 그 앞, 아래쪽 절반이면 그 뒤에 들어간다.
+         (같은 카테고리든 다른 카테고리든 같은 규칙) */
+      const rect = target.getBoundingClientRect();
+
+      const after = y > rect.top + rect.height / 2;
+
+      placeNextTo(target, after);
+
+      return;
+    }
+
+    const label = element.closest(".category-label");
+
+    if (label) {
+      placeUnder(label);
+    }
+  }
+
+
+  function onMove(event) {
+
+    lastX = event.clientX;
+    lastY = event.clientY;
+
+    evaluate(lastX, lastY);
+  }
+
+
+  /* 화면 위/아래 가장자리에 가져가면 페이지가 스크롤된다. */
+  const scroller = setInterval(() => {
+
+    const edge = 70;
+
+    if (lastY < edge) {
+      window.scrollBy(0, -14);
+      evaluate(lastX, lastY);
+
+    } else if (lastY > window.innerHeight - edge) {
+      window.scrollBy(0, 14);
+      evaluate(lastX, lastY);
+    }
+
+  }, 16);
+
+
+  async function onEnd() {
+
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onEnd);
+    window.removeEventListener("pointercancel", onEnd);
+
+    clearInterval(scroller);
+
+    card.classList.remove("dragging");
+
+    document.body.classList.remove("is-dragging");
+
+    document
+      .querySelectorAll(".category-label.drag-over")
+      .forEach(element => element.classList.remove("drag-over"));
+
+    try {
+      handle.releasePointerCapture(startEvent.pointerId);
+    } catch (error) {
+      // 무시
+    }
+
+    if (moved) {
+      await saveDrop(card, id, originalGroup);
+    }
+
+    /* 손을 뗀 직후의 click 이 상세창을 열지 않도록 잠깐 유지 */
+    setTimeout(() => {
+      state.draggingTaskId = null;
+    }, 100);
+  }
+
+
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onEnd);
+  window.addEventListener("pointercancel", onEnd);
+}
+
+
+/* 화면에서 바뀐 순서·카테고리를 state 에 반영하고 서버에 저장한다. */
+async function saveDrop(card, id, originalGroup) {
+
+  const newGroup = groupIdOfCard(card);
+
+  const changedCategory = newGroup !== originalGroup;
+
+  const task = state.tasks.find(item => item.id === id);
+
+  if (!task) {
     return;
   }
 
 
-  const color =
-    document.getElementById(
-      "categoryColor"
-    ).value;
+  /* 카테고리가 바뀔 때 서버에 보낼 값 */
+  const updateData = { id, categoryId: newGroup };
+
+  /* 색이 옛 카테고리의 기본색과 같으면 '따로 고른 색'이 아니므로
+     비워서 새 카테고리의 기본색을 따르게 한다. */
+  if (
+    changedCategory &&
+    validHex(task.color) === categoryColorOf(originalGroup)
+  ) {
+    updateData.color = "";
+  }
+
+
+  /* 순서: 화면에서 바로 뒤에 오는 카드 앞으로, 없으면 바로 앞 카드 뒤로 */
+  const next = card.nextElementSibling;
+  const prev = card.previousElementSibling;
+
+  const from = state.tasks.findIndex(item => item.id === id);
+
+  const [movedTask] = state.tasks.splice(from, 1);
+
+  let to = from;
+
+  if (next && next.classList.contains("task-card")) {
+    to = state.tasks.findIndex(item => item.id === next.dataset.id);
+
+  } else if (prev && prev.classList.contains("task-card")) {
+    to = state.tasks.findIndex(item => item.id === prev.dataset.id) + 1;
+  }
+
+  if (to < 0) {
+    to = from;
+  }
+
+  state.tasks.splice(to, 0, movedTask);
+
+  movedTask.categoryId = newGroup;
 
 
   try {
 
-    await apiPost(
-      "createCategory",
-      {
-        data: {
-          name,
-          color
-        }
-      }
-    );
+    if (changedCategory) {
+      await apiPost("update", { data: updateData });
+    }
 
+    await apiPost("reorder", {
+      ids: state.tasks.map(item => item.id)
+    });
 
-    closeModal(
-      "categoryModal"
-    );
+    /* 새 카테고리 색 등 서버 기준으로 다시 그린다. */
+    await loadData(false);
 
+    if (changedCategory) {
 
-    await loadData();
+      const category =
+        state.categories.find(item => item.id === newGroup);
 
+      showToast(
+        `'${category ? category.name : "기타"}' 카테고리로 옮겼습니다.`
+      );
+    }
 
   } catch (error) {
 
-    alert(
-      "카테고리 추가 실패\n" +
-      error.message
-    );
+    alert("순서 저장 실패\n" + error.message);
+
+    await loadData(false);
   }
-}
-
-
-/* =========================================================
- * DRAG & DROP
- * ========================================================= */
-
-function setupTaskDrag(
-  element,
-  task
-) {
-
-  let timer = null;
-
-  let dragging = false;
-
-
-  element.addEventListener(
-    "pointerdown",
-    event => {
-
-      if (
-        event.button !== 0
-      ) {
-        return;
-      }
-
-
-      timer =
-        setTimeout(
-          () => {
-
-            dragging = true;
-
-            state.draggingTaskId =
-              task.id;
-
-
-            element.classList.add(
-              "long-pressing"
-            );
-
-
-            try {
-              element.setPointerCapture(
-                event.pointerId
-              );
-            } catch (error) {
-              // 일부 브라우저에서는
-              // capture가 실패할 수 있다.
-            }
-
-          },
-          450
-        );
-    }
-  );
-
-
-  element.addEventListener(
-    "pointermove",
-    event => {
-
-      if (!dragging) {
-        return;
-      }
-
-
-      element.classList.add(
-        "dragging"
-      );
-
-
-      const cards = [
-        ...document.querySelectorAll(
-          ".task-card"
-        )
-      ];
-
-
-      const target =
-        cards.find(
-          card => {
-
-            if (
-              card ===
-              element
-            ) {
-              return false;
-            }
-
-
-            const rect =
-              card.getBoundingClientRect();
-
-
-            return (
-              event.clientY >
-              rect.top &&
-              event.clientY <
-              rect.bottom
-            );
-          }
-        );
-
-
-      if (target) {
-
-        const targetId =
-          target.dataset.id;
-
-
-        reorderLocal(
-          task.id,
-          targetId
-        );
-
-
-        render();
-      }
-    }
-  );
-
-
-  element.addEventListener(
-    "pointerup",
-    async () => {
-
-      clearTimeout(
-        timer
-      );
-
-
-      if (!dragging) {
-        return;
-      }
-
-
-      dragging = false;
-
-
-      element.classList.remove(
-        "dragging",
-        "long-pressing"
-      );
-
-
-      try {
-
-        await apiPost(
-          "reorder",
-          {
-            ids:
-              state.tasks.map(
-                task =>
-                  task.id
-              )
-          }
-        );
-
-
-      } catch (error) {
-
-        alert(
-          "순서 저장 실패\n" +
-          error.message
-        );
-
-
-        await loadData();
-      }
-
-
-      setTimeout(
-        () => {
-
-          state.draggingTaskId =
-            null;
-
-        },
-        100
-      );
-    }
-  );
-
-
-  element.addEventListener(
-    "pointercancel",
-    () => {
-
-      clearTimeout(
-        timer
-      );
-
-
-      dragging = false;
-
-
-      element.classList.remove(
-        "dragging",
-        "long-pressing"
-      );
-
-
-      state.draggingTaskId =
-        null;
-    }
-  );
-}
-
-
-function reorderLocal(
-  fromId,
-  toId
-) {
-
-  if (
-    fromId ===
-    toId
-  ) {
-    return;
-  }
-
-
-  const fromIndex =
-    state.tasks.findIndex(
-      task =>
-        task.id ===
-        fromId
-    );
-
-
-  const toIndex =
-    state.tasks.findIndex(
-      task =>
-        task.id ===
-        toId
-    );
-
-
-  if (
-    fromIndex === -1 ||
-    toIndex === -1
-  ) {
-    return;
-  }
-
-
-  const [
-    moved
-  ] =
-    state.tasks.splice(
-      fromIndex,
-      1
-    );
-
-
-  state.tasks.splice(
-    toIndex,
-    0,
-    moved
-  );
 }
 
 
@@ -2683,166 +2680,177 @@ function reorderLocal(
  * range는 선택된 연도 안에서만 움직인다.
  * ========================================================= */
 
-function updateRange() {
+function updateRangeLabel() {
 
-  const minElement =
-    document.getElementById(
-      "rangeMin"
-    );
+  const label = document.getElementById("rangeLabel");
 
-  const maxElement =
-    document.getElementById(
-      "rangeMax"
-    );
-
-
-  if (
-    !minElement ||
-    !maxElement
-  ) {
+  if (!label) {
     return;
   }
 
-
-  let min =
-    Number(
-      minElement.value
-    );
-
-
-  let max =
-    Number(
-      maxElement.value
-    );
+  label.textContent =
+    `${dateKey(dateFromYearDay(state.rangeStart))} ~ ` +
+    `${dateKey(dateFromYearDay(state.rangeEnd))} ` +
+    `(${state.rangeEnd - state.rangeStart + 1}일)`;
+}
 
 
-  const totalDays =
-    daysInYear(
-      state.year
-    );
+function resetRange() {
 
+  const days = daysInYear(state.year);
 
-  min =
-    Math.max(
-      0,
-      Math.min(
-        min,
-        totalDays - 1
-      )
-    );
-
-
-  max =
-    Math.max(
-      0,
-      Math.min(
-        max,
-        totalDays - 1
-      )
-    );
-
-
-  /*
-   * 최소/최대가 같아지는 것을 방지
-   */
-  if (min >= max) {
-
-    if (
-      document.activeElement ===
-      minElement
-    ) {
-
-      min =
-        Math.max(
-          0,
-          max - 1
-        );
-
-    } else {
-
-      max =
-        Math.min(
-          totalDays - 1,
-          min + 1
-        );
-    }
-  }
-
-
-  state.rangeStart =
-    min;
-
-  state.rangeEnd =
-    max;
-
-
-  minElement.value =
-    min;
-
-  maxElement.value =
-    max;
-
-
-  renderTimeline();
-
-
-  requestAnimationFrame(
-    syncGanttRows
-  );
+  state.rangeStart = 0;
+  state.rangeEnd = days - 1;
 }
 
 
 /* =========================================================
- * RESET RANGE
+ * RANGE SLIDER  (좌우 확대/축소, 상하 표시 범위 공용)
+ *
+ * 손잡이 두 개(a, b)와 그 사이를 잇는 막대로 이루어진, 완전히 직접
+ * 만든 슬라이더다. (이전에는 <input type="range"> 두 개를 겹쳐 쓰다가
+ * 왼쪽 손잡이가 움직이지 않는 문제가 있었다.)
+ *   - 손잡이를 끌면 그 쪽 끝만 움직인다.
+ *   - 가운데 막대를 끌면 두 끝의 간격을 유지한 채 통째로 옮겨진다(평행이동).
  * ========================================================= */
 
-function resetRange() {
+function buildRangeSlider(container, opts) {
 
-  const days =
-    daysInYear(
-      state.year
-    );
-
-
-  state.rangeStart =
-    0;
-
-  state.rangeEnd =
-    days - 1;
-
-
-  const min =
-    document.getElementById(
-      "rangeMin"
-    );
-
-  const max =
-    document.getElementById(
-      "rangeMax"
-    );
-
-
-  if (min) {
-
-    min.min = 0;
-
-    min.max =
-      days - 1;
-
-    min.value = 0;
+  if (!container) {
+    return null;
   }
 
+  const horizontal = opts.orientation !== "v";
 
-  if (max) {
+  /* 손잡이 절반이 컨테이너 가장자리 밖으로 나가면(특히 .gantt처럼
+     overflow:hidden인 조상 안에서는) 그 부분이 잘려서 클릭이 안 먹는
+     "죽은 자리"가 생긴다. 양 끝에 손잡이 반지름만큼 여백을 둬서 막는다. */
+  const inset = opts.inset || 0;
 
-    max.min = 0;
+  container.innerHTML =
+    '<div class="range-track"></div>' +
+    '<div class="range-bar"></div>' +
+    '<div class="range-handle range-handle-a" tabindex="0" role="slider"></div>' +
+    '<div class="range-handle range-handle-b" tabindex="0" role="slider"></div>';
 
-    max.max =
-      days - 1;
+  const bar = container.querySelector(".range-bar");
+  const handleA = container.querySelector(".range-handle-a");
+  const handleB = container.querySelector(".range-handle-b");
 
-    max.value =
-      days - 1;
+  function unitSize() {
+
+    const rect = container.getBoundingClientRect();
+    const size = Math.max(1, (horizontal ? rect.width : rect.height) - inset * 2);
+    const total = Math.max(1, opts.getTotal());
+
+    return { rect, size, unit: total > 1 ? size / total : size };
   }
+
+  function layout() {
+
+    const { unit } = unitSize();
+    const [start, end] = opts.getRange();
+
+    const p1 = inset + start * unit;
+    const p2 = inset + (end + 1) * unit;
+
+    if (horizontal) {
+
+      bar.style.left = p1 + "px";
+      bar.style.width = Math.max(2, p2 - p1) + "px";
+      handleA.style.left = p1 + "px";
+      handleB.style.left = p2 + "px";
+
+    } else {
+
+      bar.style.top = p1 + "px";
+      bar.style.height = Math.max(2, p2 - p1) + "px";
+      handleA.style.top = p1 + "px";
+      handleB.style.top = p2 + "px";
+    }
+  }
+
+  function unitAt(clientPos) {
+
+    const { rect, unit } = unitSize();
+
+    const rel = (horizontal ? clientPos - rect.left : clientPos - rect.top) - inset;
+
+    const total = opts.getTotal();
+
+    return Math.max(0, Math.min(total - 1, Math.floor(rel / unit)));
+  }
+
+  function pos(event) {
+    return horizontal ? event.clientX : event.clientY;
+  }
+
+  function drag(onMove) {
+
+    function move(event) {
+      onMove(event);
+      layout();
+      opts.onChange();
+    }
+
+    function up() {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    }
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  handleA.addEventListener("pointerdown", event => {
+
+    event.preventDefault();
+
+    drag(e2 => {
+
+      const value = unitAt(pos(e2));
+      const [, end] = opts.getRange();
+
+      opts.setRange(Math.min(value, end), end);
+    });
+  });
+
+  handleB.addEventListener("pointerdown", event => {
+
+    event.preventDefault();
+
+    drag(e2 => {
+
+      const value = unitAt(pos(e2));
+      const [start] = opts.getRange();
+
+      opts.setRange(start, Math.max(value, start));
+    });
+  });
+
+  /* 가운데 막대: 간격을 유지한 채 평행이동 */
+  bar.addEventListener("pointerdown", event => {
+
+    event.preventDefault();
+
+    const { unit } = unitSize();
+    const startPos = pos(event);
+    const [s0, e0] = opts.getRange();
+    const width = e0 - s0;
+
+    drag(e2 => {
+
+      const deltaUnits = Math.round((pos(e2) - startPos) / unit);
+
+      const total = opts.getTotal();
+
+      let start = Math.max(0, Math.min(total - 1 - width, s0 + deltaUnits));
+
+      opts.setRange(start, start + width);
+    });
+  });
+
+  return { layout };
 }
 
 
@@ -2850,156 +2858,710 @@ function resetRange() {
  * YEAR
  * ========================================================= */
 
-function changeYear(
-  amount
-) {
+function changeYear(amount) {
 
-  state.year +=
-    amount;
+  state.year += amount;
 
-
-  /*
-   * 연도를 바꾸면
-   * 반드시 새 연도 전체를 기본 화면으로 한다.
-   */
+  /* 연도를 바꾸면 반드시 새 연도 전체를 기본 화면으로 한다. */
   resetRange();
 
+  state.scrollToToday = true;
 
-  /*
-   * 선택한 연도에 존재하지 않는
-   * 작업/카테고리는 groupTasks()에서 자동으로 숨겨진다.
-   */
+  /* 선택한 연도에 존재하지 않는 작업/카테고리는
+     groupTasks()에서 자동으로 숨겨진다. */
   render();
 }
 
 
 /* 이전 연도 */
-const prevYear =
-  document.getElementById(
-    "prevYear"
-  );
+const prevYear = document.getElementById("prevYear");
 
 if (prevYear) {
-
-  prevYear.onclick =
-    () => {
-      changeYear(-1);
-    };
+  prevYear.onclick = () => {
+    changeYear(-1);
+  };
 }
 
 
 /* 다음 연도 */
-const nextYear =
-  document.getElementById(
-    "nextYear"
-  );
+const nextYear = document.getElementById("nextYear");
 
 if (nextYear) {
-
-  nextYear.onclick =
-    () => {
-      changeYear(1);
-    };
+  nextYear.onclick = () => {
+    changeYear(1);
+  };
 }
 
 
 /* =========================================================
- * TODAY
+ * CAPTURE  (지금 확대 상태와 무관하게, 연도 전체를 이미지로 저장)
+ *
+ * 화면의 확대/축소 상태를 그대로 두고, 화면 밖(-99999px)에 그 연도
+ * 전체(1/1~12/31, 모든 카테고리·작업을 원래 크기로)를 따로 그려서
+ * 캡처한 뒤 없앤다. 작업이 많은 연도일수록 이미지가 길어진다.
  * ========================================================= */
 
-const todayBtn =
-  document.getElementById(
-    "todayBtn"
+const CAPTURE_PX_PER_DAY = 8;
+
+function buildCaptureChart() {
+
+  const totalDays = daysInYear(state.year);
+  const width = totalDays * CAPTURE_PX_PER_DAY;
+
+  const rows = buildRows(); // 세로 확대와 무관하게 전체 줄
+  const heights = rows.map(rowHeightOf);
+  const contentHeight = heights.reduce((a, b) => a + b, 0);
+
+  const root = document.createElement("div");
+
+  root.className = "gantt capture-gantt";
+  root.style.cssText =
+    "position:fixed; left:-99999px; top:0; width:" +
+    (260 + width) + "px; height:" +
+    (52 + contentHeight) + "px;";
+
+  /* 왼쪽 목록 */
+  const col = document.createElement("div");
+
+  col.className = "task-column";
+
+  const header = document.createElement("div");
+
+  header.className = "task-header";
+  header.textContent = state.year + "년 작업";
+
+  col.appendChild(header);
+
+  const rowsInnerLeft = document.createElement("div");
+
+  rowsInnerLeft.className = "rows-inner";
+
+  col.appendChild(rowsInnerLeft);
+
+  rows.forEach((row, i) => {
+
+    if (row.kind === "category") {
+
+      const group = row.group;
+      const category = document.createElement("div");
+
+      category.className = "category-label";
+      category.style.height = heights[i] + "px";
+
+      if (group.id) {
+
+        const dot = document.createElement("span");
+
+        dot.className = "cat-dot";
+        dot.style.background = validHex(group.color) || DEFAULT_COLOR;
+
+        category.appendChild(dot);
+      }
+
+      const name = document.createElement("span");
+
+      name.className = "category-label-name";
+      name.textContent = group.name;
+
+      category.appendChild(name);
+
+      rowsInnerLeft.appendChild(category);
+
+      return;
+    }
+
+    const task = row.task;
+    const card = document.createElement("div");
+
+    card.className = "task-card";
+    card.style.height = heights[i] + "px";
+
+    card.innerHTML =
+      '<div class="task-name">' + escapeHtml(task.name) + "</div>";
+
+    rowsInnerLeft.appendChild(card);
+  });
+
+
+  /* 오른쪽 타임라인 */
+  const timelineEl = document.createElement("div");
+
+  timelineEl.className = "timeline";
+  timelineEl.style.overflow = "visible";
+
+  const inner = document.createElement("div");
+
+  inner.className = "timeline-inner";
+  inner.style.width = width + "px";
+  inner.style.setProperty(
+    "--week-width",
+    (CAPTURE_PX_PER_DAY * 7) + "px"
   );
 
+  timelineEl.appendChild(inner);
+
+
+  /* 월 + 주 헤더 (연도 전체 기준) */
+  const headerRow = document.createElement("div");
+
+  headerRow.className = "week-header";
+
+  const monthRow = document.createElement("div");
+
+  monthRow.className = "month-row";
+
+  const monthCols = [];
+  let acc = 0;
+
+  for (let month = 0; month < 12; month++) {
+
+    const days =
+      new Date(state.year, month + 1, 0).getDate();
+
+    const cell = document.createElement("div");
+
+    cell.className =
+      "month-cell" + (month % 2 === 1 ? " alt" : "");
+
+    cell.textContent = (month + 1) + "월";
+
+    monthRow.appendChild(cell);
+    monthCols.push((days * CAPTURE_PX_PER_DAY) + "px");
+
+    acc += days;
+  }
+
+  monthRow.style.gridTemplateColumns = monthCols.join(" ");
+  headerRow.appendChild(monthRow);
+
+  const weekRow = document.createElement("div");
+
+  weekRow.className = "week-row";
+
+  const weekCols = [];
+
+  for (let offset = 0; offset < totalDays; offset += 7) {
+
+    const days = Math.min(7, totalDays - offset);
+    const date = dateFromYearDay(offset);
+    const cell = document.createElement("div");
+
+    cell.className = "week-cell";
+    cell.textContent =
+      (date.getMonth() + 1) + "/" + date.getDate();
+
+    weekRow.appendChild(cell);
+    weekCols.push((days * CAPTURE_PX_PER_DAY) + "px");
+  }
+
+  weekRow.style.gridTemplateColumns = weekCols.join(" ");
+  headerRow.appendChild(weekRow);
+
+  inner.appendChild(headerRow);
+
+
+  /* 월별 뒷배경 */
+  const bands = document.createElement("div");
+
+  bands.className = "month-bands";
+
+  /* 공용 .month-bands 스타일은 세로 창(뷰포트) 기준으로 top:0 인데,
+     여기서는 그런 창이 없으니 헤더(52px) 아래부터 시작하도록
+     직접 지정한다. 안 그러면 배경이 헤더 글자를 덮어 버린다. */
+  bands.style.top = "52px";
+
+  let dayAcc = 0;
+
+  for (let month = 0; month < 12; month++) {
+
+    const days = new Date(state.year, month + 1, 0).getDate();
+    const band = document.createElement("div");
+
+    band.className =
+      "month-band" + (month % 2 === 1 ? " alt" : "");
+
+    band.style.left = (dayAcc * CAPTURE_PX_PER_DAY) + "px";
+    band.style.width = (days * CAPTURE_PX_PER_DAY) + "px";
+
+    bands.appendChild(band);
+    dayAcc += days;
+  }
+
+  inner.appendChild(bands);
+
+
+  /* 줄 */
+  const rowsInnerRight = document.createElement("div");
+
+  rowsInnerRight.className = "rows-inner";
+
+  inner.appendChild(rowsInnerRight);
+
+  rows.forEach((row, i) => {
+
+    if (row.kind === "category") {
+
+      const categoryRow = document.createElement("div");
+
+      categoryRow.className = "timeline-category";
+      categoryRow.style.height = heights[i] + "px";
+
+      rowsInnerRight.appendChild(categoryRow);
+
+      return;
+    }
+
+    const task = row.task;
+    const barRow = document.createElement("div");
+
+    barRow.className = "timeline-task-row";
+    barRow.style.height = heights[i] + "px";
+
+    if (task.start && task.end) {
+
+      const start = dateObj(task.start);
+      const end = dateObj(task.end);
+
+      if (start && end) {
+
+        const yearStart = getYearStart();
+        const yearEnd = getYearEnd();
+        const clippedStart = start < yearStart ? yearStart : start;
+        const clippedEnd = end > yearEnd ? yearEnd : end;
+
+        if (clippedStart <= clippedEnd) {
+
+          const startDay = dayOffsetFromYearStart(clippedStart);
+          const endDay = dayOffsetFromYearStart(clippedEnd);
+
+          const bar = document.createElement("div");
+
+          bar.className = "task-bar";
+
+          const color = validHex(task.color) || DEFAULT_COLOR;
+
+          if (isLightColor(color)) {
+            bar.classList.add("light");
+          }
+
+          bar.style.top = "0px";
+          bar.style.height = heights[i] + "px";
+          bar.style.left = (startDay / totalDays * 100) + "%";
+          bar.style.width =
+            ((endDay - startDay + 1) / totalDays * 100) + "%";
+          bar.style.background = color;
+
+          const progress =
+            Math.max(0, Math.min(100, Number(task.progress) || 0));
+
+          bar.innerHTML =
+            '<div class="task-progress" style="width:' +
+            progress + '%"></div>' +
+            '<div class="task-bar-text">' +
+            escapeHtml(task.name) + "&nbsp;" + progress + "%</div>";
+
+          barRow.appendChild(bar);
+        }
+      }
+    }
+
+    rowsInnerRight.appendChild(barRow);
+  });
+
+
+  root.appendChild(col);
+  root.appendChild(timelineEl);
+
+  return root;
+}
+
+
+async function captureChart() {
+
+  const button = document.getElementById("captureBtn");
+
+  if (typeof html2canvas === "undefined") {
+    alert("캡처 기능을 불러오지 못했습니다. 인터넷 연결을 확인하세요.");
+    return;
+  }
+
+  await withBusy(button, "캡처 중…", async () => {
+
+    const root = buildCaptureChart();
+
+    document.body.appendChild(root);
+
+    try {
+
+      // 폰트/레이아웃이 자리 잡을 시간을 아주 조금 준다.
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const canvas = await html2canvas(root, {
+        backgroundColor: "#ffffff",
+        scale: 2
+      });
+
+      const link = document.createElement("a");
+
+      // 한글 파일명은 일부 브라우저/환경에서 저장 시 깨지거나
+      // "download"로만 저장되는 경우가 있어, 영문+숫자로 안전하게 만든다.
+      link.download = "gantt-chart-" + state.year + ".png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+
+      showToast(state.year + "년 전체 차트를 저장했습니다.");
+
+    } catch (error) {
+
+      alert("캡처 실패\n" + error.message);
+
+    } finally {
+
+      root.remove();
+    }
+  });
+}
+
+
+const captureBtn = document.getElementById("captureBtn");
+
+if (captureBtn) {
+  captureBtn.onclick = captureChart;
+}
+
+
+/* =========================================================
+ * YEAR PICKER  (연도 숫자를 누르면 나오는 연도 선택창)
+ *
+ * - 12개 연도를 격자로 보여 준다. 좌우 화살표로 12년씩 넘긴다.
+ * - 선택한 연도는 파랗게, 올해는 테두리로, 일정이 있는 해는 점으로 표시한다.
+ * - 연도를 누르면 그 해의 간트차트가 표시된다.
+ * - 바깥을 누르거나 Esc 를 누르면 닫힌다. 방향키로도 고를 수 있다.
+ * ========================================================= */
+
+let yearPickerStart = new Date().getFullYear() - 5;
+
+
+function yearHasTasks(year) {
+
+  const from = `${year}-01-01`;
+  const to = `${year}-12-31`;
+
+  return state.tasks.some(
+    task =>
+      task.start &&
+      task.end &&
+      task.start <= to &&
+      task.end >= from
+  );
+}
+
+
+function getYearPicker() {
+
+  let picker = document.getElementById("yearPicker");
+
+  if (picker) {
+    return picker;
+  }
+
+  picker = document.createElement("div");
+
+  picker.id = "yearPicker";
+  picker.className = "year-picker hidden";
+
+  picker.setAttribute("role", "dialog");
+  picker.setAttribute("aria-label", "연도 선택");
+
+  (document.querySelector(".control-bar") || document.body)
+    .appendChild(picker);
+
+  /* 창 안쪽을 누를 때는 바깥 클릭으로 취급하지 않는다. */
+  picker.addEventListener("click", event => {
+
+    event.stopPropagation();
+
+    const nav = event.target.closest(".yp-nav");
+
+    if (nav) {
+      yearPickerStart += Number(nav.dataset.page) * 12;
+      renderYearPicker();
+      return;
+    }
+
+    const year = event.target.closest(".yp-year");
+
+    if (year) {
+      selectYear(Number(year.dataset.year));
+      return;
+    }
+
+    if (event.target.closest(".yp-today")) {
+      selectYear(new Date().getFullYear());
+    }
+  });
+
+  picker.addEventListener("keydown", event => {
+
+    const buttons = [...picker.querySelectorAll(".yp-year")];
+
+    const index = buttons.indexOf(document.activeElement);
+
+    if (index === -1) {
+      return;
+    }
+
+    const step = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: -4,
+      ArrowDown: 4
+    }[event.key];
+
+    if (step !== undefined) {
+
+      event.preventDefault();
+
+      if (buttons[index + step]) {
+        buttons[index + step].focus();
+      }
+
+      return;
+    }
+
+    if (event.key === "PageUp" || event.key === "PageDown") {
+
+      event.preventDefault();
+
+      yearPickerStart += (event.key === "PageUp" ? -12 : 12);
+
+      renderYearPicker();
+
+      const next = picker.querySelectorAll(".yp-year")[index];
+
+      if (next) {
+        next.focus();
+      }
+    }
+  });
+
+  return picker;
+}
+
+
+function isYearPickerOpen() {
+
+  const picker = document.getElementById("yearPicker");
+
+  return Boolean(picker && !picker.classList.contains("hidden"));
+}
+
+
+function renderYearPicker() {
+
+  const picker = getYearPicker();
+
+  const thisYear = new Date().getFullYear();
+
+  const years = Array.from({ length: 12 }, (_, i) => yearPickerStart + i);
+
+  picker.innerHTML = `
+
+    <div class="yp-head">
+
+      <button
+        type="button"
+        class="yp-nav"
+        data-page="-1"
+        aria-label="이전 연도 목록"
+      >‹</button>
+
+      <span class="yp-range">${years[0]} – ${years[11]}</span>
+
+      <button
+        type="button"
+        class="yp-nav"
+        data-page="1"
+        aria-label="다음 연도 목록"
+      >›</button>
+
+    </div>
+
+    <div class="yp-grid" role="listbox" aria-label="연도">
+      ${years.map(year => `
+        <button
+          type="button"
+          role="option"
+          class="yp-year${year === state.year ? " selected" : ""}${year === thisYear ? " this-year" : ""}${yearHasTasks(year) ? " has-tasks" : ""}"
+          data-year="${year}"
+          aria-selected="${year === state.year}"
+        >${year}</button>
+      `).join("")}
+    </div>
+
+    <div class="yp-foot">
+
+      <button type="button" class="yp-today">올해로 이동</button>
+
+      <span class="yp-legend"><i></i>일정 있음</span>
+
+    </div>
+
+  `;
+}
+
+
+function openYearPicker() {
+
+  yearPickerStart = state.year - 5;
+
+  renderYearPicker();
+
+  getYearPicker().classList.remove("hidden");
+
+  const trigger = document.getElementById("yearTitle");
+
+  if (trigger) {
+    trigger.setAttribute("aria-expanded", "true");
+  }
+
+  const selected = getYearPicker().querySelector(".yp-year.selected");
+
+  if (selected) {
+    selected.focus();
+  }
+}
+
+
+function closeYearPicker(returnFocus = false) {
+
+  const picker = document.getElementById("yearPicker");
+
+  if (picker) {
+    picker.classList.add("hidden");
+  }
+
+  const trigger = document.getElementById("yearTitle");
+
+  if (trigger) {
+    trigger.setAttribute("aria-expanded", "false");
+
+    if (returnFocus) {
+      trigger.focus();
+    }
+  }
+}
+
+
+function selectYear(year) {
+
+  closeYearPicker(true);
+
+  if (year !== state.year) {
+    changeYear(year - state.year);
+  }
+}
+
+
+const yearTitleButton = document.getElementById("yearTitle");
+
+if (yearTitleButton) {
+
+  yearTitleButton.classList.add("year-title");
+
+  yearTitleButton.setAttribute("aria-haspopup", "dialog");
+  yearTitleButton.setAttribute("aria-expanded", "false");
+
+  /* 예전 index.html 처럼 button 이 아니어도 누를 수 있게 한다. */
+  if (yearTitleButton.tagName !== "BUTTON") {
+
+    yearTitleButton.tabIndex = 0;
+    yearTitleButton.setAttribute("role", "button");
+
+    yearTitleButton.addEventListener("keydown", event => {
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        yearTitleButton.click();
+      }
+    });
+  }
+
+  yearTitleButton.addEventListener("click", event => {
+
+    event.stopPropagation();
+
+    if (isYearPickerOpen()) {
+      closeYearPicker();
+    } else {
+      openYearPicker();
+    }
+  });
+}
+
+
+/* 바깥을 누르면 닫는다. */
+document.addEventListener("click", event => {
+
+  if (!isYearPickerOpen()) {
+    return;
+  }
+
+  const trigger = document.getElementById("yearTitle");
+
+  if (trigger && trigger.contains(event.target)) {
+    return;
+  }
+
+  closeYearPicker();
+});
+
+
+/* =========================================================
+ * TODAY / FULL
+ * ========================================================= */
+
+const todayBtn = document.getElementById("todayBtn");
 
 if (todayBtn) {
 
-  todayBtn.onclick =
-    () => {
+  todayBtn.onclick = () => {
 
-      const today =
-        new Date();
+    const today = new Date();
 
+    state.year = today.getFullYear();
 
-      state.year =
-        today.getFullYear();
+    const day = dayOfYear(today);
 
+    const totalDays = daysInYear(state.year);
 
-      const day =
-        dayOfYear(
-          today
-        );
+    /* 오늘 전후 30일 (현재 연도를 벗어나지 않는다) */
+    const start = Math.max(0, day - 30);
+    const end = Math.min(totalDays - 1, day + 30);
 
+    state.rangeStart = start;
+    state.rangeEnd = end;
 
-      const totalDays =
-        daysInYear(
-          state.year
-        );
+    state.scrollToToday = true;
 
-
-      /*
-       * 오늘 전후 30일
-       * 단, 현재 연도를 절대로 벗어나지 않는다.
-       */
-      const start =
-        Math.max(
-          0,
-          day - 30
-        );
+    render();
+  };
+}
 
 
-      const end =
-        Math.min(
-          totalDays - 1,
-          day + 30
-        );
+/* 확대를 풀고 선택한 연도 전체를 본다. */
+const fullBtn = document.getElementById("fullBtn");
 
+if (fullBtn) {
 
-      state.rangeStart =
-        start;
+  fullBtn.onclick = () => {
 
-      state.rangeEnd =
-        end;
+    resetRange();
 
+    state.scrollToToday = true;
 
-      const rangeMin =
-        document.getElementById(
-          "rangeMin"
-        );
-
-      const rangeMax =
-        document.getElementById(
-          "rangeMax"
-        );
-
-
-      if (rangeMin) {
-
-        rangeMin.min = 0;
-
-        rangeMin.max =
-          totalDays - 1;
-
-        rangeMin.value =
-          start;
-      }
-
-
-      if (rangeMax) {
-
-        rangeMax.min = 0;
-
-        rangeMax.max =
-          totalDays - 1;
-
-        rangeMax.value =
-          end;
-      }
-
-
-      render();
-    };
+    render();
+  };
 }
 
 
@@ -3009,298 +3571,296 @@ if (todayBtn) {
 
 function closeModal(id) {
 
-  const modal =
-    document.getElementById(
-      id
-    );
-
+  const modal = document.getElementById(id);
 
   if (!modal) {
     return;
   }
 
-
-  modal.classList.add(
-    "hidden"
-  );
+  modal.classList.add("hidden");
 }
 
 
-/*
- * data-close가 있는 버튼
- */
+/* data-close가 있는 버튼 */
 document
-  .querySelectorAll(
-    "[data-close]"
-  )
-  .forEach(
-    button => {
+  .querySelectorAll("[data-close]")
+  .forEach(button => {
 
-      button.addEventListener(
-        "click",
-        () => {
-
-          closeModal(
-            button.dataset.close
-          );
-        }
-      );
-    }
-  );
+    button.addEventListener("click", () => {
+      closeModal(button.dataset.close);
+    });
+  });
 
 
-/*
- * 작업 추가
- */
-const addTaskBtn =
-  document.getElementById(
-    "addTaskBtn"
-  );
+/* 작업 추가 */
+const addTaskBtn = document.getElementById("addTaskBtn");
 
 if (addTaskBtn) {
-
-  addTaskBtn.onclick =
-    openTaskModal;
+  addTaskBtn.onclick = openTaskModal;
 }
 
-
-const saveTaskBtn =
-  document.getElementById(
-    "saveTaskBtn"
-  );
+const saveTaskBtn = document.getElementById("saveTaskBtn");
 
 if (saveTaskBtn) {
+  saveTaskBtn.onclick = saveNewTask;
+}
 
-  saveTaskBtn.onclick =
-    saveNewTask;
+/* 작업 색: 직접 고르면 그 색을 쓰고, 안 고르면 카테고리 기본색을 따른다. */
+const taskColorInput = document.getElementById("taskColor");
+
+if (taskColorInput) {
+  taskColorInput.addEventListener("input", () => {
+    taskColorInput.dataset.touched = "1";
+  });
+}
+
+const taskCategorySelect = document.getElementById("taskCategory");
+
+if (taskCategorySelect) {
+  taskCategorySelect.addEventListener("change", syncTaskColor);
 }
 
 
-/*
- * 카테고리 추가
- */
-const addCategoryBtn =
-  document.getElementById(
-    "addCategoryBtn"
-  );
+/* 카테고리 추가 / 수정 */
+const addCategoryBtn = document.getElementById("addCategoryBtn");
 
 if (addCategoryBtn) {
-
-  addCategoryBtn.onclick =
-    openCategoryModal;
+  addCategoryBtn.onclick = () => openCategoryModal();
 }
 
-
-const saveCategoryBtn =
-  document.getElementById(
-    "saveCategoryBtn"
-  );
+const saveCategoryBtn = document.getElementById("saveCategoryBtn");
 
 if (saveCategoryBtn) {
-
-  saveCategoryBtn.onclick =
-    saveNewCategory;
+  saveCategoryBtn.onclick = saveCategory;
 }
 
 
-/*
- * 새로고침
- */
-const reloadBtn =
-  document.getElementById(
-    "reloadBtn"
-  );
+/* 새로고침 */
+const reloadBtn = document.getElementById("reloadBtn");
 
 if (reloadBtn) {
-
-  reloadBtn.onclick =
-    loadData;
+  reloadBtn.onclick = () => loadData();
 }
 
 
-/*
- * 확대/축소 범위
- */
-const rangeMin =
-  document.getElementById(
-    "rangeMin"
-  );
+/* 편집 키 다시 입력 */
+const keyBtn = document.getElementById("keyBtn");
 
-if (rangeMin) {
+if (keyBtn) {
 
-  rangeMin.addEventListener(
-    "input",
-    updateRange
-  );
+  keyBtn.onclick = () => {
+
+    if (askKey("편집 키를 입력하세요")) {
+      loadData();
+    }
+  };
 }
 
 
-const rangeMax =
-  document.getElementById(
-    "rangeMax"
-  );
+/* 확대/축소(좌우) + 표시 범위(상하) 슬라이더 */
+let hSlider = null;
+let vSlider = null;
 
-if (rangeMax) {
+hSlider = buildRangeSlider(document.getElementById("hRangeSlider"), {
+  orientation: "h",
+  inset: 10,
+  getTotal: () => daysInYear(state.year),
+  getRange: () => [state.rangeStart, state.rangeEnd],
+  setRange: (start, end) => {
+    state.rangeStart = start;
+    state.rangeEnd = end;
+  },
+  onChange: () => {
+    renderTimeline();
+    updateRangeLabel();
+  }
+});
 
-  rangeMax.addEventListener(
-    "input",
-    updateRange
-  );
+/* 차트 전체 높이 손잡이: .gantt 맨 아래를 끌면 세로로 늘고 준다. */
+const heightHandle = document.getElementById("chartHeightHandle");
+
+if (heightHandle) {
+
+  const MIN_CHART_HEIGHT = 160;
+  const MAX_CHART_HEIGHT = 1400;
+
+  heightHandle.addEventListener("pointerdown", event => {
+
+    event.preventDefault();
+
+    const startY = event.clientY;
+    const startHeight = state.chartHeight;
+
+    function move(e2) {
+
+      state.chartHeight = Math.max(
+        MIN_CHART_HEIGHT,
+        Math.min(MAX_CHART_HEIGHT, startHeight + (e2.clientY - startY))
+      );
+
+      applyGanttHeight();
+      computeRowScale();
+      renderTaskColumn();
+      renderTimeline();
+    }
+
+    function up() {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    }
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  });
 }
+
+
+vSlider = buildRangeSlider(document.getElementById("vRangeSlider"), {
+  orientation: "v",
+  inset: 8,
+  getTotal: () => Math.max(1, state.rowsTotal || 1),
+  getRange: () => [state.rowStart || 0, state.rowEnd || 0],
+  setRange: (start, end) => {
+    state.rowStart = start;
+    state.rowEnd = end;
+  },
+  onChange: () => {
+    computeRowScale();
+    renderTaskColumn();
+    renderTimeline();
+  }
+});
 
 
 /* =========================================================
  * ESC
  * ========================================================= */
 
-document.addEventListener(
-  "keydown",
-  event => {
+document.addEventListener("keydown", event => {
 
-    if (
-      event.key !==
-      "Escape"
-    ) {
-      return;
-    }
-
-
-    /*
-     * 작업 추가 모달
-     */
-    const taskModal =
-      document.getElementById(
-        "taskModal"
-      );
-
-    if (
-      taskModal &&
-      !taskModal.classList.contains(
-        "hidden"
-      )
-    ) {
-
-      taskModal.classList.add(
-        "hidden"
-      );
-
-      return;
-    }
-
-
-    /*
-     * 카테고리 추가 모달
-     */
-    const categoryModal =
-      document.getElementById(
-        "categoryModal"
-      );
-
-    if (
-      categoryModal &&
-      !categoryModal.classList.contains(
-        "hidden"
-      )
-    ) {
-
-      categoryModal.classList.add(
-        "hidden"
-      );
-
-      return;
-    }
-
-
-    /*
-     * 상세 패널
-     */
-    const detailPanel =
-      document.getElementById(
-        "detailPanel"
-      );
-
-    if (
-      detailPanel &&
-      !detailPanel.classList.contains(
-        "hidden"
-      )
-    ) {
-
-      detailPanel.classList.add(
-        "hidden"
-      );
-
-      state.selectedTask =
-        null;
-    }
+  if (event.key !== "Escape") {
+    return;
   }
-);
+
+  /* 연도 선택창 */
+  if (isYearPickerOpen()) {
+    closeYearPicker(true);
+    return;
+  }
+
+  /* 작업 추가 모달 */
+  const taskModal = document.getElementById("taskModal");
+
+  if (taskModal && !taskModal.classList.contains("hidden")) {
+    taskModal.classList.add("hidden");
+    return;
+  }
+
+  /* 카테고리 추가/수정 모달 */
+  const categoryModal = document.getElementById("categoryModal");
+
+  if (categoryModal && !categoryModal.classList.contains("hidden")) {
+    categoryModal.classList.add("hidden");
+    return;
+  }
+
+  /* 상세 패널 */
+  const detailPanel = document.getElementById("detailPanel");
+
+  if (detailPanel && !detailPanel.classList.contains("hidden")) {
+    detailPanel.classList.add("hidden");
+    state.selectedTask = null;
+  }
+});
 
 
 /* =========================================================
  * WINDOW RESIZE
  *
- * 창 크기/폰트 등이 바뀌면
- * 좌우 높이를 다시 맞춘다.
+ * 타임라인 폭이 화면 폭에 따라 달라지므로 다시 그린다.
  * ========================================================= */
 
-window.addEventListener(
-  "resize",
-  () => {
+let resizeTimer = null;
 
-    requestAnimationFrame(
-      syncGanttRows
-    );
-  }
-);
+window.addEventListener("resize", () => {
+
+  clearTimeout(resizeTimer);
+
+  resizeTimer = setTimeout(() => {
+    renderTimeline();
+  }, 150);
+});
 
 
 /* =========================================================
  * HTML ESCAPE
  * ========================================================= */
 
-function escapeHtml(
-  value
-) {
+function escapeHtml(value) {
 
-  return String(
-    value ?? ""
-  )
-
-    .replace(
-      /&/g,
-      "&amp;"
-    )
-
-    .replace(
-      /</g,
-      "&lt;"
-    )
-
-    .replace(
-      />/g,
-      "&gt;"
-    )
-
-    .replace(
-      /"/g,
-      "&quot;"
-    )
-
-    .replace(
-      /'/g,
-      "&#039;"
-    );
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 
-function escapeAttr(
-  value
-) {
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
 
-  return escapeHtml(
-    value
-  );
+
+/* =========================================================
+ * VERSION CHECK
+ * ========================================================= */
+
+function checkVersions() {
+
+  const meta = document.querySelector('meta[name="app-version"]');
+
+  const htmlVersion = meta ? meta.content : "(없음)";
+
+  const cssVersion =
+    (
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--css-version") || ""
+    ).replace(/["'\s]/g, "") || "(없음)";
+
+  const same =
+    htmlVersion === APP_VERSION &&
+    cssVersion === APP_VERSION;
+
+  let note = document.getElementById("versionNote");
+
+  if (!note) {
+
+    note = document.createElement("div");
+
+    note.id = "versionNote";
+    note.className = "version-note";
+
+    (document.querySelector("main") || document.body).appendChild(note);
+  }
+
+  if (same) {
+
+    note.classList.remove("mismatch");
+    note.textContent = "화면 버전 " + APP_VERSION;
+
+  } else {
+
+    note.classList.add("mismatch");
+
+    note.textContent =
+      "⚠ 파일 버전이 서로 다릅니다 " +
+      "(index.html: " + htmlVersion +
+      " / app.js: " + APP_VERSION +
+      " / style.css: " + cssVersion + "). " +
+      "세 파일을 모두 새 것으로 올렸는지 확인하고 " +
+      "Ctrl+F5 로 새로고침하세요.";
+  }
 }
 
 
@@ -3308,13 +3868,12 @@ function escapeAttr(
  * INITIALIZE
  * ========================================================= */
 
-/*
- * 현재 연도의 전체 범위로 초기화
- */
+checkVersions();
+
+setupDrag();
+
+/* 현재 연도의 전체 범위로 초기화 */
 resetRange();
 
-
-/*
- * 데이터 불러오기
- */
+/* 데이터 불러오기 */
 loadData();
