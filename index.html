@@ -5,14 +5,28 @@
 
   <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
   >
+
+  <meta name="theme-color" content="#ffffff">
+
+  <meta name="app-version" content="2026-09-21-q">
 
   <title>간트차트</title>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500&family=Sora:wght@700&display=swap"
+    rel="stylesheet"
+  >
+
+  <!-- 캡처 기능용: DOM을 이미지로 저장 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
   <link
     rel="stylesheet"
-    href="style.css"
+    href="style.css?v=2026-09-21-q"
   >
 </head>
 
@@ -24,12 +38,21 @@
 
   <header class="topbar">
 
-    <div>
-      <h1>간트차트</h1>
-      <p>Google Sheets 기반 일정 관리</p>
+    <div class="brand">
+      <span class="brand-main">Gantt Chart</span>
+      <span class="brand-sep">|</span>
+      <span class="brand-sub">Yearly Progress Management</span>
     </div>
 
     <div class="top-actions">
+
+      <button
+        id="keyBtn"
+        type="button"
+        title="편집 키 다시 입력"
+      >
+        편집 키
+      </button>
 
       <button
         id="reloadBtn"
@@ -39,10 +62,27 @@
       </button>
 
       <button
+        id="fullBtn"
+        type="button"
+        title="확대를 풀고 1년 전체 보기"
+      >
+        전체
+      </button>
+
+      <button
         id="todayBtn"
         type="button"
+        title="오늘 전후 60일 보기"
       >
         오늘
+      </button>
+
+      <button
+        id="captureBtn"
+        type="button"
+        title="지금 확대 상태와 무관하게, 이 연도 전체를 이미지로 저장"
+      >
+        캡처
       </button>
 
     </div>
@@ -66,9 +106,15 @@
         ‹
       </button>
 
-      <strong id="yearTitle">
-        2026
-      </strong>
+      <button
+        id="yearTitle"
+        type="button"
+        class="year-title"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+      >
+        <span class="year-num">2026</span>
+      </button>
 
       <button
         id="nextYear"
@@ -102,7 +148,27 @@
         id="timeline"
       ></div>
 
+
+      <!-- 표시 범위(위/아래) 슬라이더: app.js 가 손잡이·막대를 채운다 -->
+
+      <div
+        class="row-range"
+        id="vRangeSlider"
+        aria-label="표시 작업 범위"
+      ></div>
+
     </section>
+
+
+    <!-- 차트 전체 높이 조절 손잡이 -->
+    <div
+      class="gantt-resize"
+      id="chartHeightHandle"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="차트 높이 조절"
+      title="끌어서 차트 높이 조절"
+    ><span></span></div>
 
 
     <!-- =========================
@@ -138,34 +204,15 @@
     <section class="zoom-area">
 
       <div class="zoom-label">
-        표시 기간 확대 / 축소
-      </div>
 
-      <div class="range-slider">
+        <span>표시 기간 확대 / 축소</span>
 
-        <div class="range-track"></div>
-
-        <input
-          id="rangeMin"
-          type="range"
-          min="0"
-          max="365"
-          value="0"
-          step="1"
-          aria-label="시작일"
-        >
-
-        <input
-          id="rangeMax"
-          type="range"
-          min="0"
-          max="365"
-          value="364"
-          step="1"
-          aria-label="종료일"
-        >
+        <span id="rangeLabel"></span>
 
       </div>
+
+      <!-- 손잡이·막대는 app.js 가 채운다 -->
+      <div class="range-slider" id="hRangeSlider" aria-label="표시 기간"></div>
 
     </section>
 
@@ -180,6 +227,18 @@
     ></section>
 
   </main>
+
+
+  <!-- =========================
+       알림 (저장 중 / 완료)
+  ========================= -->
+
+  <div
+    id="toast"
+    class="toast hidden"
+    role="status"
+    aria-live="polite"
+  ></div>
 
 
   <!-- =========================
@@ -279,8 +338,12 @@
         <input
           id="taskColor"
           type="color"
-          value="#3B82F6"
+          value="#3b82f6"
         >
+
+        <small>
+          바꾸지 않으면 카테고리 기본색을 따릅니다.
+        </small>
 
       </label>
 
@@ -345,7 +408,7 @@
 
 
   <!-- =========================
-       카테고리 추가 Modal
+       카테고리 추가 / 수정 Modal
   ========================= -->
 
   <div
@@ -357,7 +420,7 @@
 
       <div class="modal-header">
 
-        <h2>카테고리 추가</h2>
+        <h2 id="categoryModalTitle">카테고리 추가</h2>
 
         <button
           type="button"
@@ -369,6 +432,13 @@
         </button>
 
       </div>
+
+
+      <!-- 수정할 때만 값이 들어간다. 비어 있으면 새로 추가 -->
+      <input
+        id="categoryId"
+        type="hidden"
+      >
 
 
       <label>
@@ -389,7 +459,7 @@
         <input
           id="categoryColor"
           type="color"
-          value="#3B82F6"
+          value="#3b82f6"
         >
 
       </label>
@@ -423,7 +493,7 @@
        JS
   ========================= -->
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2026-09-21-q"></script>
 
 </body>
 </html>
