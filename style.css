@@ -189,7 +189,7 @@ main {
 .control-bar {
   position: relative;
 
-  height: 48px;
+  min-height: 48px;
 
   display: flex;
 
@@ -221,6 +221,8 @@ main {
 
   cursor: pointer;
 
+  white-space: nowrap;
+
   transition: background .15s, border-color .15s;
 }
 
@@ -246,6 +248,16 @@ main {
   font-size: 24px;
 
   line-height: 1;
+
+  flex-shrink: 0;
+}
+
+/* (추가분) #yearTitle도 .control-bar button 이라 위 width:36px 가 적용되는데,
+   커스텀 기간처럼 글자가 길어지면 그 36px 폭 밖으로 글자가 삐져나와 보인다.
+   .year-title 쪽 폭은 내용에 맞게 늘어나도록(= 기존 min-width 96px가 실제로
+   작동하도록) 되돌려 준다. 평소(연도 숫자만 있을 때)는 결과가 똑같다. */
+.control-bar .year-title {
+  width: auto;
 }
 
 
@@ -1921,7 +1933,7 @@ body.is-dragging * {
   flex-direction: column;
   gap: 24px;
   padding: 20px;
-  max-width: 1400px;
+  max-width: none;
   margin: 0 auto;
 }
 
@@ -2132,3 +2144,99 @@ body.is-dragging * {
 .custom-range-btn.hidden { display: none; }
 
 /* ▲▲▲ 멀티 차트 (추가분) 끝 ▲▲▲ */
+
+
+/* =========================================================
+ * ▼▼▼ 7가지 수정사항 (추가분) ▼▼▼
+ * ========================================================= */
+
+/* 1) 개별 차트 브랜드 영역의 차트 이름: 눌러서 수정 가능함을 보여준다 */
+.brand-main[role="button"] {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin: -2px -6px;
+}
+
+.brand-main[role="button"]:hover {
+  background: #f3f4f6;
+}
+
+/* 2) 모음 페이지 상단 브랜드 영역(기존 .brand를 그대로 재사용하므로 추가 스타일 불필요) */
+
+/* 3) 차트 박스 접기/펼치기 토글 */
+.mc-chart-box-head {
+  justify-content: flex-start;
+}
+
+.mc-chart-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px 6px;
+  margin: -4px -6px -4px 0;
+  border-radius: 8px;
+  color: #475569;
+  flex: 0 0 auto;
+}
+
+.mc-chart-toggle:hover {
+  background: #eef0f6;
+}
+
+.mc-chart-toggle-arrow {
+  font-size: 11px;
+}
+
+.mc-chart-toggle-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mc-chart-box-headinfo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mc-chart-box-collapsed .mc-chart-iframe-wrap {
+  display: none;
+}
+
+/* 4) 차트 관리 모달: 상단 X 닫기 버튼 */
+.mc-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.mc-modal-head h2 {
+  margin: 0;
+}
+
+.mc-modal-close {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  color: #6b7280;
+  padding: 4px 8px;
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+
+.mc-modal-close:hover {
+  background: #f1f3f8;
+  color: #1f2430;
+}
+
+/* ▲▲▲ 7가지 수정사항 (추가분) 끝 ▲▲▲ */
