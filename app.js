@@ -1,5 +1,5 @@
 const API_URL =
-  "https://script.google.com/macros/s/AKfycbx33KL-l94mz08Q8rWJHYrGUXyipmxrm02z3Y26OR20V9q5V2diZRFIzvyFpqio-0Jg8Q/exec";
+  "https://script.google.com/macros/s/AKfycbyexenF9ADWlQ3kBxOEPZ3g9pjb6v9BBUs0uQDc60AW2CMQCsPQipkGVNtMEQ5BGNhGEw/exec";
 
 const EDIT_KEY =
   "21cb42f7a0ea44838dea501764474553";
