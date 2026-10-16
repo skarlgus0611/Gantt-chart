@@ -4516,5 +4516,3 @@ if (IS_SHELL_MODE) {
     loadData();
   })();
 }
-
-
