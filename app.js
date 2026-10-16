@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-09-21-q)
+ * 간트차트 app.js  (v3, 2026-10-16-glogin)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -15,9 +15,6 @@
  *  - 연도 숫자를 누르면 연도 선택창, 1년 전체가 화면 폭에 맞춰 한눈에 보임
  *  - 캡처 버튼: 지금 확대 상태와 무관하게 연도 전체를 이미지로 저장
  * ========================================================= */
-
-const API_URL =
-  "https://script.google.com/macros/s/AKfycbx33KL-l94mz08Q8rWJHYrGUXyipmxrm02z3Y26OR20V9q5V2diZRFIzvyFpqio-0Jg8Q/exec";
 
 /* ===== 멀티 차트 (추가분) =====
    주소에 ?chart=아이디 가 있으면: 이 창은 "그 차트 하나"를 보여주는
@@ -50,7 +47,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-09-21-q";
+const APP_VERSION = "2026-10-16-glogin";
 
 
 /* =========================================================
@@ -85,116 +82,986 @@ let state = {
 
 
 /* =========================================================
- * API
+ * API  (Google 로그인 + 사용자 개인 DB 시트, Apps Script 미사용)
  *
- * - 편집 키는 처음 접속할 때 입력받아 이 기기의 브라우저
- *   (localStorage)에만 저장한다.
- * - 모든 요청은 POST 다. (키가 주소에 남지 않는다)
+ * - "키" 대신 Google 계정으로 로그인한다.
+ * - 로그인하면 이 계정의 '내 드라이브'에서 이 앱이 전에 만들어 둔
+ *   DB 스프레드시트를 찾는다. 없으면 새로 만든다(빈 양식).
+ * - 그 뒤로는 사용자 자신의 OAuth 토큰으로 Google Sheets/Drive API를
+ *   직접 호출한다. 개발자 계정/Apps Script는 전혀 거치지 않고,
+ *   그 어떤 접근 권한도 갖지 않는다(완전 격리).
+ * - 토큰/시트ID는 이 탭의 sessionStorage에 저장해서, 멀티 차트
+ *   보기의 iframe들도 같은 로그인을 그대로 공유해서 쓴다.
  * ========================================================= */
 
-const KEY_STORAGE = "gantt_edit_key";
+const GOOGLE_CLIENT_ID =
+  "837081087195-hv7dvrjqn7o8eiidq8qv1b0tci85v0a1.apps.googleusercontent.com";
+const GOOGLE_SCOPES =
+  "https://www.googleapis.com/auth/drive.file " +
+  "https://www.googleapis.com/auth/spreadsheets";
 
-let editKey = "";
+const DB_PROP_KEY = "ganttDb";
+const DB_PROP_VALUE = "v1";
+const DB_FILE_NAME = "간트차트 DB";
+
+const TASK_SHEET_NAME = "Tasks";
+const CATEGORY_SHEET_NAME = "Categories";
+const CHARTS_SHEET_NAME = "Charts";
+
+const TASK_HEADERS = [
+  "고유ID", "카테고리 ID", "작업명", "시작일", "종료일",
+  "진행률", "막대 색상", "메모", "대상처", "담당자", "수정시각"
+];
+const CATEGORY_HEADERS = ["카테고리 ID", "카테고리명", "기본 막대 색상"];
+const CHARTS_HEADERS = [
+  "차트ID", "이름", "표시시작일", "표시종료일", "숨김", "순서", "생성시각"
+];
+
+const LIMITS = { name: 200, memo: 5000, target: 200, owner: 100, category: 100 };
+
+const SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
+const DRIVE_BASE = "https://www.googleapis.com/drive/v3/files";
+
+const AUTH_TOKEN_KEY = "gantt_access_token";
+const AUTH_SHEET_KEY = "gantt_spreadsheet_id";
+
+let accessToken = "";
+let spreadsheetId = "";
+let tokenClient = null;
 
 try {
-  editKey = localStorage.getItem(KEY_STORAGE) || "";
+  accessToken = sessionStorage.getItem(AUTH_TOKEN_KEY) || "";
+  spreadsheetId = sessionStorage.getItem(AUTH_SHEET_KEY) || "";
 } catch (error) {
-  // 저장소를 못 쓰는 환경이면 접속할 때마다 입력받는다.
+  // 저장소를 못 쓰는 환경이면 매번 새로 로그인한다.
 }
 
-
-function askKey(message) {
-  const input = prompt(message || "편집 키를 입력하세요");
-
-  if (!input || !input.trim()) {
-    return "";
-  }
-
-  editKey = input.trim();
-
+function persistAuth() {
   try {
-    localStorage.setItem(KEY_STORAGE, editKey);
-  } catch (error) {
-    // 무시
-  }
-
-  return editKey;
-}
-
-
-function clearKey() {
-  editKey = "";
-
-  try {
-    localStorage.removeItem(KEY_STORAGE);
+    sessionStorage.setItem(AUTH_TOKEN_KEY, accessToken);
+    sessionStorage.setItem(AUTH_SHEET_KEY, spreadsheetId);
   } catch (error) {
     // 무시
   }
 }
 
+function setLoginButtonsUi() {
+  document.querySelectorAll(".gantt-login-btn").forEach((btn) => {
+    btn.textContent = accessToken ? "로그아웃" : "Google 로그인";
+    btn.title = accessToken ? "Google 계정에서 로그아웃합니다" : "Google 계정으로 로그인합니다";
+  });
+}
 
-async function request(action, data = {}, retried = false) {
+function initGoogleAuth() {
+  if (!window.google || !google.accounts || !google.accounts.oauth2) {
+    return;
+  }
 
-  if (!editKey && !askKey()) {
-    throw new Error("편집 키가 필요합니다.");
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: GOOGLE_SCOPES,
+    callback: (resp) => {
+      if (resp && resp.access_token) {
+        accessToken = resp.access_token;
+        spreadsheetId = "";
+        persistAuth();
+        setLoginButtonsUi();
+        onGoogleLoginSuccess();
+      } else {
+        if (typeof showToast === "function") {
+          showToast("Google 로그인에 실패했습니다.");
+        }
+      }
+    }
+  });
+
+  setLoginButtonsUi();
+}
+
+function onGoogleLoginSuccess() {
+  if (IS_SHELL_MODE) {
+    if (typeof shellLoadCharts === "function") {
+      shellLoadCharts();
+    }
+  } else if (typeof loadData === "function") {
+    loadData();
+  }
+}
+
+function signOutGoogle() {
+  if (accessToken && window.google && google.accounts && google.accounts.oauth2) {
+    google.accounts.oauth2.revoke(accessToken, () => {});
+  }
+
+  accessToken = "";
+  spreadsheetId = "";
+  persistAuth();
+  setLoginButtonsUi();
+
+  state.tasks = [];
+  state.categories = [];
+
+  if (typeof render === "function") {
+    render();
+  }
+
+  if (typeof showToast === "function") {
+    showToast("로그아웃했습니다.");
+  }
+}
+
+function handleLoginButtonClick() {
+  if (accessToken) {
+    if (confirm("Google 계정에서 로그아웃하시겠습니까?")) {
+      signOutGoogle();
+    }
+    return;
+  }
+
+  if (!tokenClient) {
+    alert("Google 로그인 모듈을 아직 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  tokenClient.requestAccessToken({ prompt: "consent" });
+}
+
+async function googleFetch(url, opts = {}) {
+  if (!accessToken) {
+    throw new Error("로그인이 필요합니다. 'Google 로그인' 버튼을 눌러주세요.");
   }
 
   let response;
 
   try {
-    response = await fetch(API_URL, {
-      method: "POST",
-
-      // text/plain 이어야 브라우저가 사전 요청(preflight)을 보내지 않는다.
+    response = await fetch(url, {
+      ...opts,
       headers: {
-        "Content-Type": "text/plain;charset=utf-8"
-      },
-
-      body: JSON.stringify({
-        action,
-        key: editKey,
-        ...data
-      })
+        "Content-Type": "application/json",
+        ...(opts.headers || {}),
+        Authorization: "Bearer " + accessToken
+      }
     });
   } catch (error) {
-    throw new Error("서버에 연결하지 못했습니다. 인터넷 연결을 확인하세요.");
+    throw new Error("Google 서버에 연결하지 못했습니다. 인터넷 연결을 확인하세요.");
   }
 
-  let result;
+  if (response.status === 401) {
+    accessToken = "";
+    persistAuth();
+    setLoginButtonsUi();
+    throw new Error("로그인이 만료됐습니다. 다시 로그인해주세요.");
+  }
+
+  let body = null;
 
   try {
-    result = await response.json();
+    body = await response.json();
   } catch (error) {
-    throw new Error(
-      "서버 응답을 읽을 수 없습니다. " +
-      "배포 주소와 접근 권한(모든 사용자)을 확인하세요."
-    );
+    body = null;
   }
 
-  if (!result.ok) {
-
-    // 키가 틀리면 한 번만 다시 입력받는다.
-    if (result.error === "Forbidden" && !retried) {
-      clearKey();
-
-      if (askKey("편집 키가 올바르지 않습니다. 다시 입력하세요")) {
-        return request(action, data, true);
-      }
-    }
-
-    throw new Error(result.error || "요청 실패");
+  if (!response.ok) {
+    const msg = (body && body.error && body.error.message) || (response.status + " 오류");
+    throw new Error(msg);
   }
 
-  return result;
+  return body;
 }
 
+function sheetsGet(path, params) {
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  return googleFetch(SHEETS_BASE + "/" + spreadsheetId + path + qs);
+}
+
+function sheetsPost(path, body, params) {
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  return googleFetch(SHEETS_BASE + "/" + spreadsheetId + path + qs, {
+    method: "POST",
+    body: JSON.stringify(body || {})
+  });
+}
+
+function sheetsPut(path, body, params) {
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  return googleFetch(SHEETS_BASE + "/" + spreadsheetId + path + qs, {
+    method: "PUT",
+    body: JSON.stringify(body || {})
+  });
+}
+
+async function getSheetGrid(sheetName) {
+  const res = await sheetsGet("/values/" + encodeURIComponent(sheetName));
+  return (res && res.values) || [];
+}
+
+function headerMap(grid) {
+  const map = {};
+
+  if (!grid.length) {
+    return map;
+  }
+
+  grid[0].forEach((h, i) => {
+    const k = String(h || "").trim();
+    if (k) {
+      map[k] = i;
+    }
+  });
+
+  return map;
+}
+
+function chartSheetNames(chartId) {
+  const id = String(chartId || "").trim();
+
+  if (!id || id === "default") {
+    return { task: TASK_SHEET_NAME, category: CATEGORY_SHEET_NAME, id: "default" };
+  }
+
+  return { task: "Tasks_" + id, category: "Categories_" + id, id };
+}
+
+async function findOrCreateSpreadsheetId() {
+  if (spreadsheetId) {
+    return spreadsheetId;
+  }
+
+  const q = encodeURIComponent(
+    "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false " +
+    "and properties has { key='" + DB_PROP_KEY + "' and value='" + DB_PROP_VALUE + "' }"
+  );
+
+  const listRes = await googleFetch(
+    DRIVE_BASE + "?q=" + q + "&fields=files(id,name)&spaces=drive"
+  );
+
+  if (listRes && Array.isArray(listRes.files) && listRes.files.length) {
+    spreadsheetId = listRes.files[0].id;
+    persistAuth();
+    return spreadsheetId;
+  }
+
+  const created = await googleFetch(SHEETS_BASE, {
+    method: "POST",
+    body: JSON.stringify({
+      properties: { title: DB_FILE_NAME },
+      sheets: [
+        { properties: { title: TASK_SHEET_NAME, gridProperties: { frozenRowCount: 1 } } },
+        { properties: { title: CATEGORY_SHEET_NAME, gridProperties: { frozenRowCount: 1 } } },
+        { properties: { title: CHARTS_SHEET_NAME, gridProperties: { frozenRowCount: 1 } } }
+      ]
+    })
+  });
+
+  spreadsheetId = created.spreadsheetId;
+
+  await googleFetch(SHEETS_BASE + "/" + spreadsheetId + "/values:batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({
+      valueInputOption: "RAW",
+      data: [
+        { range: TASK_SHEET_NAME + "!A1:K1", values: [TASK_HEADERS] },
+        { range: CATEGORY_SHEET_NAME + "!A1:C1", values: [CATEGORY_HEADERS] },
+        { range: CHARTS_SHEET_NAME + "!A1:G1", values: [CHARTS_HEADERS] },
+        {
+          range: CHARTS_SHEET_NAME + "!A2:G2",
+          values: [["default", "기본 차트", "", "", false, 0, new Date().toISOString()]]
+        }
+      ]
+    })
+  });
+
+  await googleFetch(DRIVE_BASE + "/" + spreadsheetId + "?fields=id", {
+    method: "PATCH",
+    body: JSON.stringify({ properties: { [DB_PROP_KEY]: DB_PROP_VALUE } })
+  });
+
+  persistAuth();
+  return spreadsheetId;
+}
+
+async function getSheetIdByTitle(title) {
+  const meta = await sheetsGet("", { fields: "sheets.properties" });
+  const found = (meta.sheets || []).find((s) => s.properties.title === title);
+
+  if (!found) {
+    throw new Error("'" + title + "' 탭을 찾을 수 없습니다.");
+  }
+
+  return found.properties.sheetId;
+}
+
+async function findRowIndex(sheetName, idHeaderName, id) {
+  const grid = await getSheetGrid(sheetName);
+  const col = headerMap(grid);
+  const idCol = col[idHeaderName];
+
+  for (let i = 1; i < grid.length; i++) {
+    if (String(grid[i][idCol] || "") === String(id)) {
+      return { rowIndex: i + 1, grid, col };
+    }
+  }
+
+  return { rowIndex: -1, grid, col };
+}
+
+function strLimited(v, max, label) {
+  const s = String(v === undefined || v === null ? "" : v);
+
+  if (s.length > max) {
+    throw new Error(label + "은(는) " + max + "자를 넘을 수 없습니다.");
+  }
+
+  return s;
+}
+
+function isRealDateStr(s) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
+}
+
+function normProgress(v) {
+  if (v === undefined || v === null || v === "") {
+    return 0;
+  }
+
+  let num = Number(String(v).replace("%", "").trim());
+
+  if (isNaN(num)) {
+    return 0;
+  }
+
+  if (num > 0 && num < 1) {
+    num *= 100;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(num)));
+}
+
+function validColorStr(v) {
+  const s = String(v || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(s) ? s : "";
+}
+
+function newRowId() {
+  if (window.crypto && crypto.randomUUID) {
+    return crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  }
+
+  return (Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 12);
+}
+
+async function readTasksAndCats(names) {
+  const [taskGrid, catGrid] = await Promise.all([
+    getSheetGrid(names.task),
+    getSheetGrid(names.category)
+  ]);
+
+  const catCol = headerMap(catGrid);
+  const categories = catGrid
+    .slice(1)
+    .filter((r) => r[catCol["카테고리 ID"]])
+    .map((r) => ({
+      id: String(r[catCol["카테고리 ID"]] || "").trim(),
+      name: String(r[catCol["카테고리명"]] || ""),
+      color: validColorStr(r[catCol["기본 막대 색상"]]) || DEFAULT_COLOR
+    }));
+
+  const catMap = {};
+  categories.forEach((c) => {
+    catMap[c.id] = c;
+  });
+
+  const taskCol = headerMap(taskGrid);
+  const tasks = taskGrid
+    .slice(1)
+    .filter((r) => r[taskCol["고유ID"]])
+    .map((r) => {
+      const categoryId = String(r[taskCol["카테고리 ID"]] || "").trim();
+      const cat = catMap[categoryId];
+
+      return {
+        id: String(r[taskCol["고유ID"]]).trim(),
+        categoryId,
+        name: String(r[taskCol["작업명"]] || ""),
+        catName: cat ? cat.name : "",
+        color: validColorStr(r[taskCol["막대 색상"]]) || (cat ? cat.color : DEFAULT_COLOR),
+        start: String(r[taskCol["시작일"]] || ""),
+        end: String(r[taskCol["종료일"]] || ""),
+        progress: normProgress(r[taskCol["진행률"]]),
+        memo: String(r[taskCol["메모"]] || ""),
+        target: String(r[taskCol["대상처"]] || ""),
+        owner: String(r[taskCol["담당자"]] || ""),
+        updated: String(r[taskCol["수정시각"]] || "")
+      };
+    });
+
+  return { tasks, categories };
+}
+
+function applyTaskFields(base, data, cats) {
+  const t = {
+    name: base.name, categoryId: base.categoryId, start: base.start, end: base.end,
+    progress: base.progress, color: base.color, memo: base.memo,
+    target: base.target, owner: base.owner
+  };
+
+  const has = (k) => data[k] !== undefined && data[k] !== null;
+
+  if (has("name")) {
+    t.name = strLimited(data.name, LIMITS.name, "작업명").trim();
+  }
+  if (!t.name) {
+    throw new Error("작업명을 입력해주세요.");
+  }
+
+  if (has("categoryId")) {
+    const id = String(data.categoryId).trim();
+    if (id && !cats.some((c) => c.id === id)) {
+      throw new Error("존재하지 않는 카테고리입니다.");
+    }
+    t.categoryId = id;
+  }
+
+  if (has("start")) {
+    t.start = String(data.start).trim();
+  }
+  if (has("end")) {
+    t.end = String(data.end).trim();
+  }
+  if (!isRealDateStr(t.start) || !isRealDateStr(t.end)) {
+    throw new Error("날짜는 2026-09-25 같은 형식의 올바른 날짜여야 합니다.");
+  }
+  if (t.end < t.start) {
+    throw new Error("종료일은 시작일보다 빠를 수 없습니다.");
+  }
+
+  if (has("progress")) {
+    t.progress = normProgress(data.progress);
+  }
+
+  if (has("color")) {
+    const raw = String(data.color).trim();
+    if (raw && !validColorStr(raw)) {
+      throw new Error("색상은 #RRGGBB 형식이어야 합니다.");
+    }
+    t.color = raw;
+  }
+
+  if (has("memo")) {
+    t.memo = strLimited(data.memo, LIMITS.memo, "메모");
+  }
+  if (has("target")) {
+    t.target = strLimited(data.target, LIMITS.target, "대상처");
+  }
+  if (has("owner")) {
+    t.owner = strLimited(data.owner, LIMITS.owner, "담당자");
+  }
+
+  return t;
+}
+
+function setRowFields(row, col, t, id, nowIso) {
+  const set = (h, v) => {
+    if (col[h] !== undefined) {
+      row[col[h]] = v;
+    }
+  };
+
+  set("고유ID", id);
+  set("카테고리 ID", t.categoryId);
+  set("작업명", t.name);
+  set("시작일", t.start);
+  set("종료일", t.end);
+  set("진행률", t.progress);
+  set("막대 색상", t.color);
+  set("메모", t.memo);
+  set("대상처", t.target);
+  set("담당자", t.owner);
+  set("수정시각", nowIso);
+}
+
+async function appendRow(sheetName, rowArray) {
+  await sheetsPost(
+    "/values/" + encodeURIComponent(sheetName) + ":append",
+    { values: [rowArray] },
+    { valueInputOption: "RAW", insertDataOption: "INSERT_ROWS" }
+  );
+}
+
+async function createTaskRow(names, data) {
+  const cats = (await readTasksAndCats(names)).categories;
+  const t = applyTaskFields(
+    { name: "", categoryId: "", start: "", end: "", progress: 0, color: "", memo: "", target: "", owner: "" },
+    data || {},
+    cats
+  );
+
+  const id = newRowId();
+  const col = {};
+  TASK_HEADERS.forEach((h, i) => { col[h] = i; });
+
+  const row = new Array(TASK_HEADERS.length).fill("");
+  setRowFields(row, col, t, id, new Date().toISOString());
+
+  await appendRow(names.task, row);
+  return id;
+}
+
+async function updateTaskRow(names, data) {
+  data = data || {};
+  const { rowIndex, grid, col } = await findRowIndex(names.task, "고유ID", data.id);
+
+  if (rowIndex === -1) {
+    throw new Error("해당 작업을 찾을 수 없습니다.");
+  }
+
+  const row = grid[rowIndex - 1].slice();
+  const cats = (await readTasksAndCats(names)).categories;
+  const get = (h) => row[col[h]];
+
+  const base = {
+    name: String(get("작업명") || ""), categoryId: String(get("카테고리 ID") || ""),
+    start: String(get("시작일") || ""), end: String(get("종료일") || ""),
+    progress: normProgress(get("진행률")), color: validColorStr(get("막대 색상")),
+    memo: String(get("메모") || ""), target: String(get("대상처") || ""), owner: String(get("담당자") || "")
+  };
+
+  const t = applyTaskFields(base, data, cats);
+  setRowFields(row, col, t, String(data.id), new Date().toISOString());
+
+  await sheetsPut(
+    "/values/" + encodeURIComponent(names.task) + "!A" + rowIndex + ":K" + rowIndex,
+    { values: [row] },
+    { valueInputOption: "RAW" }
+  );
+}
+
+async function deleteTaskRow(names, id) {
+  const { rowIndex } = await findRowIndex(names.task, "고유ID", id);
+
+  if (rowIndex === -1) {
+    throw new Error("삭제할 작업을 찾을 수 없습니다.");
+  }
+
+  const sheetId = await getSheetIdByTitle(names.task);
+
+  await sheetsPost(":batchUpdate", {
+    requests: [{
+      deleteDimension: {
+        range: { sheetId, dimension: "ROWS", startIndex: rowIndex - 1, endIndex: rowIndex }
+      }
+    }]
+  });
+}
+
+async function reorderRows(sheetName, idHeaderName, orderedIds) {
+  if (!Array.isArray(orderedIds) || !orderedIds.length) {
+    return;
+  }
+
+  const grid = await getSheetGrid(sheetName);
+  const col = headerMap(grid);
+  const idCol = col[idHeaderName];
+  const dataRows = grid.slice(1);
+
+  const map = {};
+  dataRows.forEach((r) => {
+    map[String(r[idCol] || "")] = r;
+  });
+
+  const seen = {};
+  const reordered = [];
+
+  orderedIds.forEach((id) => {
+    id = String(id);
+    if (map[id] && !seen[id]) {
+      reordered.push(map[id]);
+      seen[id] = true;
+    }
+  });
+
+  dataRows.forEach((r) => {
+    const id = String(r[idCol] || "");
+    if (!seen[id]) {
+      reordered.push(r);
+      seen[id] = true;
+    }
+  });
+
+  if (!reordered.length) {
+    return;
+  }
+
+  const width = grid[0].length;
+  const endCol = String.fromCharCode(64 + width);
+
+  await sheetsPut(
+    "/values/" + encodeURIComponent(sheetName) + "!A2:" + endCol + (reordered.length + 1),
+    { values: reordered },
+    { valueInputOption: "RAW" }
+  );
+}
+
+function cleanCategory(data, base) {
+  const has = (k) => data[k] !== undefined && data[k] !== null;
+
+  const name = has("name") ? strLimited(data.name, LIMITS.category, "카테고리명").trim() : base.name;
+  if (!name) {
+    throw new Error("카테고리명을 입력해주세요.");
+  }
+
+  let color = base.color;
+  if (has("color")) {
+    const raw = String(data.color).trim();
+    if (raw && !validColorStr(raw)) {
+      throw new Error("색상은 #RRGGBB 형식이어야 합니다.");
+    }
+    color = raw || DEFAULT_COLOR;
+  }
+
+  return { name, color };
+}
+
+async function nextCategoryId(names) {
+  let max = 0;
+
+  const scan = (v) => {
+    const m = String(v || "").match(/^C(\d+)$/i);
+    if (m) {
+      max = Math.max(max, Number(m[1]));
+    }
+  };
+
+  const [catGrid, taskGrid] = await Promise.all([
+    getSheetGrid(names.category),
+    getSheetGrid(names.task)
+  ]);
+
+  const catCol = headerMap(catGrid);
+  const taskCol = headerMap(taskGrid);
+
+  catGrid.slice(1).forEach((r) => scan(r[catCol["카테고리 ID"]]));
+  taskGrid.slice(1).forEach((r) => scan(r[taskCol["카테고리 ID"]]));
+
+  return "C" + String(max + 1).padStart(2, "0");
+}
+
+async function createCategoryRow(names, data) {
+  data = data || {};
+  const c = cleanCategory(
+    { name: data.name === undefined ? "새 카테고리" : data.name, color: data.color },
+    { name: "새 카테고리", color: DEFAULT_COLOR }
+  );
+
+  const id = await nextCategoryId(names);
+  const col = {};
+  CATEGORY_HEADERS.forEach((h, i) => { col[h] = i; });
+
+  const row = ["", "", ""];
+  row[col["카테고리 ID"]] = id;
+  row[col["카테고리명"]] = c.name;
+  row[col["기본 막대 색상"]] = c.color;
+
+  await appendRow(names.category, row);
+  return id;
+}
+
+async function updateCategoryRow(names, data) {
+  data = data || {};
+  const { rowIndex, grid, col } = await findRowIndex(names.category, "카테고리 ID", data.id);
+
+  if (rowIndex === -1) {
+    throw new Error("카테고리를 찾을 수 없습니다.");
+  }
+
+  const row = grid[rowIndex - 1].slice();
+  const base = {
+    name: String(row[col["카테고리명"]] || ""),
+    color: validColorStr(row[col["기본 막대 색상"]]) || DEFAULT_COLOR
+  };
+
+  const c = cleanCategory(data, base);
+  row[col["카테고리명"]] = c.name;
+  row[col["기본 막대 색상"]] = c.color;
+
+  await sheetsPut(
+    "/values/" + encodeURIComponent(names.category) + "!A" + rowIndex + ":C" + rowIndex,
+    { values: [row] },
+    { valueInputOption: "RAW" }
+  );
+}
+
+async function deleteCategoryRow(names, id) {
+  const { rowIndex } = await findRowIndex(names.category, "카테고리 ID", id);
+
+  if (rowIndex === -1) {
+    throw new Error("삭제할 카테고리를 찾을 수 없습니다.");
+  }
+
+  const sheetId = await getSheetIdByTitle(names.category);
+
+  await sheetsPost(":batchUpdate", {
+    requests: [{
+      deleteDimension: {
+        range: { sheetId, dimension: "ROWS", startIndex: rowIndex - 1, endIndex: rowIndex }
+      }
+    }]
+  });
+}
+
+async function listChartsImpl() {
+  const grid = await getSheetGrid(CHARTS_SHEET_NAME);
+  const col = headerMap(grid);
+
+  return grid
+    .slice(1)
+    .filter((r) => r[col["차트ID"]])
+    .map((r) => ({
+      id: String(r[col["차트ID"]]).trim(),
+      name: String(r[col["이름"]] || ""),
+      rangeStart: String(r[col["표시시작일"]] || ""),
+      rangeEnd: String(r[col["표시종료일"]] || ""),
+      hidden: String(r[col["숨김"]]).toUpperCase() === "TRUE" || r[col["숨김"]] === true,
+      order: Number(r[col["순서"]]) || 0
+    }))
+    .sort((a, b) => a.order - b.order);
+}
+
+async function createChartImpl(data) {
+  data = data || {};
+
+  const name = strLimited(data.name === undefined ? "새 차트" : data.name, LIMITS.name, "차트 이름").trim() || "새 차트";
+  const rangeStart = data.rangeStart ? String(data.rangeStart).trim() : "";
+  const rangeEnd = data.rangeEnd ? String(data.rangeEnd).trim() : "";
+
+  if (rangeStart && !isRealDateStr(rangeStart)) {
+    throw new Error("표시 시작일 형식이 올바르지 않습니다.");
+  }
+  if (rangeEnd && !isRealDateStr(rangeEnd)) {
+    throw new Error("표시 종료일 형식이 올바르지 않습니다.");
+  }
+  if (rangeStart && rangeEnd && rangeEnd < rangeStart) {
+    throw new Error("표시 종료일은 시작일보다 빠를 수 없습니다.");
+  }
+
+  const existing = await listChartsImpl();
+  let id;
+  do {
+    id = newRowId();
+  } while (existing.some((c) => c.id === id));
+
+  const maxOrder = existing.reduce((m, c) => Math.max(m, c.order), -1);
+
+  const col = {};
+  CHARTS_HEADERS.forEach((h, i) => { col[h] = i; });
+
+  const row = new Array(CHARTS_HEADERS.length).fill("");
+  row[col["차트ID"]] = id;
+  row[col["이름"]] = name;
+  row[col["표시시작일"]] = rangeStart;
+  row[col["표시종료일"]] = rangeEnd;
+  row[col["숨김"]] = false;
+  row[col["순서"]] = maxOrder + 1;
+  row[col["생성시각"]] = new Date().toISOString();
+
+  await appendRow(CHARTS_SHEET_NAME, row);
+
+  const names = chartSheetNames(id);
+
+  await sheetsPost(":batchUpdate", {
+    requests: [
+      { addSheet: { properties: { title: names.task, gridProperties: { frozenRowCount: 1 } } } },
+      { addSheet: { properties: { title: names.category, gridProperties: { frozenRowCount: 1 } } } }
+    ]
+  });
+
+  await sheetsPost("/values:batchUpdate", {
+    valueInputOption: "RAW",
+    data: [
+      { range: names.task + "!A1:K1", values: [TASK_HEADERS] },
+      { range: names.category + "!A1:C1", values: [CATEGORY_HEADERS] }
+    ]
+  });
+
+  return { id, name, rangeStart, rangeEnd, hidden: false, order: maxOrder + 1 };
+}
+
+async function updateChartImpl(data) {
+  data = data || {};
+  const { rowIndex, grid, col } = await findRowIndex(CHARTS_SHEET_NAME, "차트ID", data.id);
+
+  if (rowIndex === -1) {
+    throw new Error("차트를 찾을 수 없습니다.");
+  }
+
+  const row = grid[rowIndex - 1].slice();
+  const has = (k) => data[k] !== undefined && data[k] !== null;
+
+  if (has("name")) {
+    const name = strLimited(data.name, LIMITS.name, "차트 이름").trim();
+    if (!name) {
+      throw new Error("차트 이름을 입력해주세요.");
+    }
+    row[col["이름"]] = name;
+  }
+
+  if (has("rangeStart")) {
+    const v = String(data.rangeStart).trim();
+    if (v && !isRealDateStr(v)) {
+      throw new Error("표시 시작일 형식이 올바르지 않습니다.");
+    }
+    row[col["표시시작일"]] = v;
+  }
+
+  if (has("rangeEnd")) {
+    const v = String(data.rangeEnd).trim();
+    if (v && !isRealDateStr(v)) {
+      throw new Error("표시 종료일 형식이 올바르지 않습니다.");
+    }
+    row[col["표시종료일"]] = v;
+  }
+
+  const newStart = String(row[col["표시시작일"]] || "");
+  const newEnd = String(row[col["표시종료일"]] || "");
+  if (newStart && newEnd && newEnd < newStart) {
+    throw new Error("표시 종료일은 시작일보다 빠를 수 없습니다.");
+  }
+
+  if (has("hidden")) {
+    row[col["숨김"]] = !!data.hidden;
+  }
+  if (has("order")) {
+    row[col["순서"]] = Number(data.order) || 0;
+  }
+
+  await sheetsPut(
+    "/values/" + encodeURIComponent(CHARTS_SHEET_NAME) + "!A" + rowIndex + ":G" + rowIndex,
+    { values: [row] },
+    { valueInputOption: "RAW" }
+  );
+}
+
+async function deleteChartImpl(id) {
+  id = String(id || "").trim();
+
+  if (!id || id === "default") {
+    throw new Error("기본 차트는 삭제할 수 없습니다.");
+  }
+
+  const { rowIndex } = await findRowIndex(CHARTS_SHEET_NAME, "차트ID", id);
+
+  if (rowIndex === -1) {
+    throw new Error("삭제할 차트를 찾을 수 없습니다.");
+  }
+
+  const chartsSheetId = await getSheetIdByTitle(CHARTS_SHEET_NAME);
+
+  await sheetsPost(":batchUpdate", {
+    requests: [{
+      deleteDimension: {
+        range: { sheetId: chartsSheetId, dimension: "ROWS", startIndex: rowIndex - 1, endIndex: rowIndex }
+      }
+    }]
+  });
+
+  const names = chartSheetNames(id);
+  const meta = await sheetsGet("", { fields: "sheets.properties" });
+  const requests = [];
+
+  (meta.sheets || []).forEach((s) => {
+    if (s.properties.title === names.task || s.properties.title === names.category) {
+      requests.push({ deleteSheet: { sheetId: s.properties.sheetId } });
+    }
+  });
+
+  if (requests.length) {
+    await sheetsPost(":batchUpdate", { requests });
+  }
+}
+
+async function ensureSpreadsheetReady() {
+  if (!accessToken) {
+    throw new Error("로그인이 필요합니다. 'Google 로그인' 버튼을 눌러주세요.");
+  }
+  await findOrCreateSpreadsheetId();
+}
+
+async function dispatchAction(action, body) {
+  await ensureSpreadsheetReady();
+  const names = chartSheetNames(body.chartId);
+
+  switch (action) {
+    case "load":
+    case "loadChart":
+      return { ok: true, data: await readTasksAndCats(names) };
+
+    case "create":
+    case "createForChart":
+      return { ok: true, result: await createTaskRow(names, body.data || {}) };
+
+    case "update":
+    case "updateForChart":
+      await updateTaskRow(names, body.data || {});
+      return { ok: true, result: null };
+
+    case "delete":
+    case "deleteForChart":
+      await deleteTaskRow(names, body.id);
+      return { ok: true, result: null };
+
+    case "reorder":
+    case "reorderForChart":
+      await reorderRows(names.task, "고유ID", body.ids || []);
+      return { ok: true, result: null };
+
+    case "createCategory":
+    case "createCategoryForChart":
+      return { ok: true, result: await createCategoryRow(names, body.data || {}) };
+
+    case "updateCategory":
+    case "updateCategoryForChart":
+      await updateCategoryRow(names, body.data || {});
+      return { ok: true, result: null };
+
+    case "deleteCategory":
+    case "deleteCategoryForChart":
+      await deleteCategoryRow(names, body.id);
+      return { ok: true, result: null };
+
+    case "reorderCategories":
+    case "reorderCategoriesForChart":
+      await reorderRows(names.category, "카테고리 ID", body.ids || []);
+      return { ok: true, result: null };
+
+    case "listCharts":
+      return { ok: true, result: await listChartsImpl() };
+
+    case "createChart":
+      return { ok: true, result: await createChartImpl(body.data || {}) };
+
+    case "updateChart":
+      await updateChartImpl(body.data || {});
+      return { ok: true, result: null };
+
+    case "deleteChart":
+      await deleteChartImpl(body.id);
+      return { ok: true, result: null };
+
+    default:
+      throw new Error("알 수 없는 action입니다: " + action);
+  }
+}
+
+async function request(action, data = {}) {
+  return dispatchAction(action, { ...data, action });
+}
 
 async function apiGet() {
   const result = await request("loadChart", { chartId: CHART_ID });
 
   return result.data;
 }
-
 
 async function apiPost(action, data = {}) {
   const mapped = CHART_ACTION_MAP[action] || action;
@@ -3766,18 +4633,14 @@ if (reloadBtn) {
 }
 
 
-/* 편집 키 다시 입력 */
-const keyBtn = document.getElementById("keyBtn");
+/* Google 로그인 */
+const loginBtn = document.getElementById("loginBtn");
 
-if (keyBtn) {
-
-  keyBtn.onclick = () => {
-
-    if (askKey("편집 키를 입력하세요")) {
-      loadData();
-    }
-  };
+if (loginBtn) {
+  loginBtn.classList.add("gantt-login-btn");
+  loginBtn.onclick = handleLoginButtonClick;
 }
+setLoginButtonsUi();
 
 
 /* 확대/축소(좌우) + 표시 범위(상하) 슬라이더 */
@@ -3990,7 +4853,7 @@ function checkVersions() {
 /* =========================================================
  * ▼▼▼ 멀티 차트 SHELL (추가분) ▼▼▼
  * 이 아래부터는 "주소에 ?chart= 가 없을 때"만 쓰이는 코드다.
- * 기존 함수(request, apiPost, showToast, askKey, clearKey 등)를
+ * 기존 함수(request, apiPost, showToast, handleLoginButtonClick 등)를
  * 그대로 재사용하고, 새 함수만 추가한다. 기존 간트차트 로직은
  * 전혀 호출하지 않는다 (그 쪽은 그대로 숨겨 둘 뿐).
  * ========================================================= */
@@ -4249,13 +5112,12 @@ function initShell() {
     shellOpenModal("mcManageModal");
   });
 
-  document.getElementById("mcKeyBtn").addEventListener("click", () => {
-    clearKey();
-    if (askKey()) {
-      showToast("키를 저장했습니다.");
-      shellLoadCharts();
-    }
-  });
+  const mcKeyBtn = document.getElementById("mcKeyBtn");
+  if (mcKeyBtn) {
+    mcKeyBtn.classList.add("gantt-login-btn");
+    mcKeyBtn.addEventListener("click", handleLoginButtonClick);
+  }
+  setLoginButtonsUi();
 
   document.getElementById("mcReloadBtn").addEventListener("click", () => {
     shellLoadCharts();
