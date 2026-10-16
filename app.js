@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-16-glogin)
+ * 간트차트 app.js  (v3, 2026-10-16-glogin2)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -47,7 +47,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-16-glogin";
+const APP_VERSION = "2026-10-16-glogin2";
 
 
 /* =========================================================
@@ -90,8 +90,9 @@ let state = {
  * - 그 뒤로는 사용자 자신의 OAuth 토큰으로 Google Sheets/Drive API를
  *   직접 호출한다. 개발자 계정/Apps Script는 전혀 거치지 않고,
  *   그 어떤 접근 권한도 갖지 않는다(완전 격리).
- * - 토큰/시트ID는 이 탭의 sessionStorage에 저장해서, 멀티 차트
- *   보기의 iframe들도 같은 로그인을 그대로 공유해서 쓴다.
+ * - 토큰/시트ID는 localStorage에 저장해서, 이 사이트를 연 모든 탭/창과
+ *   멀티 차트 보기의 iframe들이 전부 같은 로그인을 그대로 공유해서 쓴다.
+ *   로그인 버튼도 맨 위(멀티 차트 화면)에 하나만 둔다.
  * ========================================================= */
 
 const GOOGLE_CLIENT_ID =
@@ -130,16 +131,16 @@ let spreadsheetId = "";
 let tokenClient = null;
 
 try {
-  accessToken = sessionStorage.getItem(AUTH_TOKEN_KEY) || "";
-  spreadsheetId = sessionStorage.getItem(AUTH_SHEET_KEY) || "";
+  accessToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
+  spreadsheetId = localStorage.getItem(AUTH_SHEET_KEY) || "";
 } catch (error) {
   // 저장소를 못 쓰는 환경이면 매번 새로 로그인한다.
 }
 
 function persistAuth() {
   try {
-    sessionStorage.setItem(AUTH_TOKEN_KEY, accessToken);
-    sessionStorage.setItem(AUTH_SHEET_KEY, spreadsheetId);
+    localStorage.setItem(AUTH_TOKEN_KEY, accessToken);
+    localStorage.setItem(AUTH_SHEET_KEY, spreadsheetId);
   } catch (error) {
     // 무시
   }
@@ -4633,16 +4634,6 @@ if (reloadBtn) {
 }
 
 
-/* Google 로그인 */
-const loginBtn = document.getElementById("loginBtn");
-
-if (loginBtn) {
-  loginBtn.classList.add("gantt-login-btn");
-  loginBtn.onclick = handleLoginButtonClick;
-}
-setLoginButtonsUi();
-
-
 /* 확대/축소(좌우) + 표시 범위(상하) 슬라이더 */
 let hSlider = null;
 let vSlider = null;
@@ -5378,5 +5369,4 @@ if (IS_SHELL_MODE) {
     loadData();
   })();
 }
-
 
