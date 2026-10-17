@@ -2253,3 +2253,21 @@ body.is-dragging * {
 }
 
 /* ▲▲▲ 7가지 수정사항 (추가분) 끝 ▲▲▲ */
+
+/* ▼▼▼ 캘린더 연동 + CSV 내보내기 (추가분) ▼▼▼
+   차트 박스 머리에 버튼 3개(엑셀로 내보내기/캘린더에 추가/캘린더에서 삭제)가
+   추가돼서, 좁은 화면에서도 줄바꿈되도록 작은 규칙만 덧붙인다.
+   기존 .mc-chart-box-head(flex, space-between)는 그대로 둔다. */
+.mc-chart-box-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.mc-chart-box-actions .mc-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+/* ▲▲▲ 캘린더 연동 + CSV 내보내기 (추가분) 끝 ▲▲▲ */
+
