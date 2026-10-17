@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-17-jsoncal)
+ * 간트차트 app.js  (v3, 2026-10-17-csvall)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -47,7 +47,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-17-jsoncal";
+const APP_VERSION = "2026-10-17-csvall";
 
 
 /* =========================================================
@@ -962,6 +962,31 @@ function buildCsvForBucket(bucket) {
   });
 
   // 맨 앞 BOM: 엑셀(윈도우)에서 한글이 깨지지 않도록.
+  return "﻿" + rows.join("\r\n");
+}
+
+/* 전체 차트를 한 번에 CSV 하나로 내보낸다. 맨 앞에 "차트" 열을 추가해서
+   어느 차트의 작업인지 구분한다. (차트 박스마다 따로 누르지 않아도 되도록) */
+async function buildCsvForAllCharts() {
+  const db = await readDb();
+  const headers = ["차트", "작업명", "카테고리", "시작일", "종료일", "진행률(%)", "메모", "대상처", "담당자"];
+  const rows = [headers.map(csvEscape).join(",")];
+
+  db.charts
+    .slice()
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .forEach((chart) => {
+      const bucket = chartData(db, chart.id);
+      const resolved = resolveTasksAndCats(bucket);
+
+      resolved.tasks.forEach((t) => {
+        rows.push([
+          csvEscape(chart.name), csvEscape(t.name), csvEscape(t.catName), csvEscape(t.start), csvEscape(t.end),
+          csvEscape(t.progress), csvEscape(t.memo), csvEscape(t.target), csvEscape(t.owner)
+        ].join(","));
+      });
+    });
+
   return "﻿" + rows.join("\r\n");
 }
 
@@ -5286,6 +5311,20 @@ function initShell() {
     shellLoadCharts();
   });
 
+  const mcExportAllBtn = document.getElementById("mcExportAllBtn");
+  if (mcExportAllBtn) {
+    mcExportAllBtn.addEventListener("click", () => withBusy(
+      mcExportAllBtn, "내보내는 중…", async () => {
+        try {
+          const csv = await buildCsvForAllCharts();
+          downloadTextFile("간트차트_전체.csv", csv, "text/csv;charset=utf-8");
+        } catch (error) {
+          showToast(error.message || "내보내지 못했습니다.", true, 0);
+        }
+      }
+    ));
+  }
+
   const mcCalConfirmDeleteBtn = document.getElementById("mcCalConfirmDeleteBtn");
   if (mcCalConfirmDeleteBtn) {
     mcCalConfirmDeleteBtn.addEventListener("click", () => withBusy(
@@ -5560,5 +5599,3 @@ if (IS_SHELL_MODE) {
     loadData();
   })();
 }
-
-
