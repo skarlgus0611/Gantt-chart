@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-16-glogin2">
+  <meta name="app-version" content="2026-10-17-jsoncal">
 
   <title>간트차트</title>
 
@@ -29,7 +29,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-16-glogin2"
+    href="style.css?v=2026-10-17-jsoncal"
   >
 </head>
 
@@ -93,6 +93,27 @@
           >&times;</button>
         </div>
         <div id="mcManageRows" class="mc-manage-rows"></div>
+      </div>
+    </div>
+
+    <!-- (추가분) 캘린더 연동: 안내 박스(확인만) -->
+    <div id="mcInfoModal" class="mc-modal-backdrop hidden">
+      <div class="mc-modal">
+        <p id="mcInfoModalMessage" class="mc-hint"></p>
+        <div class="mc-modal-actions">
+          <button class="mc-btn mc-btn-primary" data-close="mcInfoModal" type="button">확인</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- (추가분) 캘린더 연동: 삭제 확인 박스(취소/삭제) -->
+    <div id="mcCalConfirmModal" class="mc-modal-backdrop hidden">
+      <div class="mc-modal">
+        <p id="mcCalConfirmMessage" class="mc-hint"></p>
+        <div class="mc-modal-actions">
+          <button class="mc-btn mc-btn-ghost" data-close="mcCalConfirmModal" type="button">취소</button>
+          <button id="mcCalConfirmDeleteBtn" class="mc-btn mc-btn-primary" type="button">삭제</button>
+        </div>
       </div>
     </div>
 
@@ -582,7 +603,8 @@
        JS
   ========================= -->
 
-  <script src="app.js?v=2026-10-16-glogin2"></script>
+  <script src="app.js?v=2026-10-17-jsoncal"></script>
 
 </body>
 </html>
+
