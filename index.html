@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-17-csvall">
+  <meta name="app-version" content="2026-10-17-share1">
 
   <title>간트차트</title>
 
@@ -29,7 +29,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-17-csvall"
+    href="style.css?v=2026-10-17-share1"
   >
 </head>
 
@@ -115,6 +115,69 @@
           <button class="mc-btn mc-btn-ghost" data-close="mcCalConfirmModal" type="button">취소</button>
           <button id="mcCalConfirmDeleteBtn" class="mc-btn mc-btn-primary" type="button">삭제</button>
         </div>
+      </div>
+    </div>
+
+    <!-- (공유 기능 추가분) "＋ 새 차트" 눌렀을 때 먼저 뜨는 선택 박스 -->
+    <div id="mcNewOrShareModal" class="mc-modal-backdrop hidden">
+      <div class="mc-modal">
+        <h2>무엇을 하시겠어요?</h2>
+        <div class="mc-share-choice-box">
+          <button id="mcNewOrShareNewBtn" class="mc-btn mc-btn-primary mc-share-choice-btn" type="button">새로운 차트 만들기</button>
+          <button id="mcNewOrShareReceiveBtn" class="mc-btn mc-btn-ghost mc-share-choice-btn" type="button">차트 공유받기</button>
+        </div>
+        <div class="mc-modal-actions">
+          <button class="mc-btn mc-btn-ghost" data-close="mcNewOrShareModal" type="button">취소</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- (공유 기능 추가분) 공유받기: 내가 받은 초대 목록 + 수락/거절 -->
+    <div id="mcInvitesModal" class="mc-modal-backdrop hidden">
+      <div class="mc-modal mc-modal-wide">
+        <div class="mc-modal-head">
+          <h2>공유받은 차트</h2>
+          <button class="mc-modal-close" data-close="mcInvitesModal" type="button" aria-label="닫기" title="닫기">&times;</button>
+        </div>
+        <div id="mcInvitesList" class="mc-manage-rows"></div>
+      </div>
+    </div>
+
+    <!-- (공유 기능 추가분) 차트 공유 관리: 이메일+권한 추가, 멤버 목록, 공유 해제 -->
+    <div id="mcShareModal" class="mc-modal-backdrop hidden">
+      <div class="mc-modal mc-modal-wide">
+        <div class="mc-modal-head">
+          <h2>차트 공유 — <span id="mcShareChartName"></span></h2>
+          <button class="mc-modal-close" data-close="mcShareModal" type="button" aria-label="닫기" title="닫기">&times;</button>
+        </div>
+
+        <div class="mc-share-add-row">
+          <input id="mcShareEmail" type="email" placeholder="공유할 구글 계정 이메일">
+          <select id="mcShareRole">
+            <option value="viewer">뷰어</option>
+            <option value="editor">편집자</option>
+            <option value="admin">관리자</option>
+          </select>
+          <button id="mcShareAddBtn" class="mc-btn mc-btn-primary" type="button">추가</button>
+        </div>
+
+        <div id="mcShareMemberList" class="mc-manage-rows"></div>
+
+        <div class="mc-modal-actions">
+          <button id="mcShareRevokeBtn" class="mc-btn mc-btn-ghost hidden" type="button">나만 보기로 전환(공유 전체 해제)</button>
+          <button class="mc-btn mc-btn-primary" data-close="mcShareModal" type="button">닫기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- (공유 기능 추가분) 공유 구성원 보기 (읽기 전용) -->
+    <div id="mcMembersModal" class="mc-modal-backdrop hidden">
+      <div class="mc-modal mc-modal-wide">
+        <div class="mc-modal-head">
+          <h2>공유 구성원</h2>
+          <button class="mc-modal-close" data-close="mcMembersModal" type="button" aria-label="닫기" title="닫기">&times;</button>
+        </div>
+        <div id="mcMembersList" class="mc-manage-rows"></div>
       </div>
     </div>
 
@@ -604,8 +667,7 @@
        JS
   ========================= -->
 
-  <script src="app.js?v=2026-10-17-csvall"></script>
+  <script src="app.js?v=2026-10-17-share1"></script>
 
 </body>
 </html>
-
