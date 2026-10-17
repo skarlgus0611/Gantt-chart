@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-18-share2)
+ * 간트차트 app.js  (v3, 2026-10-18-share4)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -47,7 +47,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-18-share2";
+const APP_VERSION = "2026-10-18-share4";
 
 
 /* =========================================================
@@ -4947,34 +4947,40 @@ function shellRangeLabel(chart) {
 
 async function shellLoadCharts() {
   try {
-    const result = await apiPost("listCharts");
-    const personal = (Array.isArray(result.result) ? result.result : []).map((c) => ({ ...c, shared: false }));
+    /* (성능 개선) 개인 차트 목록(apiPost("listCharts"), Drive 왕복)과
+       공유 차트 목록(shareFetch("listMySharedCharts"), Apps Script 왕복)은
+       서로 아무 관련이 없는 별도 요청인데, 예전에는 await를 두 번 나눠 써서
+       하나가 끝나야 다음 게 시작되는 "순차 대기"가 되어 있었다. 둘 다
+       동시에 보내서 더 오래 걸리는 쪽 시간만 기다리면 되게 바꾼다. */
+    const personalPromise = apiPost("listCharts");
 
     /* (공유 기능 추가분) 내가 수락한 공유 차트도 같이 불러와서 합친다.
        공유 서버가 아직 설정 안 돼 있거나 로그인 전이면 조용히 빈 목록으로 둔다
        (개인 차트 목록 불러오기는 그것과 상관없이 항상 그대로 동작). */
-    let shared = [];
-    if (accessToken && typeof shareFetch === "function") {
-      try {
-        const list = await shareFetch("listMySharedCharts", {});
-        shared = (Array.isArray(list) ? list : []).map((c) => ({
-          id: "shared:" + c.chartId,
-          chartId: c.chartId,
-          name: c.name,
-          rangeStart: c.rangeStart || "",
-          rangeEnd: c.rangeEnd || "",
-          hidden: false,
-          order: 999999,
-          hasCalendar: false,
-          shared: true,
-          role: c.role,
-          ownerEmail: c.ownerEmail
-        }));
-      } catch (error) {
-        console.error(error);
-        // 공유 목록을 못 가져와도 개인 차트 목록은 그대로 보여준다.
-      }
-    }
+    const sharedPromise = (accessToken && typeof shareFetch === "function")
+      ? shareFetch("listMySharedCharts", {}).catch((error) => {
+          console.error(error);
+          // 공유 목록을 못 가져와도 개인 차트 목록은 그대로 보여준다.
+          return [];
+        })
+      : Promise.resolve([]);
+
+    const [result, list] = await Promise.all([personalPromise, sharedPromise]);
+
+    const personal = (Array.isArray(result.result) ? result.result : []).map((c) => ({ ...c, shared: false }));
+    const shared = (Array.isArray(list) ? list : []).map((c) => ({
+      id: "shared:" + c.chartId,
+      chartId: c.chartId,
+      name: c.name,
+      rangeStart: c.rangeStart || "",
+      rangeEnd: c.rangeEnd || "",
+      hidden: false,
+      order: 999999,
+      hasCalendar: false,
+      shared: true,
+      role: c.role,
+      ownerEmail: c.ownerEmail
+    }));
 
     shellChartsCache = personal.concat(shared);
     shellRenderList();
@@ -5792,22 +5798,44 @@ async function sharedLoadChart() {
 async function sharedUpdateFields(kind, id, fields, versionMap) {
   const keys = Object.keys(fields).filter((k) => k !== "id");
 
-  for (const field of keys) {
-    const expectedVersion = (versionMap[id] || {})[field] || 1;
-    const res = await shareFetch("updateSharedField", {
-      chartId: SHARED_CHART_ID, kind, id, field, value: fields[field], expectedVersion
-    });
+  /* (성능 개선) 필드마다 버전이 따로 있어서 서로 독립적인 쓰기인데,
+     예전에는 한 필드씩 순서대로 기다렸다(상세창에서 이름+날짜+메모를
+     한 번에 고치면 서버 왕복이 그 개수만큼 차례로 쌓였다). 전부 동시에
+     보내고, 그중 가장 늦게 끝나는 것 하나만 기다리면 되게 바꾼다.
+     충돌 감지·버전 갱신 로직(updateSharedField 쪼 결과 처리)은 그대로다. */
+  const settled = await Promise.allSettled(
+    keys.map((field) => {
+      const expectedVersion = (versionMap[id] || {})[field] || 1;
+      return shareFetch("updateSharedField", {
+        chartId: SHARED_CHART_ID, kind, id, field, value: fields[field], expectedVersion
+      }).then((res) => ({ field, res }));
+    })
+  );
 
-    versionMap[id] = versionMap[id] || {};
+  versionMap[id] = versionMap[id] || {};
+  let firstError = null;
 
-    if (!res.ok) {
-      if (res.conflict) {
-        versionMap[id][field] = res.currentVersion;
+  settled.forEach((outcome, i) => {
+    const field = keys[i];
+    if (outcome.status === "fulfilled") {
+      const res = outcome.value.res;
+      if (!res.ok) {
+        if (res.conflict) {
+          versionMap[id][field] = res.currentVersion;
+        }
+        if (!firstError) {
+          firstError = new Error(res.error || "저장하지 못했습니다. 최신 내용으로 다시 시도해주세요.");
+        }
+      } else {
+        versionMap[id][field] = res.newVersion;
       }
-      throw new Error(res.error || "저장하지 못했습니다. 최신 내용으로 다시 시도해주세요.");
+    } else if (!firstError) {
+      firstError = outcome.reason;
     }
+  });
 
-    versionMap[id][field] = res.newVersion;
+  if (firstError) {
+    throw firstError;
   }
 }
 
