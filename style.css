@@ -2271,3 +2271,58 @@ body.is-dragging * {
 }
 /* ▲▲▲ 캘린더 연동 + CSV 내보내기 (추가분) 끝 ▲▲▲ */
 
+/* ▼▼▼ 공유 기능 (추가분) ▼▼▼ */
+
+/* 공유된 차트 박스는 테두리/머리 배경을 살짝 다르게 해서 구분되게 한다. */
+.mc-chart-box-shared {
+  border-left: 4px solid #8a5cf6;
+}
+.mc-chart-box-shared .mc-chart-box-head {
+  background: #f4effe;
+}
+
+.mc-share-choice-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0;
+}
+.mc-share-choice-btn {
+  width: 100%;
+  padding: 14px;
+  font-size: 15px;
+}
+
+.mc-share-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 16px;
+}
+.mc-share-add-row input[type="email"] {
+  flex: 1 1 220px;
+  min-width: 180px;
+  padding: 8px 10px;
+  border: 1px solid #d8dbe3;
+  border-radius: 8px;
+}
+.mc-share-add-row select {
+  padding: 8px 10px;
+  border: 1px solid #d8dbe3;
+  border-radius: 8px;
+}
+
+.mc-share-member-row,
+.mc-invite-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+/* ▲▲▲ 공유 기능 (추가분) 끝 ▲▲▲ */
