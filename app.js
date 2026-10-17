@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-16-glogin3)
+ * 간트차트 app.js  (v3, 2026-10-17-jsoncal)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -47,7 +47,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-16-glogin3";
+const APP_VERSION = "2026-10-17-jsoncal";
 
 
 /* =========================================================
@@ -82,15 +82,21 @@ let state = {
 
 
 /* =========================================================
- * API  (Google 로그인 + 사용자 개인 DB 시트, Apps Script 미사용)
+ * API  (Google 로그인 + 사용자 개인 DB "JSON 파일", Apps Script 미사용)
  *
  * - "키" 대신 Google 계정으로 로그인한다.
  * - 로그인하면 이 계정의 '내 드라이브'에서 이 앱이 전에 만들어 둔
- *   DB 스프레드시트를 찾는다. 없으면 새로 만든다(빈 양식).
- * - 그 뒤로는 사용자 자신의 OAuth 토큰으로 Google Sheets/Drive API를
+ *   DB 파일(JSON 하나)을 찾는다. 없으면 새로 만든다(빈 양식).
+ * - 구글 시트(Sheets API)는 전혀 쓰지 않는다 — 그래서 구글 로그인 동의
+ *   화면에 "모든 스프레드시트" 같은 넓은 권한이 뜨지 않는다. 대신
+ *   드라이브 권한(drive.file) 하나만 쓰는데, 이 권한은 "이 앱이 만든
+ *   파일"에만 묶여 있어서 사용자 드라이브의 다른 파일은 절대 못 건든다.
+ * - 캘린더 기능(차트별 전용 캘린더 생성/삭제, 작업 자동 동기화)을 위해
+ *   calendar 권한도 같이 받는다.
+ * - 그 뒤로는 사용자 자신의 OAuth 토큰으로 Google Drive/Calendar API를
  *   직접 호출한다. 개발자 계정/Apps Script는 전혀 거치지 않고,
  *   그 어떤 접근 권한도 갖지 않는다(완전 격리).
- * - 토큰/시트ID는 localStorage에 저장해서, 이 사이트를 연 모든 탭/창과
+ * - 토큰/DB파일ID는 localStorage에 저장해서, 이 사이트를 연 모든 탭/창과
  *   멀티 차트 보기의 iframe들이 전부 같은 로그인을 그대로 공유해서 쓴다.
  *   로그인 버튼도 맨 위(멀티 차트 화면)에 하나만 둔다.
  * ========================================================= */
@@ -99,40 +105,29 @@ const GOOGLE_CLIENT_ID =
   "837081087195-hv7dvrjqn7o8eiidq8qv1b0tci85v0a1.apps.googleusercontent.com";
 const GOOGLE_SCOPES =
   "https://www.googleapis.com/auth/drive.file " +
-  "https://www.googleapis.com/auth/spreadsheets";
+  "https://www.googleapis.com/auth/calendar";
 
-const DB_PROP_KEY = "ganttDb";
+const DB_PROP_KEY = "ganttDbJson";
 const DB_PROP_VALUE = "v1";
-const DB_FILE_NAME = "간트차트 DB";
-
-const TASK_SHEET_NAME = "Tasks";
-const CATEGORY_SHEET_NAME = "Categories";
-const CHARTS_SHEET_NAME = "Charts";
-
-const TASK_HEADERS = [
-  "고유ID", "카테고리 ID", "작업명", "시작일", "종료일",
-  "진행률", "막대 색상", "메모", "대상처", "담당자", "수정시각"
-];
-const CATEGORY_HEADERS = ["카테고리 ID", "카테고리명", "기본 막대 색상"];
-const CHARTS_HEADERS = [
-  "차트ID", "이름", "표시시작일", "표시종료일", "숨김", "순서", "생성시각"
-];
+const DB_FILE_NAME = "간트차트 DB.json";
+const DB_MIME_TYPE = "application/json";
 
 const LIMITS = { name: 200, memo: 5000, target: 200, owner: 100, category: 100 };
 
-const SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
 const DRIVE_BASE = "https://www.googleapis.com/drive/v3/files";
+const DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3/files";
+const CALENDAR_BASE = "https://www.googleapis.com/calendar/v3";
 
 const AUTH_TOKEN_KEY = "gantt_access_token";
-const AUTH_SHEET_KEY = "gantt_spreadsheet_id";
+const AUTH_FILE_KEY = "gantt_db_file_id";
 
 let accessToken = "";
-let spreadsheetId = "";
+let dbFileId = "";
 let tokenClient = null;
 
 try {
   accessToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
-  spreadsheetId = localStorage.getItem(AUTH_SHEET_KEY) || "";
+  dbFileId = localStorage.getItem(AUTH_FILE_KEY) || "";
 } catch (error) {
   // 저장소를 못 쓰는 환경이면 매번 새로 로그인한다.
 }
@@ -140,7 +135,7 @@ try {
 function persistAuth() {
   try {
     localStorage.setItem(AUTH_TOKEN_KEY, accessToken);
-    localStorage.setItem(AUTH_SHEET_KEY, spreadsheetId);
+    localStorage.setItem(AUTH_FILE_KEY, dbFileId);
   } catch (error) {
     // 무시
   }
@@ -164,7 +159,7 @@ function initGoogleAuth() {
     callback: (resp) => {
       if (resp && resp.access_token) {
         accessToken = resp.access_token;
-        spreadsheetId = "";
+        dbFileId = "";
         persistAuth();
         setLoginButtonsUi();
         onGoogleLoginSuccess();
@@ -195,7 +190,7 @@ function signOutGoogle() {
   }
 
   accessToken = "";
-  spreadsheetId = "";
+  dbFileId = "";
   persistAuth();
   setLoginButtonsUi();
 
@@ -263,6 +258,10 @@ async function googleFetch(url, opts = {}) {
     throw new Error("로그인이 만료됐습니다. 다시 로그인해주세요.");
   }
 
+  if (response.status === 204) {
+    return null;
+  }
+
   let body = null;
 
   try {
@@ -279,142 +278,138 @@ async function googleFetch(url, opts = {}) {
   return body;
 }
 
-function sheetsGet(path, params) {
-  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-  return googleFetch(SHEETS_BASE + "/" + spreadsheetId + path + qs);
+/* ----- Drive: DB(JSON) 파일 찾기/만들기/읽기/쓰기 ----- */
+
+function emptyDb() {
+  return {
+    charts: [
+      {
+        id: "default", name: "기본 차트", rangeStart: "", rangeEnd: "",
+        hidden: false, order: 0, createdAt: new Date().toISOString(), calendarId: ""
+      }
+    ],
+    data: { default: { tasks: [], categories: [] } }
+  };
 }
 
-function sheetsPost(path, body, params) {
-  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-  return googleFetch(SHEETS_BASE + "/" + spreadsheetId + path + qs, {
-    method: "POST",
-    body: JSON.stringify(body || {})
-  });
-}
-
-function sheetsPut(path, body, params) {
-  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-  return googleFetch(SHEETS_BASE + "/" + spreadsheetId + path + qs, {
-    method: "PUT",
-    body: JSON.stringify(body || {})
-  });
-}
-
-async function getSheetGrid(sheetName) {
-  const res = await sheetsGet("/values/" + encodeURIComponent(sheetName));
-  return (res && res.values) || [];
-}
-
-function headerMap(grid) {
-  const map = {};
-
-  if (!grid.length) {
-    return map;
-  }
-
-  grid[0].forEach((h, i) => {
-    const k = String(h || "").trim();
-    if (k) {
-      map[k] = i;
-    }
-  });
-
-  return map;
-}
-
-function chartSheetNames(chartId) {
-  const id = String(chartId || "").trim();
-
-  if (!id || id === "default") {
-    return { task: TASK_SHEET_NAME, category: CATEGORY_SHEET_NAME, id: "default" };
-  }
-
-  return { task: "Tasks_" + id, category: "Categories_" + id, id };
-}
-
-async function findOrCreateSpreadsheetId() {
-  if (spreadsheetId) {
-    return spreadsheetId;
-  }
-
+async function driveFindDbFile() {
   const q = encodeURIComponent(
-    "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false " +
+    "mimeType='" + DB_MIME_TYPE + "' and trashed=false " +
     "and properties has { key='" + DB_PROP_KEY + "' and value='" + DB_PROP_VALUE + "' }"
   );
 
-  const listRes = await googleFetch(
-    DRIVE_BASE + "?q=" + q + "&fields=files(id,name)&spaces=drive"
+  const res = await googleFetch(DRIVE_BASE + "?q=" + q + "&fields=files(id,name)&spaces=drive");
+
+  if (res && Array.isArray(res.files) && res.files.length) {
+    return res.files[0].id;
+  }
+
+  return "";
+}
+
+async function driveCreateDbFile() {
+  const boundary = "gantt_db_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+  const metadata = {
+    name: DB_FILE_NAME,
+    mimeType: DB_MIME_TYPE,
+    properties: { [DB_PROP_KEY]: DB_PROP_VALUE }
+  };
+  const content = JSON.stringify(emptyDb());
+
+  const body =
+    "--" + boundary + "\r\n" +
+    "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+    JSON.stringify(metadata) + "\r\n" +
+    "--" + boundary + "\r\n" +
+    "Content-Type: " + DB_MIME_TYPE + "\r\n\r\n" +
+    content + "\r\n" +
+    "--" + boundary + "--";
+
+  const res = await googleFetch(
+    DRIVE_UPLOAD_BASE + "?uploadType=multipart&fields=id",
+    {
+      method: "POST",
+      headers: { "Content-Type": "multipart/related; boundary=" + boundary },
+      body
+    }
   );
 
-  if (listRes && Array.isArray(listRes.files) && listRes.files.length) {
-    spreadsheetId = listRes.files[0].id;
-    persistAuth();
-    return spreadsheetId;
-  }
-
-  const created = await googleFetch(SHEETS_BASE, {
-    method: "POST",
-    body: JSON.stringify({
-      properties: { title: DB_FILE_NAME },
-      sheets: [
-        { properties: { title: TASK_SHEET_NAME, gridProperties: { frozenRowCount: 1 } } },
-        { properties: { title: CATEGORY_SHEET_NAME, gridProperties: { frozenRowCount: 1 } } },
-        { properties: { title: CHARTS_SHEET_NAME, gridProperties: { frozenRowCount: 1 } } }
-      ]
-    })
-  });
-
-  spreadsheetId = created.spreadsheetId;
-
-  await googleFetch(SHEETS_BASE + "/" + spreadsheetId + "/values:batchUpdate", {
-    method: "POST",
-    body: JSON.stringify({
-      valueInputOption: "RAW",
-      data: [
-        { range: TASK_SHEET_NAME + "!A1:K1", values: [TASK_HEADERS] },
-        { range: CATEGORY_SHEET_NAME + "!A1:C1", values: [CATEGORY_HEADERS] },
-        { range: CHARTS_SHEET_NAME + "!A1:G1", values: [CHARTS_HEADERS] },
-        {
-          range: CHARTS_SHEET_NAME + "!A2:G2",
-          values: [["default", "기본 차트", "", "", false, 0, new Date().toISOString()]]
-        }
-      ]
-    })
-  });
-
-  await googleFetch(DRIVE_BASE + "/" + spreadsheetId + "?fields=id", {
-    method: "PATCH",
-    body: JSON.stringify({ properties: { [DB_PROP_KEY]: DB_PROP_VALUE } })
-  });
-
-  persistAuth();
-  return spreadsheetId;
+  return res.id;
 }
 
-async function getSheetIdByTitle(title) {
-  const meta = await sheetsGet("", { fields: "sheets.properties" });
-  const found = (meta.sheets || []).find((s) => s.properties.title === title);
-
-  if (!found) {
-    throw new Error("'" + title + "' 탭을 찾을 수 없습니다.");
+async function ensureDbReady() {
+  if (!accessToken) {
+    throw new Error("로그인이 필요합니다. 'Google 로그인' 버튼을 눌러주세요.");
   }
 
-  return found.properties.sheetId;
-}
+  if (!dbFileId) {
+    dbFileId = await driveFindDbFile();
 
-async function findRowIndex(sheetName, idHeaderName, id) {
-  const grid = await getSheetGrid(sheetName);
-  const col = headerMap(grid);
-  const idCol = col[idHeaderName];
-
-  for (let i = 1; i < grid.length; i++) {
-    if (String(grid[i][idCol] || "") === String(id)) {
-      return { rowIndex: i + 1, grid, col };
+    if (!dbFileId) {
+      dbFileId = await driveCreateDbFile();
     }
+
+    persistAuth();
+  }
+}
+
+async function readDb() {
+  await ensureDbReady();
+
+  const db = await googleFetch(DRIVE_BASE + "/" + dbFileId + "?alt=media");
+
+  if (!db || typeof db !== "object") {
+    throw new Error("DB 파일을 해석할 수 없습니다.");
+  }
+  if (!Array.isArray(db.charts)) {
+    db.charts = [];
+  }
+  if (!db.data || typeof db.data !== "object") {
+    db.data = {};
+  }
+  if (!db.data.default) {
+    db.data.default = { tasks: [], categories: [] };
+  }
+  if (!db.charts.some((c) => c.id === "default")) {
+    db.charts.unshift({
+      id: "default", name: "기본 차트", rangeStart: "", rangeEnd: "",
+      hidden: false, order: 0, createdAt: new Date().toISOString(), calendarId: ""
+    });
   }
 
-  return { rowIndex: -1, grid, col };
+  return db;
 }
+
+async function writeDb(db) {
+  await googleFetch(DRIVE_UPLOAD_BASE + "/" + dbFileId + "?uploadType=media", {
+    method: "PATCH",
+    headers: { "Content-Type": DB_MIME_TYPE },
+    body: JSON.stringify(db)
+  });
+}
+
+function chartData(db, chartId) {
+  const id = String(chartId || "").trim() || "default";
+
+  if (!db.data[id]) {
+    db.data[id] = { tasks: [], categories: [] };
+  }
+  if (!Array.isArray(db.data[id].tasks)) {
+    db.data[id].tasks = [];
+  }
+  if (!Array.isArray(db.data[id].categories)) {
+    db.data[id].categories = [];
+  }
+
+  return db.data[id];
+}
+
+function findChartMeta(db, chartId) {
+  const id = String(chartId || "").trim() || "default";
+  return db.charts.find((c) => c.id === id) || null;
+}
+
+/* ----- 검증/유틸 (기존 로직 그대로) ----- */
 
 function strLimited(v, max, label) {
   const s = String(v === undefined || v === null ? "" : v);
@@ -461,50 +456,36 @@ function newRowId() {
   return (Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 12);
 }
 
-async function readTasksAndCats(names) {
-  const [taskGrid, catGrid] = await Promise.all([
-    getSheetGrid(names.task),
-    getSheetGrid(names.category)
-  ]);
-
-  const catCol = headerMap(catGrid);
-  const categories = catGrid
-    .slice(1)
-    .filter((r) => r[catCol["카테고리 ID"]])
-    .map((r) => ({
-      id: String(r[catCol["카테고리 ID"]] || "").trim(),
-      name: String(r[catCol["카테고리명"]] || ""),
-      color: validColorStr(r[catCol["기본 막대 색상"]]) || DEFAULT_COLOR
-    }));
-
+function resolveTasksAndCats(bucket) {
   const catMap = {};
-  categories.forEach((c) => {
+  bucket.categories.forEach((c) => {
     catMap[c.id] = c;
   });
 
-  const taskCol = headerMap(taskGrid);
-  const tasks = taskGrid
-    .slice(1)
-    .filter((r) => r[taskCol["고유ID"]])
-    .map((r) => {
-      const categoryId = String(r[taskCol["카테고리 ID"]] || "").trim();
-      const cat = catMap[categoryId];
+  const tasks = bucket.tasks.map((t) => {
+    const cat = catMap[t.categoryId];
 
-      return {
-        id: String(r[taskCol["고유ID"]]).trim(),
-        categoryId,
-        name: String(r[taskCol["작업명"]] || ""),
-        catName: cat ? cat.name : "",
-        color: validColorStr(r[taskCol["막대 색상"]]) || (cat ? cat.color : DEFAULT_COLOR),
-        start: String(r[taskCol["시작일"]] || ""),
-        end: String(r[taskCol["종료일"]] || ""),
-        progress: normProgress(r[taskCol["진행률"]]),
-        memo: String(r[taskCol["메모"]] || ""),
-        target: String(r[taskCol["대상처"]] || ""),
-        owner: String(r[taskCol["담당자"]] || ""),
-        updated: String(r[taskCol["수정시각"]] || "")
-      };
-    });
+    return {
+      id: t.id,
+      categoryId: t.categoryId || "",
+      name: t.name || "",
+      catName: cat ? cat.name : "",
+      color: validColorStr(t.color) || (cat ? validColorStr(cat.color) || DEFAULT_COLOR : DEFAULT_COLOR),
+      start: t.start || "",
+      end: t.end || "",
+      progress: normProgress(t.progress),
+      memo: t.memo || "",
+      target: t.target || "",
+      owner: t.owner || "",
+      updated: t.updated || ""
+    };
+  });
+
+  const categories = bucket.categories.map((c) => ({
+    id: c.id,
+    name: c.name || "",
+    color: validColorStr(c.color) || DEFAULT_COLOR
+  }));
 
   return { tasks, categories };
 }
@@ -571,113 +552,67 @@ function applyTaskFields(base, data, cats) {
   return t;
 }
 
-function setRowFields(row, col, t, id, nowIso) {
-  const set = (h, v) => {
-    if (col[h] !== undefined) {
-      row[col[h]] = v;
-    }
-  };
-
-  set("고유ID", id);
-  set("카테고리 ID", t.categoryId);
-  set("작업명", t.name);
-  set("시작일", t.start);
-  set("종료일", t.end);
-  set("진행률", t.progress);
-  set("막대 색상", t.color);
-  set("메모", t.memo);
-  set("대상처", t.target);
-  set("담당자", t.owner);
-  set("수정시각", nowIso);
-}
-
-async function appendRow(sheetName, rowArray) {
-  await sheetsPost(
-    "/values/" + encodeURIComponent(sheetName) + ":append",
-    { values: [rowArray] },
-    { valueInputOption: "RAW", insertDataOption: "INSERT_ROWS" }
-  );
-}
-
-async function createTaskRow(names, data) {
-  const cats = (await readTasksAndCats(names)).categories;
+async function createTaskRow(bucket, data) {
   const t = applyTaskFields(
     { name: "", categoryId: "", start: "", end: "", progress: 0, color: "", memo: "", target: "", owner: "" },
     data || {},
-    cats
+    bucket.categories
   );
 
   const id = newRowId();
-  const col = {};
-  TASK_HEADERS.forEach((h, i) => { col[h] = i; });
 
-  const row = new Array(TASK_HEADERS.length).fill("");
-  setRowFields(row, col, t, id, new Date().toISOString());
+  bucket.tasks.push({
+    id, categoryId: t.categoryId, name: t.name, start: t.start, end: t.end,
+    progress: t.progress, color: t.color, memo: t.memo, target: t.target, owner: t.owner,
+    updated: new Date().toISOString(), calendarEventId: ""
+  });
 
-  await appendRow(names.task, row);
-  return id;
+  return bucket.tasks[bucket.tasks.length - 1];
 }
 
-async function updateTaskRow(names, data) {
+function updateTaskRow(bucket, data) {
   data = data || {};
-  const { rowIndex, grid, col } = await findRowIndex(names.task, "고유ID", data.id);
+  const task = bucket.tasks.find((x) => x.id === String(data.id));
 
-  if (rowIndex === -1) {
+  if (!task) {
     throw new Error("해당 작업을 찾을 수 없습니다.");
   }
 
-  const row = grid[rowIndex - 1].slice();
-  const cats = (await readTasksAndCats(names)).categories;
-  const get = (h) => row[col[h]];
+  const t = applyTaskFields(task, data, bucket.categories);
 
-  const base = {
-    name: String(get("작업명") || ""), categoryId: String(get("카테고리 ID") || ""),
-    start: String(get("시작일") || ""), end: String(get("종료일") || ""),
-    progress: normProgress(get("진행률")), color: validColorStr(get("막대 색상")),
-    memo: String(get("메모") || ""), target: String(get("대상처") || ""), owner: String(get("담당자") || "")
-  };
+  task.categoryId = t.categoryId;
+  task.name = t.name;
+  task.start = t.start;
+  task.end = t.end;
+  task.progress = t.progress;
+  task.color = t.color;
+  task.memo = t.memo;
+  task.target = t.target;
+  task.owner = t.owner;
+  task.updated = new Date().toISOString();
 
-  const t = applyTaskFields(base, data, cats);
-  setRowFields(row, col, t, String(data.id), new Date().toISOString());
-
-  await sheetsPut(
-    "/values/" + encodeURIComponent(names.task) + "!A" + rowIndex + ":K" + rowIndex,
-    { values: [row] },
-    { valueInputOption: "RAW" }
-  );
+  return task;
 }
 
-async function deleteTaskRow(names, id) {
-  const { rowIndex } = await findRowIndex(names.task, "고유ID", id);
+function deleteTaskRow(bucket, id) {
+  const idx = bucket.tasks.findIndex((x) => x.id === String(id));
 
-  if (rowIndex === -1) {
+  if (idx === -1) {
     throw new Error("삭제할 작업을 찾을 수 없습니다.");
   }
 
-  const sheetId = await getSheetIdByTitle(names.task);
-
-  await sheetsPost(":batchUpdate", {
-    requests: [{
-      deleteDimension: {
-        range: { sheetId, dimension: "ROWS", startIndex: rowIndex - 1, endIndex: rowIndex }
-      }
-    }]
-  });
+  const removed = bucket.tasks.splice(idx, 1)[0];
+  return removed;
 }
 
-async function reorderRows(sheetName, idHeaderName, orderedIds) {
+function reorderList(list, orderedIds) {
   if (!Array.isArray(orderedIds) || !orderedIds.length) {
     return;
   }
 
-  const grid = await getSheetGrid(sheetName);
-  const col = headerMap(grid);
-  const idCol = col[idHeaderName];
-  const dataRows = grid.slice(1);
-
   const map = {};
-  dataRows.forEach((r) => {
-    map[String(r[idCol] || "")] = r;
+  list.forEach((x) => {
+    map[String(x.id || "")] = x;
   });
 
   const seen = {};
@@ -691,26 +626,16 @@ async function reorderRows(sheetName, idHeaderName, orderedIds) {
     }
   });
 
-  dataRows.forEach((r) => {
-    const id = String(r[idCol] || "");
+  list.forEach((x) => {
+    const id = String(x.id || "");
     if (!seen[id]) {
-      reordered.push(r);
+      reordered.push(x);
       seen[id] = true;
     }
   });
 
-  if (!reordered.length) {
-    return;
-  }
-
-  const width = grid[0].length;
-  const endCol = String.fromCharCode(64 + width);
-
-  await sheetsPut(
-    "/values/" + encodeURIComponent(sheetName) + "!A2:" + endCol + (reordered.length + 1),
-    { values: reordered },
-    { valueInputOption: "RAW" }
-  );
+  list.length = 0;
+  reordered.forEach((x) => list.push(x));
 }
 
 function cleanCategory(data, base) {
@@ -733,7 +658,7 @@ function cleanCategory(data, base) {
   return { name, color };
 }
 
-async function nextCategoryId(names) {
+function nextCategoryId(bucket) {
   let max = 0;
 
   const scan = (v) => {
@@ -743,102 +668,63 @@ async function nextCategoryId(names) {
     }
   };
 
-  const [catGrid, taskGrid] = await Promise.all([
-    getSheetGrid(names.category),
-    getSheetGrid(names.task)
-  ]);
-
-  const catCol = headerMap(catGrid);
-  const taskCol = headerMap(taskGrid);
-
-  catGrid.slice(1).forEach((r) => scan(r[catCol["카테고리 ID"]]));
-  taskGrid.slice(1).forEach((r) => scan(r[taskCol["카테고리 ID"]]));
+  bucket.categories.forEach((c) => scan(c.id));
+  bucket.tasks.forEach((t) => scan(t.categoryId));
 
   return "C" + String(max + 1).padStart(2, "0");
 }
 
-async function createCategoryRow(names, data) {
+function createCategoryRow(bucket, data) {
   data = data || {};
   const c = cleanCategory(
     { name: data.name === undefined ? "새 카테고리" : data.name, color: data.color },
     { name: "새 카테고리", color: DEFAULT_COLOR }
   );
 
-  const id = await nextCategoryId(names);
-  const col = {};
-  CATEGORY_HEADERS.forEach((h, i) => { col[h] = i; });
-
-  const row = ["", "", ""];
-  row[col["카테고리 ID"]] = id;
-  row[col["카테고리명"]] = c.name;
-  row[col["기본 막대 색상"]] = c.color;
-
-  await appendRow(names.category, row);
+  const id = nextCategoryId(bucket);
+  bucket.categories.push({ id, name: c.name, color: c.color });
   return id;
 }
 
-async function updateCategoryRow(names, data) {
+function updateCategoryRow(bucket, data) {
   data = data || {};
-  const { rowIndex, grid, col } = await findRowIndex(names.category, "카테고리 ID", data.id);
+  const cat = bucket.categories.find((x) => x.id === String(data.id));
 
-  if (rowIndex === -1) {
+  if (!cat) {
     throw new Error("카테고리를 찾을 수 없습니다.");
   }
 
-  const row = grid[rowIndex - 1].slice();
-  const base = {
-    name: String(row[col["카테고리명"]] || ""),
-    color: validColorStr(row[col["기본 막대 색상"]]) || DEFAULT_COLOR
-  };
-
-  const c = cleanCategory(data, base);
-  row[col["카테고리명"]] = c.name;
-  row[col["기본 막대 색상"]] = c.color;
-
-  await sheetsPut(
-    "/values/" + encodeURIComponent(names.category) + "!A" + rowIndex + ":C" + rowIndex,
-    { values: [row] },
-    { valueInputOption: "RAW" }
-  );
+  const c = cleanCategory(data, { name: cat.name, color: validColorStr(cat.color) || DEFAULT_COLOR });
+  cat.name = c.name;
+  cat.color = c.color;
 }
 
-async function deleteCategoryRow(names, id) {
-  const { rowIndex } = await findRowIndex(names.category, "카테고리 ID", id);
+function deleteCategoryRow(bucket, id) {
+  const idx = bucket.categories.findIndex((x) => x.id === String(id));
 
-  if (rowIndex === -1) {
+  if (idx === -1) {
     throw new Error("삭제할 카테고리를 찾을 수 없습니다.");
   }
 
-  const sheetId = await getSheetIdByTitle(names.category);
-
-  await sheetsPost(":batchUpdate", {
-    requests: [{
-      deleteDimension: {
-        range: { sheetId, dimension: "ROWS", startIndex: rowIndex - 1, endIndex: rowIndex }
-      }
-    }]
-  });
+  bucket.categories.splice(idx, 1);
 }
 
-async function listChartsImpl() {
-  const grid = await getSheetGrid(CHARTS_SHEET_NAME);
-  const col = headerMap(grid);
-
-  return grid
-    .slice(1)
-    .filter((r) => r[col["차트ID"]])
-    .map((r) => ({
-      id: String(r[col["차트ID"]]).trim(),
-      name: String(r[col["이름"]] || ""),
-      rangeStart: String(r[col["표시시작일"]] || ""),
-      rangeEnd: String(r[col["표시종료일"]] || ""),
-      hidden: String(r[col["숨김"]]).toUpperCase() === "TRUE" || r[col["숨김"]] === true,
-      order: Number(r[col["순서"]]) || 0
-    }))
-    .sort((a, b) => a.order - b.order);
+function listChartsImpl(db) {
+  return db.charts
+    .slice()
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .map((c) => ({
+      id: c.id,
+      name: c.name || "",
+      rangeStart: c.rangeStart || "",
+      rangeEnd: c.rangeEnd || "",
+      hidden: !!c.hidden,
+      order: c.order || 0,
+      hasCalendar: !!c.calendarId
+    }));
 }
 
-async function createChartImpl(data) {
+function createChartImpl(db, data) {
   data = data || {};
 
   const name = strLimited(data.name === undefined ? "새 차트" : data.name, LIMITS.name, "차트 이름").trim() || "새 차트";
@@ -855,57 +741,32 @@ async function createChartImpl(data) {
     throw new Error("표시 종료일은 시작일보다 빠를 수 없습니다.");
   }
 
-  const existing = await listChartsImpl();
   let id;
   do {
     id = newRowId();
-  } while (existing.some((c) => c.id === id));
+  } while (db.charts.some((c) => c.id === id));
 
-  const maxOrder = existing.reduce((m, c) => Math.max(m, c.order), -1);
+  const maxOrder = db.charts.reduce((m, c) => Math.max(m, c.order || 0), -1);
 
-  const col = {};
-  CHARTS_HEADERS.forEach((h, i) => { col[h] = i; });
+  const chart = {
+    id, name, rangeStart, rangeEnd, hidden: false, order: maxOrder + 1,
+    createdAt: new Date().toISOString(), calendarId: ""
+  };
 
-  const row = new Array(CHARTS_HEADERS.length).fill("");
-  row[col["차트ID"]] = id;
-  row[col["이름"]] = name;
-  row[col["표시시작일"]] = rangeStart;
-  row[col["표시종료일"]] = rangeEnd;
-  row[col["숨김"]] = false;
-  row[col["순서"]] = maxOrder + 1;
-  row[col["생성시각"]] = new Date().toISOString();
-
-  await appendRow(CHARTS_SHEET_NAME, row);
-
-  const names = chartSheetNames(id);
-
-  await sheetsPost(":batchUpdate", {
-    requests: [
-      { addSheet: { properties: { title: names.task, gridProperties: { frozenRowCount: 1 } } } },
-      { addSheet: { properties: { title: names.category, gridProperties: { frozenRowCount: 1 } } } }
-    ]
-  });
-
-  await sheetsPost("/values:batchUpdate", {
-    valueInputOption: "RAW",
-    data: [
-      { range: names.task + "!A1:K1", values: [TASK_HEADERS] },
-      { range: names.category + "!A1:C1", values: [CATEGORY_HEADERS] }
-    ]
-  });
+  db.charts.push(chart);
+  db.data[id] = { tasks: [], categories: [] };
 
   return { id, name, rangeStart, rangeEnd, hidden: false, order: maxOrder + 1 };
 }
 
-async function updateChartImpl(data) {
+function updateChartImpl(db, data) {
   data = data || {};
-  const { rowIndex, grid, col } = await findRowIndex(CHARTS_SHEET_NAME, "차트ID", data.id);
+  const chart = db.charts.find((c) => c.id === String(data.id));
 
-  if (rowIndex === -1) {
+  if (!chart) {
     throw new Error("차트를 찾을 수 없습니다.");
   }
 
-  const row = grid[rowIndex - 1].slice();
   const has = (k) => data[k] !== undefined && data[k] !== null;
 
   if (has("name")) {
@@ -913,7 +774,7 @@ async function updateChartImpl(data) {
     if (!name) {
       throw new Error("차트 이름을 입력해주세요.");
     }
-    row[col["이름"]] = name;
+    chart.name = name;
   }
 
   if (has("rangeStart")) {
@@ -921,7 +782,7 @@ async function updateChartImpl(data) {
     if (v && !isRealDateStr(v)) {
       throw new Error("표시 시작일 형식이 올바르지 않습니다.");
     }
-    row[col["표시시작일"]] = v;
+    chart.rangeStart = v;
   }
 
   if (has("rangeEnd")) {
@@ -929,134 +790,316 @@ async function updateChartImpl(data) {
     if (v && !isRealDateStr(v)) {
       throw new Error("표시 종료일 형식이 올바르지 않습니다.");
     }
-    row[col["표시종료일"]] = v;
+    chart.rangeEnd = v;
   }
 
-  const newStart = String(row[col["표시시작일"]] || "");
-  const newEnd = String(row[col["표시종료일"]] || "");
-  if (newStart && newEnd && newEnd < newStart) {
+  if (chart.rangeStart && chart.rangeEnd && chart.rangeEnd < chart.rangeStart) {
     throw new Error("표시 종료일은 시작일보다 빠를 수 없습니다.");
   }
 
   if (has("hidden")) {
-    row[col["숨김"]] = !!data.hidden;
+    chart.hidden = !!data.hidden;
   }
   if (has("order")) {
-    row[col["순서"]] = Number(data.order) || 0;
+    chart.order = Number(data.order) || 0;
   }
-
-  await sheetsPut(
-    "/values/" + encodeURIComponent(CHARTS_SHEET_NAME) + "!A" + rowIndex + ":G" + rowIndex,
-    { values: [row] },
-    { valueInputOption: "RAW" }
-  );
 }
 
-async function deleteChartImpl(id) {
+function deleteChartImpl(db, id) {
   id = String(id || "").trim();
 
   if (!id || id === "default") {
     throw new Error("기본 차트는 삭제할 수 없습니다.");
   }
 
-  const { rowIndex } = await findRowIndex(CHARTS_SHEET_NAME, "차트ID", id);
+  const idx = db.charts.findIndex((c) => c.id === id);
 
-  if (rowIndex === -1) {
+  if (idx === -1) {
     throw new Error("삭제할 차트를 찾을 수 없습니다.");
   }
 
-  const chartsSheetId = await getSheetIdByTitle(CHARTS_SHEET_NAME);
+  const removed = db.charts.splice(idx, 1)[0];
+  delete db.data[id];
 
-  await sheetsPost(":batchUpdate", {
-    requests: [{
-      deleteDimension: {
-        range: { sheetId: chartsSheetId, dimension: "ROWS", startIndex: rowIndex - 1, endIndex: rowIndex }
-      }
-    }]
+  return removed;
+}
+
+/* ----- Calendar: 차트별 전용 캘린더 생성/삭제 + 작업 자동 동기화 ----- */
+
+function addOneDay(ymd) {
+  const d = new Date(ymd + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return d.getFullYear() + "-" + mm + "-" + dd;
+}
+
+function calEventDescription(task) {
+  const lines = [];
+  if (task.memo) lines.push("메모: " + task.memo);
+  if (task.target) lines.push("대상처: " + task.target);
+  if (task.owner) lines.push("담당자: " + task.owner);
+  lines.push("진행률: " + (normProgress(task.progress)) + "%");
+  return lines.join("\n");
+}
+
+async function calCreateCalendar(summary) {
+  const res = await googleFetch(CALENDAR_BASE + "/calendars", {
+    method: "POST",
+    body: JSON.stringify({ summary })
   });
+  return res.id;
+}
 
-  const names = chartSheetNames(id);
-  const meta = await sheetsGet("", { fields: "sheets.properties" });
-  const requests = [];
+async function calDeleteCalendar(calendarId) {
+  await googleFetch(CALENDAR_BASE + "/calendars/" + encodeURIComponent(calendarId), {
+    method: "DELETE"
+  });
+}
 
-  (meta.sheets || []).forEach((s) => {
-    if (s.properties.title === names.task || s.properties.title === names.category) {
-      requests.push({ deleteSheet: { sheetId: s.properties.sheetId } });
+async function calCreateEvent(calendarId, task) {
+  const res = await googleFetch(
+    CALENDAR_BASE + "/calendars/" + encodeURIComponent(calendarId) + "/events",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        summary: task.name,
+        description: calEventDescription(task),
+        start: { date: task.start },
+        end: { date: addOneDay(task.end) }
+      })
     }
+  );
+  return res.id;
+}
+
+async function calUpdateEvent(calendarId, eventId, task) {
+  await googleFetch(
+    CALENDAR_BASE + "/calendars/" + encodeURIComponent(calendarId) + "/events/" + encodeURIComponent(eventId),
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        summary: task.name,
+        description: calEventDescription(task),
+        start: { date: task.start },
+        end: { date: addOneDay(task.end) }
+      })
+    }
+  );
+}
+
+async function calDeleteEvent(calendarId, eventId) {
+  try {
+    await googleFetch(
+      CALENDAR_BASE + "/calendars/" + encodeURIComponent(calendarId) + "/events/" + encodeURIComponent(eventId),
+      { method: "DELETE" }
+    );
+  } catch (error) {
+    // 이미 지워졌거나 없는 이벤트면 무시한다.
+  }
+}
+
+/* 작업을 저장할 때 연결된 캘린더가 있으면 같은 동작 안에서 바로 같이 반영한다.
+   (따로 "캘린더 업데이트" 버튼 없이도, 작업을 고치는 순간 캘린더도 같이 바뀐다)
+   캘린더 쪽 호출이 실패해도 작업 저장 자체는 실패시키지 않고 콘솔에만 남긴다. */
+async function syncCalendarOnCreate(chart, task) {
+  if (!chart || !chart.calendarId) {
+    return;
+  }
+  try {
+    task.calendarEventId = await calCreateEvent(chart.calendarId, task);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function syncCalendarOnUpdate(chart, task) {
+  if (!chart || !chart.calendarId) {
+    return;
+  }
+  try {
+    if (task.calendarEventId) {
+      await calUpdateEvent(chart.calendarId, task.calendarEventId, task);
+    } else {
+      task.calendarEventId = await calCreateEvent(chart.calendarId, task);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function syncCalendarOnDelete(chart, task) {
+  if (!chart || !chart.calendarId || !task || !task.calendarEventId) {
+    return;
+  }
+  try {
+    await calDeleteEvent(chart.calendarId, task.calendarEventId);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+/* ----- CSV 내보내기 (JSON → CSV, 보기/분석용 다운로드) ----- */
+
+function csvEscape(v) {
+  const s = String(v === undefined || v === null ? "" : v);
+  if (/[",\n\r]/.test(s)) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function buildCsvForBucket(bucket) {
+  const resolved = resolveTasksAndCats(bucket);
+  const headers = ["작업명", "카테고리", "시작일", "종료일", "진행률(%)", "메모", "대상처", "담당자"];
+  const rows = [headers.map(csvEscape).join(",")];
+
+  resolved.tasks.forEach((t) => {
+    rows.push([
+      csvEscape(t.name), csvEscape(t.catName), csvEscape(t.start), csvEscape(t.end),
+      csvEscape(t.progress), csvEscape(t.memo), csvEscape(t.target), csvEscape(t.owner)
+    ].join(","));
   });
 
-  if (requests.length) {
-    await sheetsPost(":batchUpdate", { requests });
-  }
+  // 맨 앞 BOM: 엑셀(윈도우)에서 한글이 깨지지 않도록.
+  return "﻿" + rows.join("\r\n");
 }
 
-async function ensureSpreadsheetReady() {
-  if (!accessToken) {
-    throw new Error("로그인이 필요합니다. 'Google 로그인' 버튼을 눌러주세요.");
-  }
-  await findOrCreateSpreadsheetId();
-}
+/* ----- 요청 처리 ----- */
 
 async function dispatchAction(action, body) {
-  await ensureSpreadsheetReady();
-  const names = chartSheetNames(body.chartId);
+  const db = await readDb();
+  const chartId = body.chartId;
+  const chart = findChartMeta(db, chartId);
+  const bucket = chartData(db, chartId);
 
   switch (action) {
     case "load":
     case "loadChart":
-      return { ok: true, data: await readTasksAndCats(names) };
+      return { ok: true, data: resolveTasksAndCats(bucket) };
 
     case "create":
-    case "createForChart":
-      return { ok: true, result: await createTaskRow(names, body.data || {}) };
+    case "createForChart": {
+      const task = await createTaskRow(bucket, body.data || {});
+      await syncCalendarOnCreate(chart, task);
+      await writeDb(db);
+      return { ok: true, result: task.id };
+    }
 
     case "update":
-    case "updateForChart":
-      await updateTaskRow(names, body.data || {});
+    case "updateForChart": {
+      const task = updateTaskRow(bucket, body.data || {});
+      await syncCalendarOnUpdate(chart, task);
+      await writeDb(db);
       return { ok: true, result: null };
+    }
 
     case "delete":
-    case "deleteForChart":
-      await deleteTaskRow(names, body.id);
+    case "deleteForChart": {
+      const removed = deleteTaskRow(bucket, body.id);
+      await syncCalendarOnDelete(chart, removed);
+      await writeDb(db);
       return { ok: true, result: null };
+    }
 
     case "reorder":
     case "reorderForChart":
-      await reorderRows(names.task, "고유ID", body.ids || []);
+      reorderList(bucket.tasks, body.ids || []);
+      await writeDb(db);
       return { ok: true, result: null };
 
     case "createCategory":
-    case "createCategoryForChart":
-      return { ok: true, result: await createCategoryRow(names, body.data || {}) };
+    case "createCategoryForChart": {
+      const id = createCategoryRow(bucket, body.data || {});
+      await writeDb(db);
+      return { ok: true, result: id };
+    }
 
     case "updateCategory":
     case "updateCategoryForChart":
-      await updateCategoryRow(names, body.data || {});
+      updateCategoryRow(bucket, body.data || {});
+      await writeDb(db);
       return { ok: true, result: null };
 
     case "deleteCategory":
     case "deleteCategoryForChart":
-      await deleteCategoryRow(names, body.id);
+      deleteCategoryRow(bucket, body.id);
+      await writeDb(db);
       return { ok: true, result: null };
 
     case "reorderCategories":
     case "reorderCategoriesForChart":
-      await reorderRows(names.category, "카테고리 ID", body.ids || []);
+      reorderList(bucket.categories, body.ids || []);
+      await writeDb(db);
       return { ok: true, result: null };
 
     case "listCharts":
-      return { ok: true, result: await listChartsImpl() };
+      return { ok: true, result: listChartsImpl(db) };
 
-    case "createChart":
-      return { ok: true, result: await createChartImpl(body.data || {}) };
+    case "createChart": {
+      const result = createChartImpl(db, body.data || {});
+      await writeDb(db);
+      return { ok: true, result };
+    }
 
     case "updateChart":
-      await updateChartImpl(body.data || {});
+      updateChartImpl(db, body.data || {});
+      await writeDb(db);
       return { ok: true, result: null };
 
-    case "deleteChart":
-      await deleteChartImpl(body.id);
+    case "deleteChart": {
+      const removedChart = deleteChartImpl(db, body.id);
+      if (removedChart && removedChart.calendarId) {
+        try {
+          await calDeleteCalendar(removedChart.calendarId);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      await writeDb(db);
       return { ok: true, result: null };
+    }
+
+    case "addCalendarToChart": {
+      if (!chart) {
+        throw new Error("차트를 찾을 수 없습니다.");
+      }
+      if (chart.calendarId) {
+        return { ok: true, result: { already: true } };
+      }
+      const calendarId = await calCreateCalendar(chart.name + " - 간트차트");
+      chart.calendarId = calendarId;
+      for (const task of bucket.tasks) {
+        try {
+          task.calendarEventId = await calCreateEvent(calendarId, task);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      await writeDb(db);
+      return { ok: true, result: { already: false } };
+    }
+
+    case "removeCalendarFromChart": {
+      if (!chart) {
+        throw new Error("차트를 찾을 수 없습니다.");
+      }
+      if (!chart.calendarId) {
+        return { ok: true, result: { missing: true } };
+      }
+      try {
+        await calDeleteCalendar(chart.calendarId);
+      } catch (error) {
+        console.error(error);
+      }
+      chart.calendarId = "";
+      bucket.tasks.forEach((t) => { t.calendarEventId = ""; });
+      await writeDb(db);
+      return { ok: true, result: { missing: false } };
+    }
+
+    case "exportChartCsv":
+      return { ok: true, result: buildCsvForBucket(bucket) };
 
     default:
       throw new Error("알 수 없는 action입니다: " + action);
@@ -1076,6 +1119,13 @@ async function apiGet() {
 async function apiPost(action, data = {}) {
   const mapped = CHART_ACTION_MAP[action] || action;
   return request(mapped, { ...data, chartId: CHART_ID });
+}
+
+/* 멀티 차트 화면에서 "지금 보고 있는 차트(CHART_ID)"가 아니라, 차트 박스마다
+   있는 캘린더 추가/삭제·CSV 내보내기 버튼이 그 박스의 차트 하나만 골라서
+   쓰는 용도. apiPost처럼 CHART_ID를 자동으로 끼워 넣지 않는다. */
+async function apiPostForChart(action, chartId, data = {}) {
+  return request(action, { ...data, chartId });
 }
 
 
@@ -4927,6 +4977,36 @@ function shellRenderList() {
 
       head.appendChild(headInfo);
 
+      /* (추가분) 캘린더 연동 + CSV 내보내기: 이 차트 박스 위에만 둔다. */
+      const actions = document.createElement("div");
+      actions.className = "mc-chart-box-actions";
+
+      const csvBtn = document.createElement("button");
+      csvBtn.type = "button";
+      csvBtn.className = "mc-btn mc-btn-ghost";
+      csvBtn.textContent = "엑셀로 내보내기";
+      csvBtn.title = "이 차트의 작업을 CSV 파일로 내보냅니다";
+      csvBtn.addEventListener("click", () => shellHandleExportCsv(chart.id, box));
+
+      const calAddBtn = document.createElement("button");
+      calAddBtn.type = "button";
+      calAddBtn.className = "mc-btn mc-btn-ghost";
+      calAddBtn.textContent = "캘린더에 추가";
+      calAddBtn.title = "이 차트 전용 구글 캘린더를 만들어 작업을 추가합니다";
+      calAddBtn.addEventListener("click", () => shellHandleCalendarAdd(chart.id));
+
+      const calRemoveBtn = document.createElement("button");
+      calRemoveBtn.type = "button";
+      calRemoveBtn.className = "mc-btn mc-btn-ghost";
+      calRemoveBtn.textContent = "캘린더에서 삭제";
+      calRemoveBtn.title = "이 차트 전용 구글 캘린더를 삭제합니다";
+      calRemoveBtn.addEventListener("click", () => shellHandleCalendarRemove(chart.id));
+
+      actions.appendChild(csvBtn);
+      actions.appendChild(calAddBtn);
+      actions.appendChild(calRemoveBtn);
+      head.appendChild(actions);
+
       box.appendChild(head);
 
       toggle.addEventListener("click", () => {
@@ -4961,6 +5041,89 @@ function shellRenderList() {
   Object.keys(existing).forEach((id) => {
     if (!seen[id]) existing[id].remove();
   });
+}
+
+/* (추가분) 캘린더 연동 + CSV 내보내기: 차트 박스 위 버튼들의 동작. */
+
+function shellFindChart(chartId) {
+  return shellChartsCache.find((c) => c.id === chartId) || null;
+}
+
+function shellShowInfo(message) {
+  const box = document.getElementById("mcInfoModalMessage");
+  if (box) box.textContent = message;
+  shellOpenModal("mcInfoModal");
+}
+
+let pendingCalDeleteChartId = "";
+
+function shellConfirmCalDelete(chartId, chartName) {
+  pendingCalDeleteChartId = chartId;
+  const box = document.getElementById("mcCalConfirmMessage");
+  if (box) box.textContent = "정말 \"" + chartName + "\" 차트를 캘린더에서 삭제하시겠습니까?";
+  shellOpenModal("mcCalConfirmModal");
+}
+
+function downloadTextFile(filename, text, mime) {
+  const blob = new Blob([text], { type: mime || "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function shellHandleExportCsv(chartId, box) {
+  try {
+    const res = await apiPostForChart("exportChartCsv", chartId);
+    const name = (box && box.querySelector(".mc-chart-box-name") && box.querySelector(".mc-chart-box-name").textContent) || "차트";
+    downloadTextFile(name + ".csv", res.result, "text/csv;charset=utf-8");
+  } catch (error) {
+    showToast(error.message || "내보내지 못했습니다.", true, 0);
+  }
+}
+
+async function shellHandleCalendarAdd(chartId) {
+  try {
+    await shellLoadCharts();
+  } catch (error) {
+    // 무시하고 지금 캐시로 진행
+  }
+
+  const chart = shellFindChart(chartId);
+
+  if (chart && chart.hasCalendar) {
+    shellShowInfo("해당 차트가 이미 존재합니다!");
+    return;
+  }
+
+  try {
+    await apiPostForChart("addCalendarToChart", chartId);
+    showToast("캘린더에 추가했습니다.");
+    await shellLoadCharts();
+  } catch (error) {
+    showToast(error.message || "추가하지 못했습니다.", true, 0);
+  }
+}
+
+async function shellHandleCalendarRemove(chartId) {
+  try {
+    await shellLoadCharts();
+  } catch (error) {
+    // 무시하고 지금 캐시로 진행
+  }
+
+  const chart = shellFindChart(chartId);
+
+  if (!chart || !chart.hasCalendar) {
+    shellShowInfo("해당 차트가 존재하지 않습니다!");
+    return;
+  }
+
+  shellConfirmCalDelete(chartId, chart.name);
 }
 
 function shellAutoResize(iframe) {
@@ -5122,6 +5285,25 @@ function initShell() {
   document.getElementById("mcReloadBtn").addEventListener("click", () => {
     shellLoadCharts();
   });
+
+  const mcCalConfirmDeleteBtn = document.getElementById("mcCalConfirmDeleteBtn");
+  if (mcCalConfirmDeleteBtn) {
+    mcCalConfirmDeleteBtn.addEventListener("click", () => withBusy(
+      mcCalConfirmDeleteBtn, "삭제 중…", async () => {
+        const chartId = pendingCalDeleteChartId;
+        shellCloseModal("mcCalConfirmModal");
+        if (!chartId) return;
+
+        try {
+          await apiPostForChart("removeCalendarFromChart", chartId);
+          showToast("캘린더에서 삭제했습니다.");
+          await shellLoadCharts();
+        } catch (error) {
+          showToast(error.message || "삭제하지 못했습니다.", true, 0);
+        }
+      }
+    ));
+  }
 
   shellLoadCharts();
 }
@@ -5378,3 +5560,5 @@ if (IS_SHELL_MODE) {
     loadData();
   })();
 }
+
+
