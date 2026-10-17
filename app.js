@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-17-csvall)
+ * 간트차트 app.js  (v3, 2026-10-17-share1)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -47,7 +47,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-17-csvall";
+const APP_VERSION = "2026-10-17-share1";
 
 
 /* =========================================================
@@ -102,10 +102,13 @@ let state = {
  * ========================================================= */
 
 const GOOGLE_CLIENT_ID =
-  "837081087195-hv7dvrjqn7o8eiidq8qv1b0tci85v0a1.apps.googleusercontent.com";
+  "967392989937-6eo5phg627gi95ftiqeenafgienko4uf.apps.googleusercontent.com";
 const GOOGLE_SCOPES =
   "https://www.googleapis.com/auth/drive.file " +
-  "https://www.googleapis.com/auth/calendar";
+  "https://www.googleapis.com/auth/calendar " +
+  /* (공유 기능 추가분) 공유 서버가 "이 토큰이 누구 이메일인지" 확인할 수
+     있어야 해서 이메일 조회 범위만 추가한다. 기존 두 권한은 그대로. */
+  "https://www.googleapis.com/auth/userinfo.email";
 
 const DB_PROP_KEY = "ganttDbJson";
 const DB_PROP_VALUE = "v1";
@@ -4945,7 +4948,35 @@ function shellRangeLabel(chart) {
 async function shellLoadCharts() {
   try {
     const result = await apiPost("listCharts");
-    shellChartsCache = Array.isArray(result.result) ? result.result : [];
+    const personal = (Array.isArray(result.result) ? result.result : []).map((c) => ({ ...c, shared: false }));
+
+    /* (공유 기능 추가분) 내가 수락한 공유 차트도 같이 불러와서 합친다.
+       공유 서버가 아직 설정 안 돼 있거나 로그인 전이면 조용히 빈 목록으로 둔다
+       (개인 차트 목록 불러오기는 그것과 상관없이 항상 그대로 동작). */
+    let shared = [];
+    if (accessToken && typeof shareFetch === "function") {
+      try {
+        const list = await shareFetch("listMySharedCharts", {});
+        shared = (Array.isArray(list) ? list : []).map((c) => ({
+          id: "shared:" + c.chartId,
+          chartId: c.chartId,
+          name: c.name,
+          rangeStart: c.rangeStart || "",
+          rangeEnd: c.rangeEnd || "",
+          hidden: false,
+          order: 999999,
+          hasCalendar: false,
+          shared: true,
+          role: c.role,
+          ownerEmail: c.ownerEmail
+        }));
+      } catch (error) {
+        console.error(error);
+        // 공유 목록을 못 가져와도 개인 차트 목록은 그대로 보여준다.
+      }
+    }
+
+    shellChartsCache = personal.concat(shared);
     shellRenderList();
   } catch (error) {
     console.error(error);
@@ -4974,6 +5005,7 @@ function shellRenderList() {
       box = document.createElement("div");
       box.className = "mc-chart-box";
       box.dataset.chartId = chart.id;
+      if (chart.shared) box.classList.add("mc-chart-box-shared");
 
       const head = document.createElement("div");
       head.className = "mc-chart-box-head";
@@ -5002,34 +5034,72 @@ function shellRenderList() {
 
       head.appendChild(headInfo);
 
-      /* (추가분) 캘린더 연동 + CSV 내보내기: 이 차트 박스 위에만 둔다. */
+      /* (추가분) 캘린더 연동 + CSV 내보내기: 이 차트 박스 위에만 둔다.
+         (공유 기능 추가분) 공유 차트 박스는 아직 캘린더/CSV 버튼 대신
+         공유 관련 버튼만 둔다 — 개인 차트 쪽은 전혀 안 바뀜. */
       const actions = document.createElement("div");
       actions.className = "mc-chart-box-actions";
 
-      const csvBtn = document.createElement("button");
-      csvBtn.type = "button";
-      csvBtn.className = "mc-btn mc-btn-ghost";
-      csvBtn.textContent = "엑셀로 내보내기";
-      csvBtn.title = "이 차트의 작업을 CSV 파일로 내보냅니다";
-      csvBtn.addEventListener("click", () => shellHandleExportCsv(chart.id, box));
+      if (!chart.shared) {
+        const csvBtn = document.createElement("button");
+        csvBtn.type = "button";
+        csvBtn.className = "mc-btn mc-btn-ghost";
+        csvBtn.textContent = "엑셀로 내보내기";
+        csvBtn.title = "이 차트의 작업을 CSV 파일로 내보냅니다";
+        csvBtn.addEventListener("click", () => shellHandleExportCsv(chart.id, box));
 
-      const calAddBtn = document.createElement("button");
-      calAddBtn.type = "button";
-      calAddBtn.className = "mc-btn mc-btn-ghost";
-      calAddBtn.textContent = "캘린더에 추가";
-      calAddBtn.title = "이 차트 전용 구글 캘린더를 만들어 작업을 추가합니다";
-      calAddBtn.addEventListener("click", () => shellHandleCalendarAdd(chart.id));
+        const calAddBtn = document.createElement("button");
+        calAddBtn.type = "button";
+        calAddBtn.className = "mc-btn mc-btn-ghost";
+        calAddBtn.textContent = "캘린더에 추가";
+        calAddBtn.title = "이 차트 전용 구글 캘린더를 만들어 작업을 추가합니다";
+        calAddBtn.addEventListener("click", () => shellHandleCalendarAdd(chart.id));
 
-      const calRemoveBtn = document.createElement("button");
-      calRemoveBtn.type = "button";
-      calRemoveBtn.className = "mc-btn mc-btn-ghost";
-      calRemoveBtn.textContent = "캘린더에서 삭제";
-      calRemoveBtn.title = "이 차트 전용 구글 캘린더를 삭제합니다";
-      calRemoveBtn.addEventListener("click", () => shellHandleCalendarRemove(chart.id));
+        const calRemoveBtn = document.createElement("button");
+        calRemoveBtn.type = "button";
+        calRemoveBtn.className = "mc-btn mc-btn-ghost";
+        calRemoveBtn.textContent = "캘린더에서 삭제";
+        calRemoveBtn.title = "이 차트 전용 구글 캘린더를 삭제합니다";
+        calRemoveBtn.addEventListener("click", () => shellHandleCalendarRemove(chart.id));
 
-      actions.appendChild(csvBtn);
-      actions.appendChild(calAddBtn);
-      actions.appendChild(calRemoveBtn);
+        const shareBtn = document.createElement("button");
+        shareBtn.type = "button";
+        shareBtn.className = "mc-btn mc-btn-ghost";
+        shareBtn.textContent = "공유";
+        shareBtn.title = "이 차트를 다른 구글 계정과 공유합니다";
+        shareBtn.addEventListener("click", () => shellOpenShareModal(chart.id, chart.name, false, "owner"));
+
+        actions.appendChild(csvBtn);
+        actions.appendChild(calAddBtn);
+        actions.appendChild(calRemoveBtn);
+        actions.appendChild(shareBtn);
+      } else {
+        if (chart.role === "owner" || chart.role === "admin") {
+          const manageBtn = document.createElement("button");
+          manageBtn.type = "button";
+          manageBtn.className = "mc-btn mc-btn-ghost";
+          manageBtn.textContent = "공유 관리";
+          manageBtn.title = "이 차트의 공유 멤버를 관리합니다";
+          manageBtn.addEventListener("click", () => shellOpenShareModal(chart.chartId, chart.name, true, chart.role));
+          actions.appendChild(manageBtn);
+        }
+
+        const membersBtn = document.createElement("button");
+        membersBtn.type = "button";
+        membersBtn.className = "mc-btn mc-btn-ghost";
+        membersBtn.textContent = "공유 구성원 보기";
+        membersBtn.addEventListener("click", () => shellOpenMembersModal(chart.chartId));
+        actions.appendChild(membersBtn);
+
+        if (chart.role !== "owner") {
+          const leaveBtn = document.createElement("button");
+          leaveBtn.type = "button";
+          leaveBtn.className = "mc-btn mc-btn-ghost";
+          leaveBtn.textContent = "공유 차트 나가기";
+          leaveBtn.addEventListener("click", () => shellHandleLeaveShared(chart.chartId, chart.name));
+          actions.appendChild(leaveBtn);
+        }
+      }
       head.appendChild(actions);
 
       box.appendChild(head);
@@ -5275,8 +5345,15 @@ function initShell() {
   });
 
   document.getElementById("mcAddBtn").addEventListener("click", () => {
-    document.getElementById("mcAddName").value = "";
-    shellOpenModal("mcAddModal");
+    /* (공유 기능 추가분) 바로 "새 차트" 입력창을 띄우던 것을, 먼저
+       "새로운 차트 만들기 / 차트 공유받기" 선택 박스를 거치도록 바꿈.
+       "새로운 차트 만들기"를 누르면 기존과 완전히 동일한 입력창이 뜬다. */
+    if (typeof shellOpenNewOrShareModal === "function") {
+      shellOpenNewOrShareModal();
+    } else {
+      document.getElementById("mcAddName").value = "";
+      shellOpenModal("mcAddModal");
+    }
   });
 
   document.getElementById("mcAddSaveBtn").addEventListener("click", () => withBusy(
@@ -5576,6 +5653,8 @@ if (IS_SHELL_MODE) {
   if (shellView) shellView.style.display = "";
 
   initShell();
+  /* (공유 기능 추가분) */
+  if (typeof initShareUi === "function") initShareUi();
 
 } else {
 
@@ -5599,3 +5678,467 @@ if (IS_SHELL_MODE) {
     loadData();
   })();
 }
+
+/* =========================================================
+ * ▼▼▼ 공유 기능 (추가분) ▼▼▼
+ * ---------------------------------------------------------
+ * 여기부터는 전부 "새로 추가되는" 코드다. 개인(비공유) 차트의
+ * 기존 흐름(Drive API 직접 호출)은 단 한 줄도 바꾸지 않는다.
+ * 이 블록 바로 위에서 apiGet/apiPost를 "같은 이름으로 다시"
+ * 정의하는데, 이건 "공유 차트일 때만 새 경로로 보내고,
+ * 개인 차트일 때는 원래 코드가 하던 것과 완전히 똑같은 동작"을
+ * 하도록 만든 것이다 (개인 차트 쪽 분기는 원래 줄을 그대로 복사한 것).
+ *
+ * 공유 서버 주소(SHARE_SERVER_URL)는 Apps Script를 배포한 뒤
+ * 나오는 웹 앱 URL로 바꿔 넣어야 동작한다. 바꾸기 전에는 공유
+ * 관련 기능만 "공유 서버 주소가 설정되지 않았습니다" 오류를
+ * 보여주고, 개인 차트 기능은 전혀 영향 없다.
+ * ========================================================= */
+
+const SHARE_SERVER_URL = "https://script.google.com/macros/s/AKfycbzxw0R18Bg9O-RoPeJFxXeXqxRmrwcWL3nn_0wjYIkGisAhlKNTVAXETwwaQgw0jS2VZQ/exec";
+
+const SHARED_CHART_PREFIX = "shared:";
+const IS_SHARED_CHART = CHART_ID.indexOf(SHARED_CHART_PREFIX) === 0;
+const SHARED_CHART_ID = IS_SHARED_CHART ? CHART_ID.slice(SHARED_CHART_PREFIX.length) : "";
+
+async function shareFetch(action, params = {}) {
+  if (!accessToken) {
+    throw new Error("로그인이 필요합니다. 'Google 로그인' 버튼을 눌러주세요.");
+  }
+  if (!SHARE_SERVER_URL || SHARE_SERVER_URL.indexOf("PASTE_") === 0) {
+    throw new Error("공유 서버 주소가 아직 설정되지 않았습니다.");
+  }
+
+  let response;
+  try {
+    // Apps Script 웹앱은 application/json 요청에 대한 사전 확인(OPTIONS)을
+    // 처리하지 못해서, text/plain으로 보내고 서버에서 JSON.parse 한다.
+    response = await fetch(SHARE_SERVER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ ...params, action, accessToken })
+    });
+  } catch (error) {
+    throw new Error("공유 서버에 연결하지 못했습니다.");
+  }
+
+  let body = null;
+  try {
+    body = await response.json();
+  } catch (error) {
+    body = null;
+  }
+
+  if (!body || body.ok === false) {
+    const err = new Error((body && body.error) || "공유 서버 요청에 실패했습니다.");
+    err.conflict = !!(body && body.conflict);
+    err.currentValue = body && body.currentValue;
+    err.currentVersion = body && body.currentVersion;
+    throw err;
+  }
+
+  return body.result !== undefined ? body.result : body;
+}
+
+/* ----- 공유 차트 항목(필드) 버전 캐시 (이 브라우저 탭 안에서만 유지) ----- */
+let sharedTaskVersions = {};
+let sharedCatVersions = {};
+
+async function sharedLoadChart() {
+  const data = await shareFetch("getSharedChartData", { chartId: SHARED_CHART_ID });
+
+  sharedTaskVersions = {};
+  sharedCatVersions = {};
+  (data.tasks || []).forEach((t) => { sharedTaskVersions[t.id] = t.versions || {}; });
+  (data.categories || []).forEach((c) => { sharedCatVersions[c.id] = c.versions || {}; });
+
+  return { tasks: data.tasks || [], categories: data.categories || [] };
+}
+
+async function sharedUpdateFields(kind, id, fields, versionMap) {
+  const keys = Object.keys(fields).filter((k) => k !== "id");
+
+  for (const field of keys) {
+    const expectedVersion = (versionMap[id] || {})[field] || 1;
+    const res = await shareFetch("updateSharedField", {
+      chartId: SHARED_CHART_ID, kind, id, field, value: fields[field], expectedVersion
+    });
+
+    versionMap[id] = versionMap[id] || {};
+
+    if (!res.ok) {
+      if (res.conflict) {
+        versionMap[id][field] = res.currentVersion;
+      }
+      throw new Error(res.error || "저장하지 못했습니다. 최신 내용으로 다시 시도해주세요.");
+    }
+
+    versionMap[id][field] = res.newVersion;
+  }
+}
+
+async function sharedApiPost(action, data) {
+  switch (action) {
+    case "create": {
+      const row = await shareFetch("createSharedTask", { chartId: SHARED_CHART_ID, ...(data.data || {}) });
+      sharedTaskVersions[row.id] = row.versions || {};
+      return { ok: true, result: row.id };
+    }
+
+    case "update": {
+      const fields = data.data || {};
+      await sharedUpdateFields("task", fields.id, fields, sharedTaskVersions);
+      return { ok: true, result: null };
+    }
+
+    case "delete": {
+      await shareFetch("deleteSharedTask", { chartId: SHARED_CHART_ID, id: data.id });
+      delete sharedTaskVersions[data.id];
+      return { ok: true, result: null };
+    }
+
+    case "reorder": {
+      await shareFetch("reorderSharedTasks", { chartId: SHARED_CHART_ID, orderedIds: data.ids || [] });
+      return { ok: true, result: null };
+    }
+
+    case "createCategory": {
+      const row = await shareFetch("createSharedCategory", { chartId: SHARED_CHART_ID, ...(data.data || {}) });
+      sharedCatVersions[row.id] = row.versions || {};
+      return { ok: true, result: row.id };
+    }
+
+    case "updateCategory": {
+      const fields = data.data || {};
+      await sharedUpdateFields("category", fields.id, fields, sharedCatVersions);
+      return { ok: true, result: null };
+    }
+
+    case "deleteCategory": {
+      await shareFetch("deleteSharedCategory", { chartId: SHARED_CHART_ID, id: data.id });
+      delete sharedCatVersions[data.id];
+      return { ok: true, result: null };
+    }
+
+    case "reorderCategories": {
+      await shareFetch("reorderSharedCategories", { chartId: SHARED_CHART_ID, orderedIds: data.ids || [] });
+      return { ok: true, result: null };
+    }
+
+    case "updateChart": {
+      const fields = data.data || {};
+      await shareFetch("updateSharedChartMeta", {
+        chartId: SHARED_CHART_ID, name: fields.name, rangeStart: fields.rangeStart, rangeEnd: fields.rangeEnd
+      });
+      return { ok: true, result: null };
+    }
+
+    default:
+      throw new Error("공유 차트에서는 아직 지원하지 않는 기능입니다: " + action);
+  }
+}
+
+/* (공유 기능 추가분) apiGet/apiPost를 다시 정의한다. 개인 차트(IS_SHARED_CHART가
+   거짓)일 때는 원래 코드와 완전히 동일하게 동작하고, 공유 차트일 때만 위의
+   sharedLoadChart/sharedApiPost로 보낸다. 원래 정의는 위쪽에 그대로 남아있고,
+   자바스크립트에서는 같은 이름의 함수를 나중에 또 선언하면 "나중 것"이
+   적용되므로, 개인 차트 쪽 동작은 바뀌지 않는다. */
+async function apiGet() {
+  if (IS_SHARED_CHART) {
+    return await sharedLoadChart();
+  }
+  const result = await request("loadChart", { chartId: CHART_ID });
+  return result.data;
+}
+
+async function apiPost(action, data = {}) {
+  if (IS_SHARED_CHART) {
+    return await sharedApiPost(action, data);
+  }
+  const mapped = CHART_ACTION_MAP[action] || action;
+  return request(mapped, { ...data, chartId: CHART_ID });
+}
+
+/* =========================================================
+ * 공유 UI (멀티 차트 화면)
+ * ========================================================= */
+
+let shareModalChartId = "";
+let shareModalIsExisting = false;
+
+function shellRenderShareMembersList(members, ownerEmail, canManage, chartId) {
+  const box = document.getElementById("mcShareMemberList");
+  if (!box) return;
+  box.innerHTML = "";
+
+  members.forEach((m) => {
+    const row = document.createElement("div");
+    row.className = "mc-share-member-row";
+
+    const label = document.createElement("span");
+    const roleLabel = { owner: "소유자", admin: "관리자", editor: "편집자", viewer: "뷰어" }[m.role] || m.role;
+    const statusLabel = m.status === "pending" ? " (대기중)" : "";
+    label.textContent = m.email + " — " + roleLabel + statusLabel;
+    row.appendChild(label);
+
+    if (canManage && m.role !== "owner") {
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "mc-btn mc-btn-ghost";
+      delBtn.textContent = "삭제";
+      delBtn.addEventListener("click", () => withBusy(delBtn, "삭제 중…", async () => {
+        try {
+          await shareFetch("unshareMember", { chartId, targetEmail: m.email });
+          showToast("공유를 해제했습니다.");
+          const found = shellChartsCache.find((c) => c.shared && c.chartId === chartId);
+          shellOpenShareModal(chartId, document.getElementById("mcShareChartName").textContent, true, found ? found.role : "admin");
+        } catch (error) {
+          showToast(error.message || "삭제하지 못했습니다.", true, 0);
+        }
+      }));
+      row.appendChild(delBtn);
+    }
+
+    box.appendChild(row);
+  });
+}
+
+async function shellOpenShareModal(chartId, chartName, alreadyShared, myRole) {
+  shareModalChartId = chartId;
+  shareModalIsExisting = !!alreadyShared;
+
+  document.getElementById("mcShareChartName").textContent = chartName || "";
+  document.getElementById("mcShareEmail").value = "";
+  const roleSel = document.getElementById("mcShareRole");
+  if (roleSel) roleSel.value = "viewer";
+
+  const revokeBtn = document.getElementById("mcShareRevokeBtn");
+
+  if (alreadyShared) {
+    try {
+      const info = await shareFetch("getSharedChartMembers", { chartId });
+      shellRenderShareMembersList(info.members, info.ownerEmail, true, chartId);
+      // "나만 보기로 전환"은 소유자만 할 수 있다 (관리자는 멤버 추가/삭제만).
+      if (revokeBtn) revokeBtn.classList.toggle("hidden", myRole !== "owner");
+    } catch (error) {
+      showToast(error.message || "멤버 목록을 불러오지 못했습니다.", true, 0);
+    }
+  } else {
+    const box = document.getElementById("mcShareMemberList");
+    if (box) box.innerHTML = "<div class=\"mc-hint\">아직 공유되지 않은 차트입니다. 이메일을 추가하면 공유가 시작됩니다.</div>";
+    if (revokeBtn) revokeBtn.classList.add("hidden"); // 아직 공유 전이라 해제할 게 없음
+  }
+
+  shellOpenModal("mcShareModal");
+}
+
+async function shellHandleShareAdd() {
+  const email = document.getElementById("mcShareEmail").value.trim();
+  const role = document.getElementById("mcShareRole").value;
+  const chartId = shareModalChartId;
+
+  if (!email) { showToast("이메일을 입력하세요.", true); return; }
+
+  try {
+    if (!shareModalIsExisting) {
+      // 처음 공유로 전환하는 순간: 개인 차트 데이터를 공유 서버로 옮긴다.
+      const loaded = await apiPostForChart("loadChart", chartId);
+      const meta = shellFindChart(chartId) || {};
+
+      await shareFetch("createSharedChart", {
+        chartId: chartId, name: meta.name || "", rangeStart: meta.rangeStart || "", rangeEnd: meta.rangeEnd || "",
+        tasks: (loaded.data || {}).tasks || [], categories: (loaded.data || {}).categories || []
+      });
+      await shareFetch("shareChart", { chartId, targetEmail: email, role });
+      await apiPostForChart("deleteChart", chartId); // 개인 드라이브 쪽 내용은 지움(서버로 옮겼으니까)
+
+      shareModalIsExisting = true;
+    } else {
+      await shareFetch("shareChart", { chartId, targetEmail: email, role });
+    }
+
+    showToast("공유를 추가했습니다.");
+    document.getElementById("mcShareEmail").value = "";
+    await shellLoadCharts();
+    const found = shellChartsCache.find((c) => c.shared && c.chartId === chartId);
+    shellOpenShareModal(chartId, document.getElementById("mcShareChartName").textContent, true, found ? found.role : "owner");
+  } catch (error) {
+    showToast(error.message || "공유하지 못했습니다.", true, 0);
+  }
+}
+
+async function shellHandleRevokeAllSharing() {
+  const chartId = shareModalChartId;
+  if (!chartId) return;
+
+  try {
+    const data = await shareFetch("getSharedChartData", { chartId });
+    await shareFetch("revokeAllSharing", { chartId });
+
+    // 서버에 있던 내용을 다시 내 개인 드라이브 차트로 되돌려 놓는다.
+    const created = await apiPost("createChart", { data: { name: data.name, rangeStart: data.rangeStart, rangeEnd: data.rangeEnd } });
+    const newChartId = created.result.id;
+
+    for (const cat of data.categories || []) {
+      await apiPostForChart("createCategoryForChart", newChartId, { data: { name: cat.name, color: cat.color } });
+    }
+    for (const t of data.tasks || []) {
+      await apiPostForChart("createForChart", newChartId, {
+        data: {
+          categoryId: t.categoryId, name: t.name, start: t.start, end: t.end,
+          progress: t.progress, color: t.color, memo: t.memo, target: t.target, owner: t.owner
+        }
+      });
+    }
+
+    await shareFetch("deleteSharedChartCompletely", { chartId });
+
+    shellCloseModal("mcShareModal");
+    showToast("공유를 해제하고 개인 차트로 되돌렸습니다.");
+    await shellLoadCharts();
+  } catch (error) {
+    showToast(error.message || "공유 해제에 실패했습니다.", true, 0);
+  }
+}
+
+async function shellOpenMembersModal(chartId) {
+  try {
+    const info = await shareFetch("getSharedChartMembers", { chartId });
+    const box = document.getElementById("mcMembersList");
+    box.innerHTML = "";
+
+    const list = [{ email: info.ownerEmail, role: "owner", status: "accepted" }].concat(
+      info.members.filter((m) => m.role !== "owner")
+    );
+
+    list.forEach((m) => {
+      const row = document.createElement("div");
+      row.className = "mc-share-member-row";
+      const roleLabel = { owner: "소유자", admin: "관리자", editor: "편집자", viewer: "뷰어" }[m.role] || m.role;
+      const statusLabel = m.status === "pending" ? " (대기중)" : "";
+      row.textContent = m.email + " — " + roleLabel + statusLabel;
+      box.appendChild(row);
+    });
+
+    shellOpenModal("mcMembersModal");
+  } catch (error) {
+    showToast(error.message || "멤버 목록을 불러오지 못했습니다.", true, 0);
+  }
+}
+
+async function shellHandleLeaveShared(chartId, chartName) {
+  if (!confirm("\"" + chartName + "\" 공유 차트에서 나가시겠습니까?")) return;
+
+  try {
+    await shareFetch("leaveSharedChart", { chartId });
+    showToast("공유 차트에서 나갔습니다.");
+    await shellLoadCharts();
+  } catch (error) {
+    showToast(error.message || "나가지 못했습니다.", true, 0);
+  }
+}
+
+/* ----- 새 차트 만들기 / 공유받기 선택 박스 + 공유받기(초대) 화면 ----- */
+
+function shellOpenNewOrShareModal() {
+  shellOpenModal("mcNewOrShareModal");
+}
+
+async function shellRenderInvites() {
+  const box = document.getElementById("mcInvitesList");
+  if (!box) return;
+
+  if (!accessToken) {
+    box.innerHTML = "<div class=\"mc-hint\">먼저 Google 로그인을 해주세요.</div>";
+    return;
+  }
+
+  try {
+    const invites = await shareFetch("listMyInvites", {});
+
+    if (!invites.length) {
+      box.innerHTML = "<div class=\"mc-hint\">공유받은 차트가 없습니다.</div>";
+      return;
+    }
+
+    box.innerHTML = "";
+    invites.forEach((inv) => {
+      const row = document.createElement("div");
+      row.className = "mc-invite-row";
+
+      const label = document.createElement("span");
+      label.textContent = inv.ownerEmail + "님이 \"" + inv.chartName + "\" 차트를 공유했습니다";
+      row.appendChild(label);
+
+      const acceptBtn = document.createElement("button");
+      acceptBtn.type = "button";
+      acceptBtn.className = "mc-btn mc-btn-primary";
+      acceptBtn.textContent = "수락";
+      acceptBtn.addEventListener("click", () => withBusy(acceptBtn, "처리 중…", async () => {
+        try {
+          await shareFetch("respondInvite", { chartId: inv.chartId, accept: true });
+          showToast("수락했습니다.");
+          await shellRenderInvites();
+          await shellLoadCharts();
+        } catch (error) {
+          showToast(error.message || "처리하지 못했습니다.", true, 0);
+        }
+      }));
+
+      const rejectBtn = document.createElement("button");
+      rejectBtn.type = "button";
+      rejectBtn.className = "mc-btn mc-btn-ghost";
+      rejectBtn.textContent = "거절";
+      rejectBtn.addEventListener("click", () => withBusy(rejectBtn, "처리 중…", async () => {
+        try {
+          await shareFetch("respondInvite", { chartId: inv.chartId, accept: false });
+          showToast("거절했습니다.");
+          await shellRenderInvites();
+        } catch (error) {
+          showToast(error.message || "처리하지 못했습니다.", true, 0);
+        }
+      }));
+
+      row.appendChild(acceptBtn);
+      row.appendChild(rejectBtn);
+      box.appendChild(row);
+    });
+  } catch (error) {
+    box.innerHTML = "<div class=\"mc-hint\">" + (error.message || "불러오지 못했습니다.") + "</div>";
+  }
+}
+
+function initShareUi() {
+  const newChartOptBtn = document.getElementById("mcNewOrShareNewBtn");
+  if (newChartOptBtn) {
+    newChartOptBtn.addEventListener("click", () => {
+      shellCloseModal("mcNewOrShareModal");
+      document.getElementById("mcAddName").value = "";
+      shellOpenModal("mcAddModal");
+    });
+  }
+
+  const receiveOptBtn = document.getElementById("mcNewOrShareReceiveBtn");
+  if (receiveOptBtn) {
+    receiveOptBtn.addEventListener("click", () => {
+      shellCloseModal("mcNewOrShareModal");
+      shellRenderInvites();
+      shellOpenModal("mcInvitesModal");
+    });
+  }
+
+  const shareAddBtn = document.getElementById("mcShareAddBtn");
+  if (shareAddBtn) {
+    shareAddBtn.addEventListener("click", () => withBusy(shareAddBtn, "처리 중…", shellHandleShareAdd));
+  }
+
+  const revokeBtn = document.getElementById("mcShareRevokeBtn");
+  if (revokeBtn) {
+    revokeBtn.addEventListener("click", () => {
+      if (confirm("정말 공유를 전부 해제하고 개인 차트로 되돌리시겠습니까?")) {
+        withBusy(revokeBtn, "해제 중…", shellHandleRevokeAllSharing);
+      }
+    });
+  }
+}
+/* ▲▲▲ 공유 기능 (추가분) 끝 ▲▲▲ */
