@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-17-share1)
+ * 간트차트 app.js  (v3, 2026-10-18-share2)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -47,7 +47,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-17-share1";
+const APP_VERSION = "2026-10-18-share2";
 
 
 /* =========================================================
@@ -5091,6 +5091,28 @@ function shellRenderList() {
         membersBtn.addEventListener("click", () => shellOpenMembersModal(chart.chartId));
         actions.appendChild(membersBtn);
 
+        /* (공유 기능 추가분) 캘린더/CSV는 뷰어 포함 모든 권한에서 가능. */
+        const sharedCsvBtn = document.createElement("button");
+        sharedCsvBtn.type = "button";
+        sharedCsvBtn.className = "mc-btn mc-btn-ghost";
+        sharedCsvBtn.textContent = "엑셀로 내보내기";
+        sharedCsvBtn.addEventListener("click", () => shellHandleSharedExportCsv(chart.chartId, box));
+        actions.appendChild(sharedCsvBtn);
+
+        const sharedCalAddBtn = document.createElement("button");
+        sharedCalAddBtn.type = "button";
+        sharedCalAddBtn.className = "mc-btn mc-btn-ghost";
+        sharedCalAddBtn.textContent = "캘린더에 추가";
+        sharedCalAddBtn.addEventListener("click", () => shellHandleSharedCalendarAdd(chart.chartId));
+        actions.appendChild(sharedCalAddBtn);
+
+        const sharedCalRemoveBtn = document.createElement("button");
+        sharedCalRemoveBtn.type = "button";
+        sharedCalRemoveBtn.className = "mc-btn mc-btn-ghost";
+        sharedCalRemoveBtn.textContent = "캘린더에서 삭제";
+        sharedCalRemoveBtn.addEventListener("click", () => shellHandleSharedCalendarRemove(chart.chartId));
+        actions.appendChild(sharedCalRemoveBtn);
+
         if (chart.role !== "owner") {
           const leaveBtn = document.createElement("button");
           leaveBtn.type = "button";
@@ -5153,6 +5175,7 @@ function shellShowInfo(message) {
 let pendingCalDeleteChartId = "";
 
 function shellConfirmCalDelete(chartId, chartName) {
+  if (typeof pendingSharedCalDeleteChartId !== "undefined") pendingSharedCalDeleteChartId = ""; // (공유 기능 추가분) 섞임 방지
   pendingCalDeleteChartId = chartId;
   const box = document.getElementById("mcCalConfirmMessage");
   if (box) box.textContent = "정말 \"" + chartName + "\" 차트를 캘린더에서 삭제하시겠습니까?";
@@ -5664,6 +5687,9 @@ if (IS_SHELL_MODE) {
 
   initChartRangeUI();
   initChartNameUI();
+  /* (공유 기능 추가분) 공유 차트인데 내 권한이 "뷰어"면, 수정 관련
+     버튼/핸들을 숨긴다 (서버는 이미 막아주지만, 화면도 맞춰줌). */
+  if (typeof initSharedViewerReadonly === "function") initSharedViewerReadonly();
 
   /* (추가분) 이 차트의 저장된 커스텀 표시 기간을 먼저 읽어온 뒤에
      범위를 초기화하고 데이터를 불러온다. 커스텀 기간이 없으면
@@ -6109,6 +6135,8 @@ async function shellRenderInvites() {
 }
 
 function initShareUi() {
+  if (typeof initSharedCalendarUi === "function") initSharedCalendarUi();
+
   const newChartOptBtn = document.getElementById("mcNewOrShareNewBtn");
   if (newChartOptBtn) {
     newChartOptBtn.addEventListener("click", () => {
@@ -6142,3 +6170,155 @@ function initShareUi() {
   }
 }
 /* ▲▲▲ 공유 기능 (추가분) 끝 ▲▲▲ */
+
+
+/* =========================================================
+ * ▼▼▼ 공유 차트 캘린더/CSV + 뷰어 읽기전용 (추가분) ▼▼▼
+ * ---------------------------------------------------------
+ * 공유 차트의 캘린더는 "보는 사람 각자" 자기 계정에 따로 만든다(결정 6).
+ * 그 캘린더 정보(캘린더 ID, 작업별 이벤트 ID)는 서버가 아니라
+ * 이 브라우저의 localStorage에만 저장한다 — 어차피 "나만의" 정보이고,
+ * 다른 사람과 공유될 필요가 없는 정보라서 서버 데이터 구조를 안 건드린다.
+ * ========================================================= */
+
+function sharedCalStorageKey(chartId) {
+  return "gantt_shared_cal_" + chartId;
+}
+
+function sharedCalLoadInfo(chartId) {
+  try {
+    const raw = localStorage.getItem(sharedCalStorageKey(chartId));
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function sharedCalSaveInfo(chartId, info) {
+  try {
+    localStorage.setItem(sharedCalStorageKey(chartId), JSON.stringify(info));
+  } catch (error) {
+    // localStorage 실패해도 캘린더 자체는 이미 만들어졌으니 조용히 넘어감
+  }
+}
+
+function sharedCalClearInfo(chartId) {
+  try {
+    localStorage.removeItem(sharedCalStorageKey(chartId));
+  } catch (error) {
+    // 무시
+  }
+}
+
+async function shellHandleSharedCalendarAdd(chartId) {
+  const existing = sharedCalLoadInfo(chartId);
+  if (existing && existing.calendarId) {
+    shellShowInfo("해당 차트가 이미 존재합니다!");
+    return;
+  }
+
+  try {
+    const data = await shareFetch("getSharedChartData", { chartId });
+    const calendarId = await calCreateCalendar(data.name + " - 간트차트");
+
+    const eventMap = {};
+    for (const t of data.tasks || []) {
+      try {
+        eventMap[t.id] = await calCreateEvent(calendarId, t);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    sharedCalSaveInfo(chartId, { calendarId, eventMap });
+    showToast("캘린더에 추가했습니다.");
+  } catch (error) {
+    showToast(error.message || "추가하지 못했습니다.", true, 0);
+  }
+}
+
+async function shellHandleSharedCalendarRemove(chartId) {
+  const existing = sharedCalLoadInfo(chartId);
+  if (!existing || !existing.calendarId) {
+    shellShowInfo("해당 차트가 존재하지 않습니다!");
+    return;
+  }
+
+  const chart = shellChartsCache.find((c) => c.shared && c.chartId === chartId);
+  pendingCalDeleteChartId = ""; // 개인 차트 쪽 대기값과 섞이지 않게 비워둔다
+  pendingSharedCalDeleteChartId = chartId;
+  const box = document.getElementById("mcCalConfirmMessage");
+  if (box) box.textContent = "정말 \"" + (chart ? chart.name : "") + "\" 차트를 캘린더에서 삭제하시겠습니까?";
+  shellOpenModal("mcCalConfirmModal");
+}
+
+let pendingSharedCalDeleteChartId = "";
+
+async function shellHandleSharedExportCsv(chartId, box) {
+  try {
+    const data = await shareFetch("getSharedChartData", { chartId });
+
+    const headers = ["작업명", "카테고리", "시작일", "종료일", "진행률(%)", "메모", "대상처", "담당자"];
+    const rows = [headers.map(csvEscape).join(",")];
+    (data.tasks || []).forEach((t) => {
+      rows.push([
+        csvEscape(t.name), csvEscape(t.catName), csvEscape(t.start), csvEscape(t.end),
+        csvEscape(t.progress), csvEscape(t.memo), csvEscape(t.target), csvEscape(t.owner)
+      ].join(","));
+    });
+    const csv = "﻿" + rows.join("\r\n");
+
+    const name = (box && box.querySelector(".mc-chart-box-name") && box.querySelector(".mc-chart-box-name").textContent) || "공유차트";
+    downloadTextFile(name + ".csv", csv, "text/csv;charset=utf-8");
+  } catch (error) {
+    showToast(error.message || "내보내지 못했습니다.", true, 0);
+  }
+}
+
+/* mcCalConfirmDeleteBtn은 개인 차트 캘린더 삭제에도 쓰이는 버튼이라,
+   공유 차트 삭제 요청인지(pendingSharedCalDeleteChartId) 먼저 확인하고
+   처리한 뒤, 아니면 기존 개인 차트 로직(initShell 안의 원래 리스너)이
+   그대로 처리하게 둔다 — 두 리스너가 같은 버튼에 같이 붙어서 순서대로 실행됨. */
+function initSharedCalendarUi() {
+  const btn = document.getElementById("mcCalConfirmDeleteBtn");
+  if (!btn) return;
+
+  btn.addEventListener("click", () => withBusy(btn, "삭제 중…", async () => {
+    const chartId = pendingSharedCalDeleteChartId;
+    if (!chartId) return; // 개인 차트 쪽 요청이면 여기서는 아무것도 안 함
+
+    pendingSharedCalDeleteChartId = "";
+    shellCloseModal("mcCalConfirmModal");
+
+    const info = sharedCalLoadInfo(chartId);
+    if (info && info.calendarId) {
+      try {
+        await calDeleteCalendar(info.calendarId);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    sharedCalClearInfo(chartId);
+    showToast("캘린더에서 삭제했습니다.");
+  }));
+}
+
+/* =========================================================
+ * 공유 차트 뷰어(읽기 전용) 화면 처리
+ * ========================================================= */
+
+async function initSharedViewerReadonly() {
+  if (!IS_SHARED_CHART) return;
+
+  try {
+    const list = await shareFetch("listMySharedCharts", {});
+    const mine = (list || []).find((c) => c.chartId === SHARED_CHART_ID);
+    if (mine && mine.role === "viewer") {
+      document.body.classList.add("shared-viewer-readonly");
+    }
+  } catch (error) {
+    console.error(error);
+    // 역할을 못 가져와도 화면은 그대로 두고, 실제 수정 시도는 서버가 막아준다.
+  }
+}
+/* ▲▲▲ 공유 차트 캘린더/CSV + 뷰어 읽기전용 (추가분) 끝 ▲▲▲ */
