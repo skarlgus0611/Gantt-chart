@@ -5778,6 +5778,14 @@ async function sharedLoadChart() {
   (data.tasks || []).forEach((t) => { sharedTaskVersions[t.id] = t.versions || {}; });
   (data.categories || []).forEach((c) => { sharedCatVersions[c.id] = c.versions || {}; });
 
+  /* (성능 개선) 예전에는 "내 권한이 뷰어인지"를 알아내려고
+     listMySharedCharts를 한 번 더 따로 호출했는데(차트 하나당 서버
+     왕복이 2번씩 나가던 원인), 이제 서버가 차트 데이터와 함께 내 role도
+     같이 내려주므로 여기서 바로 반영해서 그 추가 호출을 없앤다. */
+  if (data.myRole === "viewer") {
+    document.body.classList.add("shared-viewer-readonly");
+  }
+
   return { tasks: data.tasks || [], categories: data.categories || [] };
 }
 
@@ -6308,17 +6316,10 @@ function initSharedCalendarUi() {
  * ========================================================= */
 
 async function initSharedViewerReadonly() {
-  if (!IS_SHARED_CHART) return;
-
-  try {
-    const list = await shareFetch("listMySharedCharts", {});
-    const mine = (list || []).find((c) => c.chartId === SHARED_CHART_ID);
-    if (mine && mine.role === "viewer") {
-      document.body.classList.add("shared-viewer-readonly");
-    }
-  } catch (error) {
-    console.error(error);
-    // 역할을 못 가져와도 화면은 그대로 두고, 실제 수정 시도는 서버가 막아준다.
-  }
+  /* (성능 개선) 역할 판단은 이제 sharedLoadChart()가 getSharedChartData
+     응답의 myRole로 바로 처리한다(아래 loadData() 호출 때 같이 됨). 이
+     함수는 기존에 initShell 쪽에서 부르던 호출 지점과의 호환을 위해
+     남겨두되, 더 이상 별도의 서버 왕복을 만들지 않는다. */
+  return;
 }
 /* ▲▲▲ 공유 차트 캘린더/CSV + 뷰어 읽기전용 (추가분) 끝 ▲▲▲ */
