@@ -2326,3 +2326,31 @@ body.is-dragging * {
 }
 
 /* ▲▲▲ 공유 기능 (추가분) 끝 ▲▲▲ */
+
+/* ▼▼▼ 공유 차트 뷰어(읽기 전용) (추가분) ▼▼▼
+   서버가 이미 막아주지만, 화면에서도 뷰어에게는 수정 관련 버튼/입력을
+   숨기거나 흐리게 해서 "눌러도 되는 것처럼" 보이지 않게 한다. */
+body.shared-viewer-readonly #addTaskBtn,
+body.shared-viewer-readonly #addCategoryBtn,
+body.shared-viewer-readonly .category-delete-btn,
+body.shared-viewer-readonly #deleteTaskBtn,
+body.shared-viewer-readonly .drag-handle,
+body.shared-viewer-readonly #chartRangeSaveBtn,
+body.shared-viewer-readonly #chartRangeClearBtn {
+  display: none !important;
+}
+
+body.shared-viewer-readonly #detailName,
+body.shared-viewer-readonly #detailCategory,
+body.shared-viewer-readonly #detailStart,
+body.shared-viewer-readonly #detailEnd,
+body.shared-viewer-readonly #detailProgress,
+body.shared-viewer-readonly #detailColor,
+body.shared-viewer-readonly #detailTarget,
+body.shared-viewer-readonly #detailOwner,
+body.shared-viewer-readonly #detailMemo,
+body.shared-viewer-readonly #chartNameLabel {
+  pointer-events: none;
+  opacity: 0.65;
+}
+/* ▲▲▲ 공유 차트 뷰어(읽기 전용) (추가분) 끝 ▲▲▲ */
