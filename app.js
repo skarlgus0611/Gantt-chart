@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-18-share5)
+ * 간트차트 app.js  (v3, 2026-10-18-share7)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -47,7 +47,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-18-share5";
+const APP_VERSION = "2026-10-18-share7";
 
 
 /* =========================================================
@@ -1067,13 +1067,45 @@ async function dispatchAction(action, body) {
     case "createChart": {
       const result = createChartImpl(db, body.data || {});
       await writeDb(db);
+      /* (성능 개선) 차트 추가/삭제/이름변경 직후 화면에 쓰려고
+         클라이언트가 전체 DB를 다시 통째로 받아오는(listCharts) 왕복을
+         또 보냈는데, 이미 메모리에 있는 db로 만든 가벼운 목록을 같은
+         응답에 실어서 그 중복 왕복을 없앤다. */
+      return { ok: true, result, charts: listChartsImpl(db) };
+    }
+
+    /* (성능 개선, 추가 액션 — 기존 createChart/createCategoryForChart/
+     * createForChart는 전혀 안 건드림) "공유 해제 후 개인 차트로 되돌리기"
+     * 할 때, 전체 개인 DB 파일을 카테고리/작업 개수만큼 매번 다시
+     * 읽고 써서(그만큼 Drive 왕복이 났다) 느렸던 걸, 새 차트 생성 +
+     * 카테고리 전부 + 작업 전부를 전부 메모리에서 채운 뒤 딱 한 번만
+     * readDb/writeDb 하도록 묶은 전용 액션. */
+    case "createChartWithData": {
+      const result = createChartImpl(db, body.data || {});
+      const newBucket = chartData(db, result.id);
+
+      const catIdMap = {};
+      (body.categories || []).forEach((cat) => {
+        const newCatId = createCategoryRow(newBucket, { name: cat.name, color: cat.color });
+        catIdMap[cat.id] = newCatId;
+      });
+
+      for (const t of body.tasks || []) {
+        await createTaskRow(newBucket, {
+          name: t.name, categoryId: catIdMap[t.categoryId] || "",
+          start: t.start, end: t.end, progress: t.progress, color: t.color,
+          memo: t.memo, target: t.target, owner: t.owner
+        });
+      }
+
+      await writeDb(db);
       return { ok: true, result };
     }
 
     case "updateChart":
       updateChartImpl(db, body.data || {});
       await writeDb(db);
-      return { ok: true, result: null };
+      return { ok: true, result: null, charts: listChartsImpl(db) };
 
     case "deleteChart": {
       const removedChart = deleteChartImpl(db, body.id);
@@ -1085,7 +1117,7 @@ async function dispatchAction(action, body) {
         }
       }
       await writeDb(db);
-      return { ok: true, result: null };
+      return { ok: true, result: null, charts: listChartsImpl(db) };
     }
 
     case "addCalendarToChart": {
@@ -5288,6 +5320,22 @@ function shellAutoResize(iframe) {
 function shellOpenModal(id) { document.getElementById(id).classList.remove("hidden"); }
 function shellCloseModal(id) { document.getElementById(id).classList.add("hidden"); }
 
+/* (성능 개선) 차트 관리 박스에서 이름 변경/숨기기/삭제/추가를 한 뒤,
+   예전에는 매번 shellLoadCharts()를 다시 불러서 개인 차트 전체 DB를
+   한 번 더 통째로 받아오고, 아무 상관 없는 공유 차트 목록까지 다시
+   조회했다. 이제 각 액션의 응답에 이미 들어있는 최신 개인 차트 목록을
+   그대로 반영하고, 공유 차트 쪼(shellChartsCache 안의 shared 항목)은
+   그대로 둬서 불필요한 왕복을 없앤다. */
+function shellApplyPersonalChartsList(charts) {
+  if (!Array.isArray(charts)) {
+    return;
+  }
+  const personal = charts.map((c) => ({ ...c, shared: false }));
+  const shared = shellChartsCache.filter((c) => c.shared);
+  shellChartsCache = personal.concat(shared);
+  shellRenderList();
+}
+
 function shellRenderManageRows() {
   const root = document.getElementById("mcManageRows");
   root.innerHTML = "";
@@ -5317,9 +5365,9 @@ function shellRenderManageRows() {
       const newName = nameInput.value.trim();
       if (!newName) { showToast("이름을 입력하세요.", true); return; }
       try {
-        await apiPost("updateChart", { data: { id: chart.id, name: newName } });
+        const res = await apiPost("updateChart", { data: { id: chart.id, name: newName } });
         showToast("이름을 바꿨습니다.");
-        await shellLoadCharts();
+        shellApplyPersonalChartsList(res.charts);
         shellRenderManageRows();
       } catch (error) {
         showToast(error.message || "변경하지 못했습니다.", true, 0);
@@ -5333,9 +5381,9 @@ function shellRenderManageRows() {
     toggleBtn.textContent = chart.hidden ? "보이기" : "숨기기";
     toggleBtn.addEventListener("click", () => withBusy(toggleBtn, "변경 중…", async () => {
       try {
-        await apiPost("updateChart", { data: { id: chart.id, hidden: !chart.hidden } });
+        const res = await apiPost("updateChart", { data: { id: chart.id, hidden: !chart.hidden } });
         showToast(chart.hidden ? "다시 보이게 했습니다." : "숨겼습니다.");
-        await shellLoadCharts();
+        shellApplyPersonalChartsList(res.charts);
         shellRenderManageRows();
       } catch (error) {
         showToast(error.message || "변경하지 못했습니다.", true, 0);
@@ -5353,9 +5401,9 @@ function shellRenderManageRows() {
           return;
         }
         try {
-          await apiPost("deleteChart", { id: chart.id });
+          const res = await apiPost("deleteChart", { id: chart.id });
           showToast("삭제했습니다.");
-          await shellLoadCharts();
+          shellApplyPersonalChartsList(res.charts);
           shellRenderManageRows();
         } catch (error) {
           showToast(error.message || "삭제하지 못했습니다.", true, 0);
@@ -5390,20 +5438,23 @@ function initShell() {
       const name = document.getElementById("mcAddName").value.trim();
       if (!name) { showToast("차트 이름을 입력하세요.", true); return; }
       try {
-        await apiPost("createChart", { data: { name } });
+        const res = await apiPost("createChart", { data: { name } });
         shellCloseModal("mcAddModal");
         showToast("차트를 추가했습니다.");
-        await shellLoadCharts();
+        shellApplyPersonalChartsList(res.charts);
       } catch (error) {
         showToast(error.message || "추가하지 못했습니다.", true, 0);
       }
     }
   ));
 
-  document.getElementById("mcManageBtn").addEventListener("click", async () => {
-    await shellLoadCharts();
+  document.getElementById("mcManageBtn").addEventListener("click", () => {
+    /* (성능 개선) 박스를 열 때마다 전체 목록을 새로 받아올 때까지
+       기다리게 하지 않고, 이미 화면에 있는 캐시로 먼저 즉시 열고
+       최신화는 뒤에서 조용히 받아와 반영한다. */
     shellRenderManageRows();
     shellOpenModal("mcManageModal");
+    shellLoadCharts().then(shellRenderManageRows).catch(() => {});
   });
 
   const mcKeyBtn = document.getElementById("mcKeyBtn");
@@ -6011,19 +6062,28 @@ async function shellHandleShareAdd() {
         chartId: chartId, name: meta.name || "", rangeStart: meta.rangeStart || "", rangeEnd: meta.rangeEnd || "",
         tasks: (loaded.data || {}).tasks || [], categories: (loaded.data || {}).categories || []
       });
-      await shareFetch("shareChart", { chartId, targetEmail: email, role });
+      const shareRes = await shareFetch("shareChart", { chartId, targetEmail: email, role });
       await apiPostForChart("deleteChart", chartId); // 개인 드라이브 쪽 내용은 지움(서버로 옮겼으니까)
 
       shareModalIsExisting = true;
-    } else {
-      await shareFetch("shareChart", { chartId, targetEmail: email, role });
-    }
 
-    showToast("공유를 추가했습니다.");
-    document.getElementById("mcShareEmail").value = "";
-    await shellLoadCharts();
-    const found = shellChartsCache.find((c) => c.shared && c.chartId === chartId);
-    shellOpenShareModal(chartId, document.getElementById("mcShareChartName").textContent, true, found ? found.role : "owner");
+      showToast("공유를 추가했습니다.");
+      document.getElementById("mcShareEmail").value = "";
+      shellRenderShareMembersList(shareRes.members, shareRes.ownerEmail, true, chartId);
+      /* 개인→공유 전환은 차트 목록 자체(개인 쪽에서 빠지고 공유 쪽에
+         새로 생김)가 바뀌니, 이 경우만 전체 목록을 새로고침한다. */
+      await shellLoadCharts();
+    } else {
+      /* (성능 개선) 이미 공유 중인 차트에 멤버만 추가하는, 가장 흔한
+         경우다. 예전엔 추가 후 전체 차트 목록 새로고침(2개 요청) +
+         멤버 모달 재조회(1개 요청)까지 왕복 3번을 더 보냈는데, 이제
+         shareChart 응답에 최신 멤버 목록이 같이 오므로 그걸로 바로
+         화면을 갱신해서 왕복 1번으로 끝낸다. */
+      const shareRes = await shareFetch("shareChart", { chartId, targetEmail: email, role });
+      showToast("공유를 추가했습니다.");
+      document.getElementById("mcShareEmail").value = "";
+      shellRenderShareMembersList(shareRes.members, shareRes.ownerEmail, true, chartId);
+    }
   } catch (error) {
     showToast(error.message || "공유하지 못했습니다.", true, 0);
   }
@@ -6037,21 +6097,17 @@ async function shellHandleRevokeAllSharing() {
     const data = await shareFetch("getSharedChartData", { chartId });
     await shareFetch("revokeAllSharing", { chartId });
 
-    // 서버에 있던 내용을 다시 내 개인 드라이브 차트로 되돌려 놓는다.
-    const created = await apiPost("createChart", { data: { name: data.name, rangeStart: data.rangeStart, rangeEnd: data.rangeEnd } });
+    /* (성능 개선) 예전엔 카테고리/작업 하나당 개인 DB 파일을 통째로
+       다시 읽고 쓰는 요청을 따로 보내서(개수만큼 Drive 왕복), 작업이
+       많은 차트일수록 "개인 차트로 되돌리기"가 느려졌다. 이제 새 차트
+       생성 + 카테고리 전부 + 작업 전부를 한 번의 요청(createChartWithData)
+       으로 묶어서 보낸다. */
+    const created = await apiPost("createChartWithData", {
+      data: { name: data.name, rangeStart: data.rangeStart, rangeEnd: data.rangeEnd },
+      categories: data.categories || [],
+      tasks: data.tasks || []
+    });
     const newChartId = created.result.id;
-
-    for (const cat of data.categories || []) {
-      await apiPostForChart("createCategoryForChart", newChartId, { data: { name: cat.name, color: cat.color } });
-    }
-    for (const t of data.tasks || []) {
-      await apiPostForChart("createForChart", newChartId, {
-        data: {
-          categoryId: t.categoryId, name: t.name, start: t.start, end: t.end,
-          progress: t.progress, color: t.color, memo: t.memo, target: t.target, owner: t.owner
-        }
-      });
-    }
 
     await shareFetch("deleteSharedChartCompletely", { chartId });
 
