@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-18-share5">
+  <meta name="app-version" content="2026-10-18-share7">
 
   <title>간트차트</title>
 
@@ -29,7 +29,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-18-share5"
+    href="style.css?v=2026-10-18-share7"
   >
 </head>
 
@@ -50,6 +50,8 @@
         <span class="brand-sub">Yearly Progress Management</span>
       </div>
       <div class="mc-topbar-actions">
+        <!-- (요청사항) 지금 어느 구글 계정으로 로그인했는지 프로필 사진으로 표시 -->
+        <img id="mcUserAvatar" class="mc-user-avatar hidden" alt="" referrerpolicy="no-referrer">
         <button id="mcKeyBtn" class="mc-btn mc-btn-ghost" type="button">Google 로그인</button>
         <button id="mcReloadBtn" class="mc-btn mc-btn-ghost" type="button">새로고침</button>
         <button id="mcExportAllBtn" class="mc-btn mc-btn-ghost" type="button">전체 엑셀로 내보내기</button>
@@ -667,7 +669,8 @@
        JS
   ========================= -->
 
-  <script src="app.js?v=2026-10-18-share5"></script>
+  <script src="app.js?v=2026-10-18-share7"></script>
 
 </body>
 </html>
+
