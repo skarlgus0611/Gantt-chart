@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-18-share10)
+ * 간트차트 app.js  (v3, 2026-10-18-share12)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -25,6 +25,19 @@ const CHART_PARAM = new URLSearchParams(window.location.search).get("chart");
 const IS_SHELL_MODE = CHART_PARAM === null;
 const CHART_ID = CHART_PARAM || "default";
 
+/* (버그 수정, share12) 아래 4개는 원래 파일 뒤쪽(공유 기능 추가분)에
+   선언돼 있었는데, 로그인이 이미 되어 있는 상태로 페이지를 열면
+   initShell()이 스크립트 실행 중에 곧바로 shellLoadCharts()를 불러서
+   그 안에서 shareFetch/apiPost가 이 const들을 "선언되기도 전에" 참조해
+   버렸다(TDZ ReferenceError). 그래서 공유 차트 목록이 초기 로딩에서
+   깨지고, 공유 버튼을 눌러도 아래에 차트가 안 생기는 것처럼 보였다.
+   CHART_ID 바로 다음으로 옮겨서 스크립트 맨 앞에서 먼저 초기화되게
+   한다(의존 관계: CHART_ID -> 이 4개). */
+const SHARE_SERVER_URL = "https://script.google.com/macros/s/AKfycbzxw0R18Bg9O-RoPeJFxXeXqxRmrwcWL3nn_0wjYIkGisAhlKNTVAXETwwaQgw0jS2VZQ/exec";
+const SHARED_CHART_PREFIX = "shared:";
+const IS_SHARED_CHART = CHART_ID.indexOf(SHARED_CHART_PREFIX) === 0;
+const SHARED_CHART_ID = IS_SHARED_CHART ? CHART_ID.slice(SHARED_CHART_PREFIX.length) : "";
+
 /* 기존 액션 이름 -> 차트별 액션 이름 매핑. apiGet/apiPost 안에서만 쓰고
    그 외 호출부(아래 곳곳의 apiPost("update", ...) 등)는 전혀 손대지 않는다. */
 const CHART_ACTION_MAP = {
@@ -47,7 +60,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-18-share10";
+const APP_VERSION = "2026-10-18-share12";
 
 
 /* =========================================================
@@ -5813,11 +5826,9 @@ if (IS_SHELL_MODE) {
  * 보여주고, 개인 차트 기능은 전혀 영향 없다.
  * ========================================================= */
 
-const SHARE_SERVER_URL = "https://script.google.com/macros/s/AKfycbzxw0R18Bg9O-RoPeJFxXeXqxRmrwcWL3nn_0wjYIkGisAhlKNTVAXETwwaQgw0jS2VZQ/exec";
-
-const SHARED_CHART_PREFIX = "shared:";
-const IS_SHARED_CHART = CHART_ID.indexOf(SHARED_CHART_PREFIX) === 0;
-const SHARED_CHART_ID = IS_SHARED_CHART ? CHART_ID.slice(SHARED_CHART_PREFIX.length) : "";
+/* (share12) SHARE_SERVER_URL / SHARED_CHART_PREFIX / IS_SHARED_CHART /
+   SHARED_CHART_ID 는 파일 맨 앞(CHART_ID 선언 바로 다음)으로 옮겼다.
+   TDZ 버그 수정 이유는 그쪽 주석 참고. */
 
 async function shareFetch(action, params = {}) {
   if (!accessToken) {
