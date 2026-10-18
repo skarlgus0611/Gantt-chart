@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-18-share9)
+ * 간트차트 app.js  (v3, 2026-10-18-share10)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -47,7 +47,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-18-share9";
+const APP_VERSION = "2026-10-18-share10";
 
 
 /* =========================================================
@@ -6083,8 +6083,11 @@ async function shellStartSharing(chartId, chartName) {
        차트가 안 만들어지는 것처럼 보였다). id를 명시적으로 넘긴다. */
     await apiPostForChart("deleteChart", chartId, { id: chartId }); // 개인 드라이브 쪽 내용은 지움(서버로 옮겼으니까)
 
+    /* (요청사항) 공유 버튼을 누르면 모달을 자동으로 열어서 바로 사용자를
+       입력받지 않고, 그냥 공유 상태의 차트 박스만 아래에 만든다. 사용자
+       추가는 그 박스의 "공유 권한/사용자 설정" 버튼을 눌렀을 때 따로 한다. */
     await shellLoadCharts();
-    await shellOpenShareModal(chartId, chartName, true, "owner");
+    showToast("공유 차트로 전환했습니다. 아래 차트에서 사용자를 추가하세요.");
   } catch (error) {
     showToast(error.message || "공유로 전환하지 못했습니다.", true, 0);
   }
