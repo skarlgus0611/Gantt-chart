@@ -108,7 +108,10 @@ const GOOGLE_SCOPES =
   "https://www.googleapis.com/auth/calendar " +
   /* (공유 기능 추가분) 공유 서버가 "이 토큰이 누구 이메일인지" 확인할 수
      있어야 해서 이메일 조회 범위만 추가한다. 기존 두 권한은 그대로. */
-  "https://www.googleapis.com/auth/userinfo.email";
+  "https://www.googleapis.com/auth/userinfo.email " +
+  /* (요청사항) 로그인한 계정의 프로필 사진을 보여주기 위한 범위 추가.
+     기존 권한들은 그대로 둔다. */
+  "https://www.googleapis.com/auth/userinfo.profile";
 
 const DB_PROP_KEY = "ganttDbJson";
 const DB_PROP_VALUE = "v1";
@@ -149,6 +152,36 @@ function setLoginButtonsUi() {
     btn.textContent = accessToken ? "로그아웃" : "Google 로그인";
     btn.title = accessToken ? "Google 계정에서 로그아웃합니다" : "Google 계정으로 로그인합니다";
   });
+
+  if (!accessToken) {
+    const avatar = document.getElementById("mcUserAvatar");
+    if (avatar) {
+      avatar.classList.add("hidden");
+      avatar.src = "";
+    }
+  }
+}
+
+/* (요청사항) 지금 어느 계정으로 로그인했는지 프로필 사진으로 보여준다.
+   멀티 차트 화면(맨 위)에만 아바타 엘리먼트가 있으므로, 없으면 조용히
+   넘어간다 — 개별 차트 iframe 쪽은 전혀 영향 없음. */
+async function refreshUserAvatar() {
+  const avatar = document.getElementById("mcUserAvatar");
+  if (!avatar || !accessToken) {
+    return;
+  }
+
+  try {
+    const info = await googleFetch("https://www.googleapis.com/oauth2/v3/userinfo");
+    if (info && info.picture) {
+      avatar.src = info.picture;
+      avatar.title = info.email || "";
+      avatar.classList.remove("hidden");
+    }
+  } catch (error) {
+    console.error(error);
+    // 프로필 사진을 못 가져와도 로그인 자체엔 영향 없음.
+  }
 }
 
 function initGoogleAuth() {
@@ -178,6 +211,8 @@ function initGoogleAuth() {
 }
 
 function onGoogleLoginSuccess() {
+  refreshUserAvatar();
+
   if (IS_SHELL_MODE) {
     if (typeof shellLoadCharts === "function") {
       shellLoadCharts();
@@ -811,8 +846,9 @@ function updateChartImpl(db, data) {
 function deleteChartImpl(db, id) {
   id = String(id || "").trim();
 
-  if (!id || id === "default") {
-    throw new Error("기본 차트는 삭제할 수 없습니다.");
+  // (요청사항) 기본 차트도 다른 차트와 똑같이 삭제할 수 있게 한다.
+  if (!id) {
+    throw new Error("삭제할 차트를 찾을 수 없습니다.");
   }
 
   const idx = db.charts.findIndex((c) => c.id === id);
@@ -5105,7 +5141,7 @@ function shellRenderList() {
         shareBtn.className = "mc-btn mc-btn-ghost";
         shareBtn.textContent = "공유";
         shareBtn.title = "이 차트를 다른 구글 계정과 공유합니다";
-        shareBtn.addEventListener("click", () => shellOpenShareModal(chart.id, chart.name, false, "owner"));
+        shareBtn.addEventListener("click", () => withBusy(shareBtn, "공유 설정 중…", () => shellStartSharing(chart.id, chart.name)));
 
         actions.appendChild(csvBtn);
         actions.appendChild(calAddBtn);
@@ -5113,21 +5149,16 @@ function shellRenderList() {
         actions.appendChild(shareBtn);
       } else {
         if (chart.role === "owner" || chart.role === "admin") {
+          /* (요청사항) "공유 관리" 안에 멤버 목록이 이미 보이므로, 따로 있던
+             "공유 구성원 보기" 버튼은 없애고 이 버튼 이름만 바꾼다. */
           const manageBtn = document.createElement("button");
           manageBtn.type = "button";
           manageBtn.className = "mc-btn mc-btn-ghost";
-          manageBtn.textContent = "공유 관리";
+          manageBtn.textContent = "공유 권한/사용자 설정";
           manageBtn.title = "이 차트의 공유 멤버를 관리합니다";
           manageBtn.addEventListener("click", () => shellOpenShareModal(chart.chartId, chart.name, true, chart.role));
           actions.appendChild(manageBtn);
         }
-
-        const membersBtn = document.createElement("button");
-        membersBtn.type = "button";
-        membersBtn.className = "mc-btn mc-btn-ghost";
-        membersBtn.textContent = "공유 구성원 보기";
-        membersBtn.addEventListener("click", () => shellOpenMembersModal(chart.chartId));
-        actions.appendChild(membersBtn);
 
         /* (공유 기능 추가분) 캘린더/CSV는 뷰어 포함 모든 권한에서 가능. */
         const sharedCsvBtn = document.createElement("button");
@@ -5391,7 +5422,8 @@ function shellRenderManageRows() {
     }));
     row.appendChild(toggleBtn);
 
-    if (chart.id !== "default") {
+    {
+      // (요청사항) 기본 차트도 다른 차트와 똑같이 삭제 버튼을 보여준다.
       const delBtn = document.createElement("button");
       delBtn.className = "mc-btn mc-btn-danger";
       delBtn.type = "button";
@@ -5735,6 +5767,9 @@ if (IS_SHELL_MODE) {
   initShell();
   /* (공유 기능 추가분) */
   if (typeof initShareUi === "function") initShareUi();
+  /* (요청사항) 이미 로그인돼 있는 상태로 페이지를 새로 열었을 때도
+     프로필 사진을 바로 보여준다. */
+  refreshUserAvatar();
 
 } else {
 
@@ -6016,6 +6051,30 @@ function shellRenderShareMembersList(members, ownerEmail, canManage, chartId) {
   });
 }
 
+/* (요청사항) "공유" 버튼을 누르는 순간 바로 이메일 입력을 요구하던 것을
+   없애고, 버튼을 누르면 먼저 (멤버 없이) 공유 상태로만 전환한 뒤, 그
+   차트의 공유 모달 안에서 사용자를 추가/수정하게 한다. 전환과 멤버
+   추가를 한 번에 묶어서 하면, 추가 후 화면 갱신이 "전체 새로고침"
+   없이는 반영이 안 되는 문제가 있었는데, 분리하면 멤버 추가 쪽은
+   이미 빨라진 inline 갱신 경로를 그대로 타게 된다. */
+async function shellStartSharing(chartId, chartName) {
+  try {
+    const loaded = await apiPostForChart("loadChart", chartId);
+    const meta = shellFindChart(chartId) || {};
+
+    await shareFetch("createSharedChart", {
+      chartId: chartId, name: meta.name || chartName || "", rangeStart: meta.rangeStart || "", rangeEnd: meta.rangeEnd || "",
+      tasks: (loaded.data || {}).tasks || [], categories: (loaded.data || {}).categories || []
+    });
+    await apiPostForChart("deleteChart", chartId); // 개인 드라이브 쪽 내용은 지움(서버로 옮겼으니까)
+
+    await shellLoadCharts();
+    await shellOpenShareModal(chartId, chartName, true, "owner");
+  } catch (error) {
+    showToast(error.message || "공유로 전환하지 못했습니다.", true, 0);
+  }
+}
+
 async function shellOpenShareModal(chartId, chartName, alreadyShared, myRole) {
   shareModalChartId = chartId;
   shareModalIsExisting = !!alreadyShared;
@@ -6162,6 +6221,68 @@ function shellOpenNewOrShareModal() {
   shellOpenModal("mcNewOrShareModal");
 }
 
+/* (성능 개선) 공유 받은 초대를 "수락"했을 때, 예전엔 응답을 받은 뒤에도
+   초대 목록 재조회(listMyInvites) + 전체 차트 목록 새로고침
+   (listCharts + listMySharedCharts)까지 왕복 3번을 더 보내서, Apps
+   Script 호출이 순서대로 쌓여 5초 넘게 걸리는 일이 있었다. 이제
+   respondInvite 응답에 최신 초대 목록과 공유 차트 목록이 같이 오므로,
+   그 자리에서 화면만 바로 갱신한다 (개인 차트 목록은 수락/거절로 바뀌는
+   게 없으니 건드릴 필요도 없다). */
+function shellRenderInvitesList(invites) {
+  const box = document.getElementById("mcInvitesList");
+  if (!box) return;
+
+  if (!invites || !invites.length) {
+    box.innerHTML = "<div class=\"mc-hint\">공유받은 차트가 없습니다.</div>";
+    return;
+  }
+
+  box.innerHTML = "";
+  invites.forEach((inv) => {
+    const row = document.createElement("div");
+    row.className = "mc-invite-row";
+
+    const label = document.createElement("span");
+    label.textContent = inv.ownerEmail + "님이 \"" + inv.chartName + "\" 차트를 공유했습니다";
+    row.appendChild(label);
+
+    const acceptBtn = document.createElement("button");
+    acceptBtn.type = "button";
+    acceptBtn.className = "mc-btn mc-btn-primary";
+    acceptBtn.textContent = "수락";
+    acceptBtn.addEventListener("click", () => withBusy(acceptBtn, "처리 중…", async () => {
+      try {
+        const res = await shareFetch("respondInvite", { chartId: inv.chartId, accept: true });
+        showToast("수락했습니다.");
+        shellRenderInvitesList(res.invites);
+        shellApplySharedChartsList(res.sharedCharts);
+      } catch (error) {
+        showToast(error.message || "처리하지 못했습니다.", true, 0);
+      }
+    }));
+
+    const rejectBtn = document.createElement("button");
+    rejectBtn.type = "button";
+    rejectBtn.className = "mc-btn mc-btn-ghost";
+    rejectBtn.textContent = "거절";
+    rejectBtn.addEventListener("click", () => withBusy(rejectBtn, "처리 중…", async () => {
+      try {
+        const res = await shareFetch("respondInvite", { chartId: inv.chartId, accept: false });
+        showToast("거절했습니다.");
+        shellRenderInvitesList(res.invites);
+      } catch (error) {
+        showToast(error.message || "처리하지 못했습니다.", true, 0);
+      }
+    }));
+
+    row.appendChild(acceptBtn);
+    row.appendChild(rejectBtn);
+    box.appendChild(row);
+  });
+}
+
+/* (공유 기능 추가분, 그대로) 초대함을 처음 열 때는 서버에서 직접 받아와야 하니
+   fetch 버전은 남겨두고, 내부적으로 위 렌더 함수를 재사용한다. */
 async function shellRenderInvites() {
   const box = document.getElementById("mcInvitesList");
   if (!box) return;
@@ -6173,57 +6294,34 @@ async function shellRenderInvites() {
 
   try {
     const invites = await shareFetch("listMyInvites", {});
-
-    if (!invites.length) {
-      box.innerHTML = "<div class=\"mc-hint\">공유받은 차트가 없습니다.</div>";
-      return;
-    }
-
-    box.innerHTML = "";
-    invites.forEach((inv) => {
-      const row = document.createElement("div");
-      row.className = "mc-invite-row";
-
-      const label = document.createElement("span");
-      label.textContent = inv.ownerEmail + "님이 \"" + inv.chartName + "\" 차트를 공유했습니다";
-      row.appendChild(label);
-
-      const acceptBtn = document.createElement("button");
-      acceptBtn.type = "button";
-      acceptBtn.className = "mc-btn mc-btn-primary";
-      acceptBtn.textContent = "수락";
-      acceptBtn.addEventListener("click", () => withBusy(acceptBtn, "처리 중…", async () => {
-        try {
-          await shareFetch("respondInvite", { chartId: inv.chartId, accept: true });
-          showToast("수락했습니다.");
-          await shellRenderInvites();
-          await shellLoadCharts();
-        } catch (error) {
-          showToast(error.message || "처리하지 못했습니다.", true, 0);
-        }
-      }));
-
-      const rejectBtn = document.createElement("button");
-      rejectBtn.type = "button";
-      rejectBtn.className = "mc-btn mc-btn-ghost";
-      rejectBtn.textContent = "거절";
-      rejectBtn.addEventListener("click", () => withBusy(rejectBtn, "처리 중…", async () => {
-        try {
-          await shareFetch("respondInvite", { chartId: inv.chartId, accept: false });
-          showToast("거절했습니다.");
-          await shellRenderInvites();
-        } catch (error) {
-          showToast(error.message || "처리하지 못했습니다.", true, 0);
-        }
-      }));
-
-      row.appendChild(acceptBtn);
-      row.appendChild(rejectBtn);
-      box.appendChild(row);
-    });
+    shellRenderInvitesList(invites);
   } catch (error) {
     box.innerHTML = "<div class=\"mc-hint\">" + (error.message || "불러오지 못했습니다.") + "</div>";
   }
+}
+
+/* shellLoadCharts()의 공유 목록 매핑과 같은 모양 — 초대 수락 직후
+   개인 차트 목록은 그대로 두고 공유 차트 목록만 갈아끼운다. */
+function shellApplySharedChartsList(sharedList) {
+  if (!Array.isArray(sharedList)) {
+    return;
+  }
+  const shared = sharedList.map((c) => ({
+    id: "shared:" + c.chartId,
+    chartId: c.chartId,
+    name: c.name,
+    rangeStart: c.rangeStart || "",
+    rangeEnd: c.rangeEnd || "",
+    hidden: false,
+    order: 999999,
+    hasCalendar: false,
+    shared: true,
+    role: c.role,
+    ownerEmail: c.ownerEmail
+  }));
+  const personal = shellChartsCache.filter((c) => !c.shared);
+  shellChartsCache = personal.concat(shared);
+  shellRenderList();
 }
 
 function initShareUi() {
