@@ -2357,11 +2357,14 @@ body.shared-viewer-readonly #chartNameLabel {
 
 /* ▼▼▼ 로그인 계정 프로필 사진 (요청사항) ▼▼▼ */
 .mc-user-avatar {
-  width: 14px;
-  height: 14px;
-  border-radius: 100%;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
   object-fit: cover;
-  vertical-align: middle;
   border: 1px solid rgba(0, 0, 0, 0.12);
+  /* .mc-topbar-actions가 flex인데 align-items를 안 쓰고 있어서,
+     vertical-align만으로는 버튼들과 높이가 안 맞고 위쪽에 붕 떠보였다.
+     이 엘리먼트 자체를 세로 중앙에 맞춘다(다른 요소는 안 건드림). */
+  align-self: center;
 }
 /* ▲▲▲ 로그인 계정 프로필 사진 (요청사항) 끝 ▲▲▲ */
