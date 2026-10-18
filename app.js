@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-18-share7)
+ * 간트차트 app.js  (v3, 2026-10-18-share9)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -47,7 +47,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-18-share7";
+const APP_VERSION = "2026-10-18-share9";
 
 
 /* =========================================================
@@ -6059,14 +6059,29 @@ function shellRenderShareMembersList(members, ownerEmail, canManage, chartId) {
    이미 빨라진 inline 갱신 경로를 그대로 타게 된다. */
 async function shellStartSharing(chartId, chartName) {
   try {
-    const loaded = await apiPostForChart("loadChart", chartId);
-    const meta = shellFindChart(chartId) || {};
+    try {
+      const loaded = await apiPostForChart("loadChart", chartId);
+      const meta = shellFindChart(chartId) || {};
 
-    await shareFetch("createSharedChart", {
-      chartId: chartId, name: meta.name || chartName || "", rangeStart: meta.rangeStart || "", rangeEnd: meta.rangeEnd || "",
-      tasks: (loaded.data || {}).tasks || [], categories: (loaded.data || {}).categories || []
-    });
-    await apiPostForChart("deleteChart", chartId); // 개인 드라이브 쪽 내용은 지움(서버로 옮겼으니까)
+      await shareFetch("createSharedChart", {
+        chartId: chartId, name: meta.name || chartName || "", rangeStart: meta.rangeStart || "", rangeEnd: meta.rangeEnd || "",
+        tasks: (loaded.data || {}).tasks || [], categories: (loaded.data || {}).categories || []
+      });
+    } catch (error) {
+      /* (버그 수정) 아래 deleteChart 호출이 id 전달 버그 때문에 계속
+         실패해서, 서버 쪽엔 이미 공유로 등록됐는데 개인 차트는 안
+         지워진 채로 남아있을 수 있다. 그 경우 여기서 멈추지 않고
+         이어서 개인 차트만 마저 정리한다. */
+      if (!error || !/이미 공유로 등록된 차트/.test(error.message || "")) {
+        throw error;
+      }
+    }
+
+    /* (버그 수정) apiPostForChart는 body에 chartId만 넣어주는데,
+       deleteChart는 body.id를 읽는다 — id를 안 넘겨서 "삭제할 차트를
+       찾을 수 없습니다" 오류가 나며 여기서 멈춰버렸던 것(그래서 공유
+       차트가 안 만들어지는 것처럼 보였다). id를 명시적으로 넘긴다. */
+    await apiPostForChart("deleteChart", chartId, { id: chartId }); // 개인 드라이브 쪽 내용은 지움(서버로 옮겼으니까)
 
     await shellLoadCharts();
     await shellOpenShareModal(chartId, chartName, true, "owner");
@@ -6122,7 +6137,7 @@ async function shellHandleShareAdd() {
         tasks: (loaded.data || {}).tasks || [], categories: (loaded.data || {}).categories || []
       });
       const shareRes = await shareFetch("shareChart", { chartId, targetEmail: email, role });
-      await apiPostForChart("deleteChart", chartId); // 개인 드라이브 쪽 내용은 지움(서버로 옮겼으니까)
+      await apiPostForChart("deleteChart", chartId, { id: chartId }); // 개인 드라이브 쪽 내용은 지움(서버로 옮겼으니까) — (버그 수정) id를 넘겨야 함
 
       shareModalIsExisting = true;
 
@@ -6505,4 +6520,3 @@ async function initSharedViewerReadonly() {
   return;
 }
 /* ▲▲▲ 공유 차트 캘린더/CSV + 뷰어 읽기전용 (추가분) 끝 ▲▲▲ */
-
