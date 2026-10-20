@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-18-share12)
+ * 간트차트 app.js  (v3, 2026-10-18-share14)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -60,7 +60,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-18-share12";
+const APP_VERSION = "2026-10-18-share14";
 
 
 /* =========================================================
@@ -197,6 +197,39 @@ async function refreshUserAvatar() {
   }
 }
 
+/* (문제 3) 액세스 토큰은 보통 1시간 정도면 끝난다. 그동안은 지금처럼
+   "로그아웃" 버튼 글자가 보이지만, 토큰이 끝난 뒤 API를 부르면 401이
+   나서 결국 다시 로그인 버튼을 눌러야 했다(그때마다 계정 선택창까지
+   뜸). 서버에 리프레시 토큰을 보관하는 "완전한 로그인 유지"는 토큰을
+   서버에 안 남긴다는 보안 원칙과 부딪히므로, 그 대신 "브라우저가 이미
+   구글에 로그인돼 있고 이전에 이 앱에 동의했다면 팝업 없이 조용히
+   새 토큰만 다시 받아오기"를 시도한다(구글 계정 선택창도 안 뜸). 이게
+   되면 사실상 "이 기기/브라우저는 계속 로그인된 것처럼" 느껴진다.
+   silentAuthPending/silentAuthResolvers는 콜백 하나를 돌려써야 하는
+   initTokenClient 구조에서, "지금 진행 중인 게 사용자가 누른 로그인인지
+   뒤에서 조용히 시도한 갱신인지"를 구분하기 위한 것이다. */
+let silentAuthPending = false;
+let silentAuthResolvers = [];
+
+function trySilentReauth() {
+  return new Promise((resolve) => {
+    if (!tokenClient) {
+      resolve(false);
+      return;
+    }
+    silentAuthPending = true;
+    silentAuthResolvers.push(resolve);
+    try {
+      tokenClient.requestAccessToken({ prompt: "" });
+    } catch (error) {
+      silentAuthPending = false;
+      const resolvers = silentAuthResolvers;
+      silentAuthResolvers = [];
+      resolvers.forEach((r) => r(false));
+    }
+  });
+}
+
 function initGoogleAuth() {
   if (!window.google || !google.accounts || !google.accounts.oauth2) {
     return;
@@ -206,14 +239,27 @@ function initGoogleAuth() {
     client_id: GOOGLE_CLIENT_ID,
     scope: GOOGLE_SCOPES,
     callback: (resp) => {
+      const wasSilent = silentAuthPending;
+      silentAuthPending = false;
+      const resolvers = silentAuthResolvers;
+      silentAuthResolvers = [];
+
       if (resp && resp.access_token) {
         accessToken = resp.access_token;
-        dbFileId = "";
+        if (!wasSilent) {
+          // 사용자가 직접 로그인 버튼을 눌렀을 때만: 다른 계정으로
+          // 바꿨을 수 있으니 DB 파일 위치를 새로 찾게 한다.
+          dbFileId = "";
+        }
         persistAuth();
         setLoginButtonsUi();
-        onGoogleLoginSuccess();
+        resolvers.forEach((r) => r(true));
+        if (!wasSilent) {
+          onGoogleLoginSuccess();
+        }
       } else {
-        if (typeof showToast === "function") {
+        resolvers.forEach((r) => r(false));
+        if (!wasSilent && typeof showToast === "function") {
           showToast("Google 로그인에 실패했습니다.");
         }
       }
@@ -221,6 +267,14 @@ function initGoogleAuth() {
   });
 
   setLoginButtonsUi();
+
+  /* 이전에 로그인했던 적이 있으면(토큰이 지금 끝나 있어도) 사용자가
+     버튼을 누르기 전에 한 번 조용히 갱신을 시도해본다. 성공하면 로그인
+     버튼을 또 누를 필요 없이 바로 이어서 쓸 수 있고, 실패해도 조용히
+     넘어가며 평소처럼 "로그인" 버튼이 보인다. */
+  if (accessToken) {
+    trySilentReauth();
+  }
 }
 
 function onGoogleLoginSuccess() {
@@ -282,7 +336,7 @@ function handleLoginButtonClick() {
   tokenClient.requestAccessToken({ prompt: "select_account" });
 }
 
-async function googleFetch(url, opts = {}) {
+async function googleFetch(url, opts = {}, _retried = false) {
   if (!accessToken) {
     throw new Error("로그인이 필요합니다. 'Google 로그인' 버튼을 눌러주세요.");
   }
@@ -303,6 +357,18 @@ async function googleFetch(url, opts = {}) {
   }
 
   if (response.status === 401) {
+    /* (문제 3) 토큰이 끝나서 401이 났다고 바로 "다시 로그인해주세요"로
+       포기하지 않고, 한 번은 조용한 갱신을 시도해서 성공하면 같은
+       요청을 새 토큰으로 자동으로 다시 보낸다. 사용자 입장에서는
+       아무것도 안 누르고 그냥 계속 쓰게 된다. 조용한 갱신까지 실패했을
+       때만(브라우저의 구글 로그인 자체가 끝났거나 동의가 취소된 경우)
+       진짜로 다시 로그인해달라고 알린다. */
+    if (!_retried) {
+      const refreshed = await trySilentReauth();
+      if (refreshed && accessToken) {
+        return googleFetch(url, opts, true);
+      }
+    }
     accessToken = "";
     persistAuth();
     setLoginButtonsUi();
@@ -323,7 +389,12 @@ async function googleFetch(url, opts = {}) {
 
   if (!response.ok) {
     const msg = (body && body.error && body.error.message) || (response.status + " 오류");
-    throw new Error(msg);
+    const err = new Error(msg);
+    /* (버그 수정) 캘린더 삭제처럼 "이미 없는 건 성공으로 쳐도 되지만,
+       다른 이유로 실패한 건 진짜로 실패로 알려야 하는" 경우를 호출하는
+       쪽에서 구분할 수 있게 상태코드를 실어 보낸다. */
+    err.status = response.status;
+    throw err;
   }
 
   return body;
@@ -1199,6 +1270,17 @@ async function dispatchAction(action, body) {
       try {
         await calDeleteCalendar(chart.calendarId);
       } catch (error) {
+        /* (버그 수정) 원래는 여기서 오류를 그냥 무시하고 아래에서 항상
+           "삭제 성공"으로 처리했다. 그래서 캘린더 삭제가 토큰 만료·
+           일시적 오류 등으로 실패해도 화면에는 "삭제했습니다"가 뜨고
+           calendarId가 지워져 버려서, 실제 구글 캘린더에는 그대로
+           남아있는데 앱에서는 다시 지울 방법이 없어졌다(문제 1).
+           "404(이미 없음)"일 때만 "이미 지워진 걸로 치고" 계속 진행하고,
+           그 외 오류는 그대로 사용자에게 보여주고 calendarId도
+           그대로 둬서 다시 시도할 수 있게 한다. */
+        if (error.status !== 404) {
+          throw error;
+        }
         console.error(error);
       }
       chart.calendarId = "";
@@ -5895,39 +5977,45 @@ async function sharedLoadChart() {
 async function sharedUpdateFields(kind, id, fields, versionMap) {
   const keys = Object.keys(fields).filter((k) => k !== "id");
 
-  /* (성능 개선) 필드마다 버전이 따로 있어서 서로 독립적인 쓰기인데,
-     예전에는 한 필드씩 순서대로 기다렸다(상세창에서 이름+날짜+메모를
-     한 번에 고치면 서버 왕복이 그 개수만큼 차례로 쌓였다). 전부 동시에
-     보내고, 그중 가장 늦게 끝나는 것 하나만 기다리면 되게 바꾼다.
-     충돌 감지·버전 갱신 로직(updateSharedField 쪼 결과 처리)은 그대로다. */
-  const settled = await Promise.allSettled(
-    keys.map((field) => {
-      const expectedVersion = (versionMap[id] || {})[field] || 1;
-      return shareFetch("updateSharedField", {
-        chartId: SHARED_CHART_ID, kind, id, field, value: fields[field], expectedVersion
-      }).then((res) => ({ field, res }));
-    })
-  );
+  /* (버그 수정, share13 — 문제 2) 예전에는 필드마다 "updateSharedField"를
+     따로따로 동시에 여러 번 보냈다(상세창에서 이름+색상을 한 번에 고치면
+     name 요청과 color 요청이 거의 동시에 서버로 간다). 서버의
+     withChartLock은 CacheService로 만든 "가벼운" 잠금이라 완전한 원자적
+     잠금이 아니어서, 아주 드물게 두 요청이 동시에 "안 잠겨 있다"고 보고
+     같이 진행될 수 있었다. 그러면 각자 따로 읽은 옛 파일 내용을 기준으로
+     저장하다가, 나중에 끝난 쪽이 먼저 쓴 쪽의 수정분을 덮어써서 날려버릴
+     수 있었다 — 서버는 두 요청 모두에게 "성공(ok:true, 버전 올림)"으로
+     답했기 때문에 화면에는 "저장되었습니다"가 뜨지만 실제 파일에는 한쪽만
+     반영되는 버그(색상을 바꿔도 저장 후 안 바뀌어 있는 것처럼 보임)가
+     생겼다.
+     이제는 한 항목의 여러 필드를 "updateSharedFields" 하나로 묶어서 한
+     번에 보낸다 — 서버가 파일을 "한 번만" 읽고 모든 필드를 한꺼번에
+     고친 뒤 "한 번만" 쓰므로, 같은 항목을 고치는 요청끼리 잠금 레이스가
+     생길 일이 없다(여러 항목을 동시에 고치는 속도 이점은 그대로 유지:
+     항목이 다르면 파일도 다르므로 여전히 병렬로 처리된다). 필드별 버전
+     충돌 처리는 전과 동일하다. */
+  const res = await shareFetch("updateSharedFields", {
+    chartId: SHARED_CHART_ID, kind, id,
+    fields: keys.map((field) => ({
+      field, value: fields[field], expectedVersion: (versionMap[id] || {})[field] || 1
+    }))
+  });
 
   versionMap[id] = versionMap[id] || {};
   let firstError = null;
+  const results = res.results || {};
 
-  settled.forEach((outcome, i) => {
-    const field = keys[i];
-    if (outcome.status === "fulfilled") {
-      const res = outcome.value.res;
-      if (!res.ok) {
-        if (res.conflict) {
-          versionMap[id][field] = res.currentVersion;
-        }
-        if (!firstError) {
-          firstError = new Error(res.error || "저장하지 못했습니다. 최신 내용으로 다시 시도해주세요.");
-        }
-      } else {
-        versionMap[id][field] = res.newVersion;
+  keys.forEach((field) => {
+    const fieldRes = results[field];
+    if (!fieldRes || !fieldRes.ok) {
+      if (fieldRes && fieldRes.conflict) {
+        versionMap[id][field] = fieldRes.currentVersion;
       }
-    } else if (!firstError) {
-      firstError = outcome.reason;
+      if (!firstError) {
+        firstError = new Error((fieldRes && fieldRes.error) || "저장하지 못했습니다. 최신 내용으로 다시 시도해주세요.");
+      }
+    } else {
+      versionMap[id][field] = fieldRes.newVersion;
     }
   });
 
@@ -6514,6 +6602,14 @@ function initSharedCalendarUi() {
       try {
         await calDeleteCalendar(info.calendarId);
       } catch (error) {
+        /* (버그 수정, 문제 1) 개인 차트 쪽과 같은 이유로, 404(이미 없음)가
+           아닌 실제 실패는 그대로 알려주고 로컬 정보도 지우지 않아서
+           다시 시도할 수 있게 한다. */
+        if (error.status !== 404) {
+          console.error(error);
+          showToast(error.message || "캘린더에서 삭제하지 못했습니다.", true, 0);
+          return;
+        }
         console.error(error);
       }
     }
