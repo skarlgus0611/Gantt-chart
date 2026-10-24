@@ -5515,9 +5515,12 @@ if (IS_SHELL_MODE) {
   initShell();
   /* (공유 기능 추가분) */
   if (typeof initShareUi === "function") initShareUi();
-  /* (요청사항) 이미 로그인돼 있는 상태로 페이지를 새로 열었을 때도
-     프로필 사진을 바로 보여준다. */
-  refreshUserAvatar();
+  /* (Firebase 전환) 예전 refreshUserAvatar()는 삭제됐다 — 로그인
+     상태(프로필 사진 포함)는 이제 fb.onAuthChange 리스너가 Firebase
+     세션을 확인하는 즉시 setLoginButtonsUi()를 불러서 반영하므로,
+     여기서 따로 또 부를 필요가 없다(불렀다간 삭제된 함수라 에러만 남).
+     initShell()이 이미 setLoginButtonsUi()를 한 번 호출해 두므로
+     로그인 전 상태도 바로 올바르게 보인다. */
 
 } else {
 
