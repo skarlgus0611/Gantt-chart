@@ -60,7 +60,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-18-share15";
+const APP_VERSION = "2026-10-24-design-v2";
 
 
 /* =========================================================
@@ -1765,6 +1765,7 @@ function renderTaskColumn() {
       category.className = "category-label";
       category.dataset.group = group.id;
       category.style.height = h + "px";
+      category.style.setProperty("--cat-color", validHex(group.color) || DEFAULT_COLOR); /* (디자인 추가분) 카테고리 줄 전체를 그 카테고리 색으로 옅게 물들이기 위한 변수 */
 
 
       /* "기타"는 실제 카테고리가 아니라 순서를 저장할 곳이 없으므로
@@ -3914,6 +3915,7 @@ function buildCaptureChart() {
 
       category.className = "category-label";
       category.style.height = heights[i] + "px";
+      category.style.setProperty("--cat-color", validHex(group.color) || DEFAULT_COLOR); /* (디자인 추가분) */
 
       if (group.id) {
 
