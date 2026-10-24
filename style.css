@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v16";
+  --css-version: "2026-10-24-design-v17";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -8075,4 +8075,580 @@ body:has(.owner-filter-btn.active) .drag-handle {
 /* 접힌 사이드바(64px)에서는 무늬를 가운데 버튼 뒤로 은은하게 */
 #shellView.mc-sidebar-collapsed .mc-sidebar-head {
   background-position: left -30px center, 0 0;
+}
+
+
+/* =========================================================
+   (조직 관리 4단계, 추가분) 개인 ↔ 조직 전환 · 조직 현황
+   ========================================================= */
+.mc-scope-miss,
+.mc-scope-section-empty {
+  display: none !important;
+}
+
+/* 사이드바 맨 위 전환 버튼 */
+.mc-ws {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #18181b;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mc-ws:hover {
+  background: #fafafa;
+}
+
+.mc-ws.mc-ws-org {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+}
+
+.mc-ws .mc-org-avatar,
+.mc-ws-item .mc-org-avatar,
+.mc-ws-avatar {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.mc-ws-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-ws-avatar-me {
+  background: #f4f4f5;
+  color: #52525b;
+}
+
+.mc-ws-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mc-ws-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a1a1aa;
+}
+
+.mc-ws-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #18181b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-ws-sub {
+  font-size: 11.5px;
+  color: #a1a1aa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-ws-caret {
+  flex-shrink: 0;
+  color: #a1a1aa;
+}
+
+#shellView.mc-sidebar-collapsed .mc-ws {
+  justify-content: center;
+  padding: 6px;
+  border-color: transparent;
+  background: transparent;
+}
+
+#shellView.mc-sidebar-collapsed .mc-ws .mc-ws-text,
+#shellView.mc-sidebar-collapsed .mc-ws .mc-ws-caret {
+  display: none;
+}
+
+.mc-ws-menu {
+  width: 280px;
+  padding: 6px;
+}
+
+.mc-ws-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-ws-item:hover {
+  background: #f4f4f5;
+}
+
+.mc-ws-item.active {
+  background: #f0fdfa;
+}
+
+.mc-ws-item > .mc-org-ico {
+  color: #0f766e;
+}
+
+.mc-ws-menu-title {
+  margin: 8px 8px 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #a1a1aa;
+}
+
+.mc-ws-menu-empty {
+  padding: 6px 8px 8px;
+  font-size: 12.5px;
+  color: #a1a1aa;
+}
+
+.mc-ws-manage {
+  margin-top: 4px;
+  border-top: 1px solid #f0f0f2 !important;
+  border-radius: 0 0 9px 9px;
+  width: 100%;
+}
+
+/* 페이지 머리 */
+.mc-page-title-org {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mc-page-title-org .mc-org-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 15px;
+}
+
+.mc-scope-empty {
+  margin: 8px 0 0;
+  padding: 48px 20px;
+  border: 1px dashed #d4d4d8;
+  border-radius: 16px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  color: #71717a;
+  font-size: 13px;
+}
+
+.mc-scope-empty .mc-org-ico {
+  color: #0f766e;
+  margin-bottom: 4px;
+}
+
+.mc-scope-empty strong {
+  font-size: 15px;
+  color: #27272a;
+}
+
+/* 조직 현황 창 */
+.mc-ov-modal {
+  width: min(1000px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-ov-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+
+.mc-ov-title .mc-org-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  font-size: 16px;
+}
+
+.mc-ov-title-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mc-ov-title-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: #a1a1aa;
+}
+
+.mc-ov-body {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 120px;
+}
+
+.mc-ov-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mc-ov-stat {
+  padding: 14px;
+  border: 1px solid #ececef;
+  border-radius: 14px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mc-ov-stat-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #71717a;
+}
+
+.mc-ov-stat-head .mc-org-ico {
+  color: #a1a1aa;
+}
+
+.mc-ov-stat-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: #18181b;
+  letter-spacing: -0.02em;
+}
+
+.mc-ov-stat-sub {
+  font-size: 11.5px;
+  color: #a1a1aa;
+}
+
+.mc-ov-stat-accent {
+  background: #f0fdfa;
+  border-color: #ccfbf1;
+}
+
+.mc-ov-stat-accent .mc-ov-stat-value {
+  color: #0f766e;
+}
+
+.mc-ov-stat-danger {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.mc-ov-stat-danger .mc-ov-stat-value,
+.mc-ov-stat-danger .mc-ov-stat-head .mc-org-ico {
+  color: #be123c;
+}
+
+.mc-ov-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.mc-ov-section {
+  border: 1px solid #ececef;
+  border-radius: 14px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mc-ov-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #52525b;
+}
+
+.mc-ov-section-title .mc-org-ico {
+  color: #0f766e;
+}
+
+.mc-ov-chart-row,
+.mc-ov-person-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: #27272a;
+  cursor: pointer;
+}
+
+.mc-ov-chart-row:hover,
+.mc-ov-person-row:hover:not(:disabled) {
+  background: #fafafa;
+}
+
+.mc-ov-person-row:disabled {
+  cursor: default;
+}
+
+.mc-ov-person-row[aria-expanded="true"] {
+  background: #f4f4f5;
+}
+
+.mc-ov-chart-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-ov-person-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mc-ov-person-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #18181b;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.mc-ov-person-name .mc-role-chip,
+.mc-ov-person-name .assignee-me {
+  font-size: 10.5px;
+  padding: 1px 6px;
+}
+
+.mc-ov-person-sub {
+  font-size: 11.5px;
+  color: #a1a1aa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-ov-person-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mc-ov-person-pct {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 104px;
+}
+
+.mc-ov-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 999px;
+  background: #f0f0f2;
+  overflow: hidden;
+}
+
+.mc-ov-stat .mc-ov-bar {
+  flex: none;
+  margin-top: 2px;
+}
+
+.mc-ov-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #0f766e;
+}
+
+.mc-ov-pct-num {
+  width: 34px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #3f3f46;
+  text-align: right;
+}
+
+.mc-ov-count {
+  width: 34px;
+  font-size: 12px;
+  color: #a1a1aa;
+  text-align: right;
+}
+
+.mc-ov-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.mc-ov-chip {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: #f4f4f5;
+  color: #52525b;
+}
+
+.mc-ov-chip-late {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.mc-ov-chip-doing {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.mc-ov-chip-done {
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.mc-ov-avatar-muted {
+  background: #f4f4f5 !important;
+  color: #a1a1aa;
+}
+
+.mc-ov-tasks {
+  margin: 2px 0 6px 42px;
+  padding-left: 10px;
+  border-left: 2px solid #f0f0f2;
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-ov-tasks.hidden {
+  display: none;
+}
+
+.mc-ov-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+}
+
+.mc-ov-task-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.mc-ov-task-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-ov-task-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #27272a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-ov-task-sub {
+  font-size: 11px;
+  color: #a1a1aa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-ov-task-pct {
+  width: 36px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #52525b;
+  text-align: right;
+}
+
+.mc-ov-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 0 0;
+  border-top: 1px solid #f0f0f2;
+  background: #ffffff;
+}
+
+.mc-ov-foot-note {
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+@media (max-width: 860px) {
+  .mc-ov-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mc-ov-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mc-ov-chips {
+    display: none;
+  }
 }

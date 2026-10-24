@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-24-design-v16">
+  <meta name="app-version" content="2026-10-24-design-v17">
 
   <title>간트차트</title>
 
@@ -20,7 +20,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-24-design-v16"
+    href="style.css?v=2026-10-24-design-v17"
   >
 </head>
 
@@ -44,7 +44,9 @@
           </button>
         </div>
         <div class="mc-sidebar-body">
-          <div class="mc-sidebar-section">
+          <!-- (조직 관리 4단계) 개인 ↔ 조직 전환 -->
+          <button id="mcWsSwitch" type="button" class="mc-ws" data-popover-anchor="1" aria-haspopup="menu" title="보기 전환: 개인 / 조직"></button>
+          <div class="mc-sidebar-section" id="mcSidebarMySection">
             <div class="mc-sidebar-section-head">
               <span class="mc-sidebar-section-title">내 차트</span>
               <button id="mcSidebarAddBtn" type="button" class="mc-sidebar-add" aria-label="새 차트 추가" title="새 차트 추가">
@@ -110,7 +112,7 @@
         <!-- (디자인 추가분) 페이지 제목 줄: 제목 + 차트 검색 + 차트 관리 / 새 차트 -->
         <div class="mc-page-head">
           <div>
-            <h1 class="mc-page-title">내 차트</h1>
+            <h1 id="mcPageTitle" class="mc-page-title">내 차트</h1>
             <p id="mcChartCount" class="mc-page-sub"></p>
           </div>
           <div class="mc-page-actions">
@@ -119,6 +121,11 @@
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.3-3.3"></path></svg>
               <input id="mcSearch" type="search" placeholder="차트 검색" autocomplete="off">
             </div>
+            <!-- (조직 관리 4단계) 조직으로 볼 때만 보인다 -->
+            <button id="mcOrgOverviewBtn" class="mc-btn mc-btn-ghost hidden" type="button">
+              <svg class="mc-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg>
+              조직 현황
+            </button>
             <button id="mcManageBtn" class="mc-btn mc-btn-ghost" type="button">
               <svg class="mc-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="3"></rect><path d="M3 10h18M9 10v12"></path></svg>
               차트 관리
@@ -132,6 +139,9 @@
         </div>
 
         <main id="mcChartList" class="mc-chart-list"></main>
+
+        <!-- (조직 관리 4단계) 이 조직에 공유된 차트가 없을 때 -->
+        <div id="mcScopeEmpty" class="mc-scope-empty hidden"></div>
 
         <div id="mcEmpty" class="mc-empty hidden">
           표시할 차트가 없습니다. "＋ 새 차트"를 눌러 추가하세요.
@@ -306,6 +316,17 @@
          (조직 관리 1단계) 조직원 관리 창
          왼쪽: 내 조직 · 받은 초대 · 새 조직 / 오른쪽: 고른 조직의 조직원과 초대
     ========================================================= -->
+    <!-- (조직 관리 4단계) 조직 현황: 진행률 · 조직원별 작업 · 엑셀 내보내기 -->
+    <div id="mcOrgOverviewModal" class="mc-modal-backdrop hidden">
+      <div class="mc-modal mc-ov-modal">
+        <div class="mc-modal-head">
+          <h2 class="mc-ov-title" id="mcOvTitle">조직 현황</h2>
+          <button class="mc-modal-close" data-close="mcOrgOverviewModal" type="button" aria-label="닫기" title="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+        </div>
+        <div id="mcOvBody" class="mc-ov-body"></div>
+      </div>
+    </div>
+
     <div id="mcOrgModal" class="mc-modal-backdrop hidden">
       <div class="mc-modal mc-org-modal">
         <div class="mc-modal-head">
@@ -824,7 +845,7 @@
        JS
   ========================= -->
 
-  <script type="module" src="app.js?v=2026-10-24-design-v16"></script>
+  <script type="module" src="app.js?v=2026-10-24-design-v17"></script>
 
 </body>
 </html>
