@@ -54,7 +54,10 @@
         <button id="mcReloadBtn" class="mc-btn mc-btn-ghost" type="button">새로고침</button>
         <button id="mcExportAllBtn" class="mc-btn mc-btn-ghost" type="button">전체 엑셀로 내보내기</button>
         <button id="mcManageBtn" class="mc-btn mc-btn-ghost" type="button">차트 관리</button>
-        <button id="mcAddBtn" class="mc-btn mc-btn-primary" type="button">＋ 새 차트</button>
+        <button id="mcAddBtn" class="mc-btn mc-btn-primary mc-badge-anchor" type="button">
+          ＋ 새 차트
+          <span id="mcAddBtnBadge" class="mc-badge hidden">0</span>
+        </button>
       </div>
     </header>
 
@@ -124,7 +127,10 @@
         <h2>무엇을 하시겠어요?</h2>
         <div class="mc-share-choice-box">
           <button id="mcNewOrShareNewBtn" class="mc-btn mc-btn-primary mc-share-choice-btn" type="button">새로운 차트 만들기</button>
-          <button id="mcNewOrShareReceiveBtn" class="mc-btn mc-btn-ghost mc-share-choice-btn" type="button">차트 공유받기</button>
+          <button id="mcNewOrShareReceiveBtn" class="mc-btn mc-btn-ghost mc-share-choice-btn mc-badge-anchor" type="button">
+            차트 공유받기
+            <span id="mcReceiveBtnBadge" class="mc-badge hidden">0</span>
+          </button>
         </div>
         <div class="mc-modal-actions">
           <button class="mc-btn mc-btn-ghost" data-close="mcNewOrShareModal" type="button">취소</button>
