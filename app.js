@@ -1,5 +1,14 @@
+/* Firebase 전환판 (app2.js) — 데이터 저장소를 구글 드라이브/Apps Script에서
+ * Firestore로 옮기는 작업. index2.html에서 type="module"로 불러온다.
+ * UI/렌더링 코드는 원본 app.js와 동일하게 유지하고, 저장소를 부르는
+ * 부분(로그인, 작업/카테고리/차트 CRUD, 공유 멤버십 관련 함수)만
+ * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
+ * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
+ * coreApiPost(action, chartId, data) 하나로 통합. */
+import * as fb from "./firebase/firebase-core.js";
+
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-18-share12)
+ * 간트차트 app.js  (v3, 2026-10-18-share15)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -38,18 +47,9 @@ const SHARED_CHART_PREFIX = "shared:";
 const IS_SHARED_CHART = CHART_ID.indexOf(SHARED_CHART_PREFIX) === 0;
 const SHARED_CHART_ID = IS_SHARED_CHART ? CHART_ID.slice(SHARED_CHART_PREFIX.length) : "";
 
-/* 기존 액션 이름 -> 차트별 액션 이름 매핑. apiGet/apiPost 안에서만 쓰고
-   그 외 호출부(아래 곳곳의 apiPost("update", ...) 등)는 전혀 손대지 않는다. */
-const CHART_ACTION_MAP = {
-  create: "createForChart",
-  update: "updateForChart",
-  delete: "deleteForChart",
-  reorder: "reorderForChart",
-  createCategory: "createCategoryForChart",
-  updateCategory: "updateCategoryForChart",
-  deleteCategory: "deleteCategoryForChart",
-  reorderCategories: "reorderCategoriesForChart"
-};
+/* (Firebase 전환) 개인/공유 차트가 이제 같은 Firestore 컬렉션(charts)을
+   쓰므로, action 이름을 "ForChart" 접미사로 따로 구분할 필요가 없어졌다.
+   예전 CHART_ACTION_MAP(기존 액션 이름 -> 차트별 액션 이름)은 삭제. */
 
 const DEFAULT_COLOR = "#3b82f6";
 
@@ -60,7 +60,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-18-share12";
+const APP_VERSION = "2026-10-18-share15";
 
 
 /* =========================================================
@@ -137,95 +137,34 @@ const DRIVE_BASE = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_UPLOAD_BASE = "https://www.googleapis.com/upload/drive/v3/files";
 const CALENDAR_BASE = "https://www.googleapis.com/calendar/v3";
 
-const AUTH_TOKEN_KEY = "gantt_access_token";
-const AUTH_FILE_KEY = "gantt_db_file_id";
-
-let accessToken = "";
-let dbFileId = "";
-let tokenClient = null;
-
-try {
-  accessToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
-  dbFileId = localStorage.getItem(AUTH_FILE_KEY) || "";
-} catch (error) {
-  // 저장소를 못 쓰는 환경이면 매번 새로 로그인한다.
-}
-
-function persistAuth() {
-  try {
-    localStorage.setItem(AUTH_TOKEN_KEY, accessToken);
-    localStorage.setItem(AUTH_FILE_KEY, dbFileId);
-  } catch (error) {
-    // 무시
-  }
-}
+/* (Firebase 전환, app2.js) 로그인은 Firebase Auth(구글 로그인 + 캘린더
+   scope)로 바뀐다. fbUser가 로그인 상태를 나타내고, accessToken은
+   이제 "구글 캘린더 API 호출용 토큰"만 의미한다(드라이브는 더 이상
+   안 씀 — 데이터는 Firestore에 저장되고, Firestore 접근 권한은
+   Firebase Auth 세션 자체로 처리되므로 별도 토큰이 필요 없다). */
+let fbUser = null;
+let accessToken = ""; // 캘린더 API 전용 토큰
 
 function setLoginButtonsUi() {
   document.querySelectorAll(".gantt-login-btn").forEach((btn) => {
-    btn.textContent = accessToken ? "로그아웃" : "Google 로그인";
-    btn.title = accessToken ? "Google 계정에서 로그아웃합니다" : "Google 계정으로 로그인합니다";
+    btn.textContent = fbUser ? "로그아웃" : "Google 로그인";
+    btn.title = fbUser ? "Google 계정에서 로그아웃합니다" : "Google 계정으로 로그인합니다";
   });
 
-  if (!accessToken) {
-    const avatar = document.getElementById("mcUserAvatar");
-    if (avatar) {
+  const avatar = document.getElementById("mcUserAvatar");
+  if (avatar) {
+    if (fbUser && fbUser.photoURL) {
+      avatar.src = fbUser.photoURL;
+      avatar.title = fbUser.email || "";
+      avatar.classList.remove("hidden");
+    } else {
       avatar.classList.add("hidden");
       avatar.src = "";
     }
   }
 }
 
-/* (요청사항) 지금 어느 계정으로 로그인했는지 프로필 사진으로 보여준다.
-   멀티 차트 화면(맨 위)에만 아바타 엘리먼트가 있으므로, 없으면 조용히
-   넘어간다 — 개별 차트 iframe 쪽은 전혀 영향 없음. */
-async function refreshUserAvatar() {
-  const avatar = document.getElementById("mcUserAvatar");
-  if (!avatar || !accessToken) {
-    return;
-  }
-
-  try {
-    const info = await googleFetch("https://www.googleapis.com/oauth2/v3/userinfo");
-    if (info && info.picture) {
-      avatar.src = info.picture;
-      avatar.title = info.email || "";
-      avatar.classList.remove("hidden");
-    }
-  } catch (error) {
-    console.error(error);
-    // 프로필 사진을 못 가져와도 로그인 자체엔 영향 없음.
-  }
-}
-
-function initGoogleAuth() {
-  if (!window.google || !google.accounts || !google.accounts.oauth2) {
-    return;
-  }
-
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: GOOGLE_SCOPES,
-    callback: (resp) => {
-      if (resp && resp.access_token) {
-        accessToken = resp.access_token;
-        dbFileId = "";
-        persistAuth();
-        setLoginButtonsUi();
-        onGoogleLoginSuccess();
-      } else {
-        if (typeof showToast === "function") {
-          showToast("Google 로그인에 실패했습니다.");
-        }
-      }
-    }
-  });
-
-  setLoginButtonsUi();
-}
-
 function onGoogleLoginSuccess() {
-  refreshUserAvatar();
-
   if (IS_SHELL_MODE) {
     if (typeof shellLoadCharts === "function") {
       shellLoadCharts();
@@ -235,56 +174,60 @@ function onGoogleLoginSuccess() {
   }
 }
 
-function signOutGoogle() {
-  if (accessToken && window.google && google.accounts && google.accounts.oauth2) {
-    google.accounts.oauth2.revoke(accessToken, () => {});
+async function handleLoginButtonClick() {
+  if (fbUser) {
+    if (confirm("Google 계정에서 로그아웃하시겠습니까?")) {
+      await fb.signOutUser();
+    }
+    return;
   }
 
-  accessToken = "";
-  dbFileId = "";
-  persistAuth();
+  try {
+    await fb.signIn();
+  } catch (error) {
+    if (typeof showToast === "function") {
+      showToast("Google 로그인에 실패했습니다.");
+    }
+  }
+}
+
+/* (Firebase Auth 세션 변화 구독 — 이 리스너가 사실상 예전 initGoogleAuth의
+   콜백 역할을 한다. 앱 로그인(=Firestore 접근)은 Firebase SDK가 알아서
+   유지/갱신해주므로, 예전처럼 1시간마다 다시 로그인할 필요가
+   없어진다. */
+fb.onAuthChange((user) => {
+  const wasLoggedIn = !!fbUser;
+  fbUser = user;
+  if (!user) {
+    accessToken = "";
+  }
   setLoginButtonsUi();
 
-  if (IS_SHELL_MODE) {
-    // 멀티 차트 화면: 떠 있는 차트 박스(iframe)를 전부 지워서 초기화한다.
-    shellChartsCache = [];
-    if (typeof shellRenderList === "function") {
-      shellRenderList();
+  if (user && !wasLoggedIn) {
+    onGoogleLoginSuccess();
+  } else if (!user && wasLoggedIn) {
+    if (IS_SHELL_MODE) {
+      shellChartsCache = [];
+      if (typeof shellRenderList === "function") shellRenderList();
+    } else {
+      state.tasks = [];
+      state.categories = [];
+      if (typeof render === "function") render();
     }
-  } else {
-    state.tasks = [];
-    state.categories = [];
-
-    if (typeof render === "function") {
-      render();
-    }
+    if (typeof showToast === "function") showToast("로그아웃했습니다.");
   }
+});
 
-  if (typeof showToast === "function") {
-    showToast("로그아웃했습니다.");
-  }
-}
-
-function handleLoginButtonClick() {
-  if (accessToken) {
-    if (confirm("Google 계정에서 로그아웃하시겠습니까?")) {
-      signOutGoogle();
-    }
-    return;
-  }
-
-  if (!tokenClient) {
-    alert("Google 로그인 모듈을 아직 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
-    return;
-  }
-
-  // select_account로 매번 계정 선택 화면을 띄워서, 다른 계정으로도 로그인할 수 있게 한다.
-  tokenClient.requestAccessToken({ prompt: "select_account" });
-}
-
+/* 캘린더 기능(캘린더 생성/삭제, 이벤트 동기화)에만 쓰는 호출.
+   캘린더 scope 토큰은 로그인할 때 같이 받아둔 걸 쓰고, 끝나있으면
+   그때 다시 fb.signIn()으로 한 번 더 받아온다(앱 로그인 자체는 안
+   끊긴 채로, 캘린더 권한만 다시 받는 것). */
 async function googleFetch(url, opts = {}) {
   if (!accessToken) {
-    throw new Error("로그인이 필요합니다. 'Google 로그인' 버튼을 눌러주세요.");
+    accessToken = fb.getCalendarAccessToken();
+  }
+  if (!accessToken) {
+    throw new Error("캘린더 기능을 쓰려면 다시 로그인해주세요.");
   }
 
   let response;
@@ -304,9 +247,16 @@ async function googleFetch(url, opts = {}) {
 
   if (response.status === 401) {
     accessToken = "";
-    persistAuth();
-    setLoginButtonsUi();
-    throw new Error("로그인이 만료됐습니다. 다시 로그인해주세요.");
+    try {
+      const refreshed = await fb.signIn();
+      accessToken = refreshed.calendarAccessToken;
+      if (accessToken) {
+        return googleFetch(url, opts);
+      }
+    } catch (error) {
+      // 아래에서 공통 에러로 처리
+    }
+    throw new Error("캘린더 권한이 만료됐습니다. 다시 로그인해주세요.");
   }
 
   if (response.status === 204) {
@@ -323,139 +273,12 @@ async function googleFetch(url, opts = {}) {
 
   if (!response.ok) {
     const msg = (body && body.error && body.error.message) || (response.status + " 오류");
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = response.status;
+    throw err;
   }
 
   return body;
-}
-
-/* ----- Drive: DB(JSON) 파일 찾기/만들기/읽기/쓰기 ----- */
-
-function emptyDb() {
-  /* (요청사항) 처음 DB 파일을 만들 때 "기본 차트"를 자동으로 끼워넣지
-     않는다. 차트가 하나도 없는 빈 목록으로 시작하고, 사용자가 직접
-     "+"로 추가한 것만 보이게 한다. */
-  return {
-    charts: [],
-    data: {}
-  };
-}
-
-async function driveFindDbFile() {
-  const q = encodeURIComponent(
-    "mimeType='" + DB_MIME_TYPE + "' and trashed=false " +
-    "and properties has { key='" + DB_PROP_KEY + "' and value='" + DB_PROP_VALUE + "' }"
-  );
-
-  const res = await googleFetch(DRIVE_BASE + "?q=" + q + "&fields=files(id,name)&spaces=drive");
-
-  if (res && Array.isArray(res.files) && res.files.length) {
-    return res.files[0].id;
-  }
-
-  return "";
-}
-
-async function driveCreateDbFile() {
-  const boundary = "gantt_db_" + Date.now() + "_" + Math.random().toString(36).slice(2);
-  const metadata = {
-    name: DB_FILE_NAME,
-    mimeType: DB_MIME_TYPE,
-    properties: { [DB_PROP_KEY]: DB_PROP_VALUE }
-  };
-  const content = JSON.stringify(emptyDb());
-
-  const body =
-    "--" + boundary + "\r\n" +
-    "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-    JSON.stringify(metadata) + "\r\n" +
-    "--" + boundary + "\r\n" +
-    "Content-Type: " + DB_MIME_TYPE + "\r\n\r\n" +
-    content + "\r\n" +
-    "--" + boundary + "--";
-
-  const res = await googleFetch(
-    DRIVE_UPLOAD_BASE + "?uploadType=multipart&fields=id",
-    {
-      method: "POST",
-      headers: { "Content-Type": "multipart/related; boundary=" + boundary },
-      body
-    }
-  );
-
-  return res.id;
-}
-
-async function ensureDbReady() {
-  if (!accessToken) {
-    throw new Error("로그인이 필요합니다. 'Google 로그인' 버튼을 눌러주세요.");
-  }
-
-  if (!dbFileId) {
-    dbFileId = await driveFindDbFile();
-
-    if (!dbFileId) {
-      dbFileId = await driveCreateDbFile();
-    }
-
-    persistAuth();
-  }
-}
-
-async function readDb() {
-  await ensureDbReady();
-
-  const db = await googleFetch(DRIVE_BASE + "/" + dbFileId + "?alt=media");
-
-  if (!db || typeof db !== "object") {
-    throw new Error("DB 파일을 해석할 수 없습니다.");
-  }
-  if (!Array.isArray(db.charts)) {
-    db.charts = [];
-  }
-  if (!db.data || typeof db.data !== "object") {
-    db.data = {};
-  }
-  /* (요청사항, 버그 수정) 여기서 "기본 차트"가 목록에 없으면 매번
-     다시 끼워넣던 코드를 지웠다. 이 삽입은 Drive에 저장되지도 않는
-     "그 자리에서만" 만든 가짜 항목이라, 사용자가 지워도 다음에 DB를
-     또 읽을 때마다("거의 모든 동작마다") 똑같은 "기본 차트"가 다시
-     나타나는 것처럼 보였다 — 사용자가 전혀 요청하지 않았는데 매번
-     자동으로 생성되는 것처럼 느껴졌던 원인. 이제 저장된 목록 그대로만
-     보여주고, 더 이상 자동으로 만들어내지 않는다. 단일 차트 화면을
-     ?chart= 없이 열었을 때를 위한 chartData()/findChartMeta()의 안전한
-     "default" id 처리는 그대로 둔다(그건 목록에 안 보이는 내부 처리). */
-
-  return db;
-}
-
-async function writeDb(db) {
-  await googleFetch(DRIVE_UPLOAD_BASE + "/" + dbFileId + "?uploadType=media", {
-    method: "PATCH",
-    headers: { "Content-Type": DB_MIME_TYPE },
-    body: JSON.stringify(db)
-  });
-}
-
-function chartData(db, chartId) {
-  const id = String(chartId || "").trim() || "default";
-
-  if (!db.data[id]) {
-    db.data[id] = { tasks: [], categories: [] };
-  }
-  if (!Array.isArray(db.data[id].tasks)) {
-    db.data[id].tasks = [];
-  }
-  if (!Array.isArray(db.data[id].categories)) {
-    db.data[id].categories = [];
-  }
-
-  return db.data[id];
-}
-
-function findChartMeta(db, chartId) {
-  const id = String(chartId || "").trim() || "default";
-  return db.charts.find((c) => c.id === id) || null;
 }
 
 /* ----- 검증/유틸 (기존 로직 그대로) ----- */
@@ -601,92 +424,6 @@ function applyTaskFields(base, data, cats) {
   return t;
 }
 
-async function createTaskRow(bucket, data) {
-  const t = applyTaskFields(
-    { name: "", categoryId: "", start: "", end: "", progress: 0, color: "", memo: "", target: "", owner: "" },
-    data || {},
-    bucket.categories
-  );
-
-  const id = newRowId();
-
-  bucket.tasks.push({
-    id, categoryId: t.categoryId, name: t.name, start: t.start, end: t.end,
-    progress: t.progress, color: t.color, memo: t.memo, target: t.target, owner: t.owner,
-    updated: new Date().toISOString(), calendarEventId: ""
-  });
-
-  return bucket.tasks[bucket.tasks.length - 1];
-}
-
-function updateTaskRow(bucket, data) {
-  data = data || {};
-  const task = bucket.tasks.find((x) => x.id === String(data.id));
-
-  if (!task) {
-    throw new Error("해당 작업을 찾을 수 없습니다.");
-  }
-
-  const t = applyTaskFields(task, data, bucket.categories);
-
-  task.categoryId = t.categoryId;
-  task.name = t.name;
-  task.start = t.start;
-  task.end = t.end;
-  task.progress = t.progress;
-  task.color = t.color;
-  task.memo = t.memo;
-  task.target = t.target;
-  task.owner = t.owner;
-  task.updated = new Date().toISOString();
-
-  return task;
-}
-
-function deleteTaskRow(bucket, id) {
-  const idx = bucket.tasks.findIndex((x) => x.id === String(id));
-
-  if (idx === -1) {
-    throw new Error("삭제할 작업을 찾을 수 없습니다.");
-  }
-
-  const removed = bucket.tasks.splice(idx, 1)[0];
-  return removed;
-}
-
-function reorderList(list, orderedIds) {
-  if (!Array.isArray(orderedIds) || !orderedIds.length) {
-    return;
-  }
-
-  const map = {};
-  list.forEach((x) => {
-    map[String(x.id || "")] = x;
-  });
-
-  const seen = {};
-  const reordered = [];
-
-  orderedIds.forEach((id) => {
-    id = String(id);
-    if (map[id] && !seen[id]) {
-      reordered.push(map[id]);
-      seen[id] = true;
-    }
-  });
-
-  list.forEach((x) => {
-    const id = String(x.id || "");
-    if (!seen[id]) {
-      reordered.push(x);
-      seen[id] = true;
-    }
-  });
-
-  list.length = 0;
-  reordered.forEach((x) => list.push(x));
-}
-
 function cleanCategory(data, base) {
   const has = (k) => data[k] !== undefined && data[k] !== null;
 
@@ -705,173 +442,6 @@ function cleanCategory(data, base) {
   }
 
   return { name, color };
-}
-
-function nextCategoryId(bucket) {
-  let max = 0;
-
-  const scan = (v) => {
-    const m = String(v || "").match(/^C(\d+)$/i);
-    if (m) {
-      max = Math.max(max, Number(m[1]));
-    }
-  };
-
-  bucket.categories.forEach((c) => scan(c.id));
-  bucket.tasks.forEach((t) => scan(t.categoryId));
-
-  return "C" + String(max + 1).padStart(2, "0");
-}
-
-function createCategoryRow(bucket, data) {
-  data = data || {};
-  const c = cleanCategory(
-    { name: data.name === undefined ? "새 카테고리" : data.name, color: data.color },
-    { name: "새 카테고리", color: DEFAULT_COLOR }
-  );
-
-  const id = nextCategoryId(bucket);
-  bucket.categories.push({ id, name: c.name, color: c.color });
-  return id;
-}
-
-function updateCategoryRow(bucket, data) {
-  data = data || {};
-  const cat = bucket.categories.find((x) => x.id === String(data.id));
-
-  if (!cat) {
-    throw new Error("카테고리를 찾을 수 없습니다.");
-  }
-
-  const c = cleanCategory(data, { name: cat.name, color: validColorStr(cat.color) || DEFAULT_COLOR });
-  cat.name = c.name;
-  cat.color = c.color;
-}
-
-function deleteCategoryRow(bucket, id) {
-  const idx = bucket.categories.findIndex((x) => x.id === String(id));
-
-  if (idx === -1) {
-    throw new Error("삭제할 카테고리를 찾을 수 없습니다.");
-  }
-
-  bucket.categories.splice(idx, 1);
-}
-
-function listChartsImpl(db) {
-  return db.charts
-    .slice()
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
-    .map((c) => ({
-      id: c.id,
-      name: c.name || "",
-      rangeStart: c.rangeStart || "",
-      rangeEnd: c.rangeEnd || "",
-      hidden: !!c.hidden,
-      order: c.order || 0,
-      hasCalendar: !!c.calendarId
-    }));
-}
-
-function createChartImpl(db, data) {
-  data = data || {};
-
-  const name = strLimited(data.name === undefined ? "새 차트" : data.name, LIMITS.name, "차트 이름").trim() || "새 차트";
-  const rangeStart = data.rangeStart ? String(data.rangeStart).trim() : "";
-  const rangeEnd = data.rangeEnd ? String(data.rangeEnd).trim() : "";
-
-  if (rangeStart && !isRealDateStr(rangeStart)) {
-    throw new Error("표시 시작일 형식이 올바르지 않습니다.");
-  }
-  if (rangeEnd && !isRealDateStr(rangeEnd)) {
-    throw new Error("표시 종료일 형식이 올바르지 않습니다.");
-  }
-  if (rangeStart && rangeEnd && rangeEnd < rangeStart) {
-    throw new Error("표시 종료일은 시작일보다 빠를 수 없습니다.");
-  }
-
-  let id;
-  do {
-    id = newRowId();
-  } while (db.charts.some((c) => c.id === id));
-
-  const maxOrder = db.charts.reduce((m, c) => Math.max(m, c.order || 0), -1);
-
-  const chart = {
-    id, name, rangeStart, rangeEnd, hidden: false, order: maxOrder + 1,
-    createdAt: new Date().toISOString(), calendarId: ""
-  };
-
-  db.charts.push(chart);
-  db.data[id] = { tasks: [], categories: [] };
-
-  return { id, name, rangeStart, rangeEnd, hidden: false, order: maxOrder + 1 };
-}
-
-function updateChartImpl(db, data) {
-  data = data || {};
-  const chart = db.charts.find((c) => c.id === String(data.id));
-
-  if (!chart) {
-    throw new Error("차트를 찾을 수 없습니다.");
-  }
-
-  const has = (k) => data[k] !== undefined && data[k] !== null;
-
-  if (has("name")) {
-    const name = strLimited(data.name, LIMITS.name, "차트 이름").trim();
-    if (!name) {
-      throw new Error("차트 이름을 입력해주세요.");
-    }
-    chart.name = name;
-  }
-
-  if (has("rangeStart")) {
-    const v = String(data.rangeStart).trim();
-    if (v && !isRealDateStr(v)) {
-      throw new Error("표시 시작일 형식이 올바르지 않습니다.");
-    }
-    chart.rangeStart = v;
-  }
-
-  if (has("rangeEnd")) {
-    const v = String(data.rangeEnd).trim();
-    if (v && !isRealDateStr(v)) {
-      throw new Error("표시 종료일 형식이 올바르지 않습니다.");
-    }
-    chart.rangeEnd = v;
-  }
-
-  if (chart.rangeStart && chart.rangeEnd && chart.rangeEnd < chart.rangeStart) {
-    throw new Error("표시 종료일은 시작일보다 빠를 수 없습니다.");
-  }
-
-  if (has("hidden")) {
-    chart.hidden = !!data.hidden;
-  }
-  if (has("order")) {
-    chart.order = Number(data.order) || 0;
-  }
-}
-
-function deleteChartImpl(db, id) {
-  id = String(id || "").trim();
-
-  // (요청사항) 기본 차트도 다른 차트와 똑같이 삭제할 수 있게 한다.
-  if (!id) {
-    throw new Error("삭제할 차트를 찾을 수 없습니다.");
-  }
-
-  const idx = db.charts.findIndex((c) => c.id === id);
-
-  if (idx === -1) {
-    throw new Error("삭제할 차트를 찾을 수 없습니다.");
-  }
-
-  const removed = db.charts.splice(idx, 1)[0];
-  delete db.data[id];
-
-  return removed;
 }
 
 /* ----- Calendar: 차트별 전용 캘린더 생성/삭제 + 작업 자동 동기화 ----- */
@@ -952,18 +522,22 @@ async function calDeleteEvent(calendarId, eventId) {
 /* 작업을 저장할 때 연결된 캘린더가 있으면 같은 동작 안에서 바로 같이 반영한다.
    (따로 "캘린더 업데이트" 버튼 없이도, 작업을 고치는 순간 캘린더도 같이 바뀐다)
    캘린더 쪽 호출이 실패해도 작업 저장 자체는 실패시키지 않고 콘솔에만 남긴다. */
-async function syncCalendarOnCreate(chart, task) {
+/* (Firebase 전환) 예전엔 메모리에 있는 task 객체에 calendarEventId를
+   바로 써 넣고 나중에 writeDb() 한 번으로 같이 저장했는데, Firestore는
+   문서 단위라 이벤트를 만든 뒤 updateTask로 한 번 더 써줘야 한다. */
+async function syncCalendarOnCreate(chart, chartId, taskId, task) {
   if (!chart || !chart.calendarId) {
     return;
   }
   try {
-    task.calendarEventId = await calCreateEvent(chart.calendarId, task);
+    const eventId = await calCreateEvent(chart.calendarId, task);
+    await fb.updateTask(chartId, taskId, { calendarEventId: eventId });
   } catch (error) {
     console.error(error);
   }
 }
 
-async function syncCalendarOnUpdate(chart, task) {
+async function syncCalendarOnUpdate(chart, chartId, taskId, task) {
   if (!chart || !chart.calendarId) {
     return;
   }
@@ -971,7 +545,8 @@ async function syncCalendarOnUpdate(chart, task) {
     if (task.calendarEventId) {
       await calUpdateEvent(chart.calendarId, task.calendarEventId, task);
     } else {
-      task.calendarEventId = await calCreateEvent(chart.calendarId, task);
+      const eventId = await calCreateEvent(chart.calendarId, task);
+      await fb.updateTask(chartId, taskId, { calendarEventId: eventId });
     }
   } catch (error) {
     console.error(error);
@@ -1016,158 +591,361 @@ function buildCsvForBucket(bucket) {
 }
 
 /* 전체 차트를 한 번에 CSV 하나로 내보낸다. 맨 앞에 "차트" 열을 추가해서
-   어느 차트의 작업인지 구분한다. (차트 박스마다 따로 누르지 않아도 되도록) */
+   어느 차트의 작업인지 구분한다. (차트 박스마다 따로 누르지 않아도 되도록)
+   (Firebase 전환) 소유한 차트 + 공유로 들어간 차트 모두 Firestore에서
+   한 번에 가져와서 합친다. */
 async function buildCsvForAllCharts() {
-  const db = await readDb();
   const headers = ["차트", "작업명", "카테고리", "시작일", "종료일", "진행률(%)", "메모", "대상처", "담당자"];
   const rows = [headers.map(csvEscape).join(",")];
 
-  db.charts
-    .slice()
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
-    .forEach((chart) => {
-      const bucket = chartData(db, chart.id);
-      const resolved = resolveTasksAndCats(bucket);
+  if (!fbUser) {
+    return "﻿" + rows.join("\r\n");
+  }
 
-      resolved.tasks.forEach((t) => {
-        rows.push([
-          csvEscape(chart.name), csvEscape(t.name), csvEscape(t.catName), csvEscape(t.start), csvEscape(t.end),
-          csvEscape(t.progress), csvEscape(t.memo), csvEscape(t.target), csvEscape(t.owner)
-        ].join(","));
-      });
+  const charts = await fb.getChartsOnce(fbUser.uid, fbUser.email);
+  const sorted = charts.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  for (const chart of sorted) {
+    const [tasks, categories] = await Promise.all([
+      fb.getTasksOnce(chart.id), fb.getCategoriesOnce(chart.id)
+    ]);
+    const resolved = resolveTasksAndCats({ tasks, categories });
+
+    resolved.tasks.forEach((t) => {
+      rows.push([
+        csvEscape(chart.name), csvEscape(t.name), csvEscape(t.catName), csvEscape(t.start), csvEscape(t.end),
+        csvEscape(t.progress), csvEscape(t.memo), csvEscape(t.target), csvEscape(t.owner)
+      ].join(","));
     });
+  }
 
   return "﻿" + rows.join("\r\n");
 }
 
-/* ----- 요청 처리 ----- */
+/* ----- 요청 처리 (Firebase 전환) -----
+ * 예전엔 개인 차트(Drive JSON 통째로 읽고/쓰기)와 공유 차트(ShareServer.gs
+ * 왕복)가 서로 다른 저장소를 썼기 때문에 apiGet/apiPost를 통째로 다시
+ * 선언해서 분기했다. 이제는 둘 다 같은 Firestore charts 컬렉션을 쓰므로,
+ * "지금 보고 있는 차트가 어떤 chartId인지"만 다르고 나머지 동작은
+ * 완전히 똑같다 — coreApiPost 하나로 통합한다. */
 
-async function dispatchAction(action, body) {
-  const db = await readDb();
-  const chartId = body.chartId;
-  const chart = findChartMeta(db, chartId);
-  const bucket = chartData(db, chartId);
+/* 멤버 맵은 "제거" 시에도 그 이메일 키가 null 값으로 남아있을 수 있어서
+   (removeMember가 updateDoc으로 null만 써 넣으므로), 키 개수가 아니라
+   "null이 아닌 멤버가 있는지"로 공유 여부를 판단한다. 수락 전(pending)
+   초대도 공유로 쳐서, 초대를 보내는 즉시 공유 중 상태로 보이게 한다
+   (옛 UX와 동일). */
+function hasAnyMembers(chart) {
+  const members = (chart && chart.members) || {};
+  return Object.keys(members).some((email) => members[email]);
+}
 
+function fbListPersonalCharts(charts) {
+  return charts
+    .filter((c) => fbUser && c.ownerId === fbUser.uid && !hasAnyMembers(c))
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .map((c) => ({
+      id: c.id, name: c.name || "", rangeStart: c.rangeStart || "", rangeEnd: c.rangeEnd || "",
+      hidden: !!c.hidden, order: c.order || 0, hasCalendar: !!c.calendarId
+    }));
+}
+
+/* (성능) shellLoadCharts()가 "개인 차트 목록"과 "공유 차트 목록"을 거의
+   동시에 요청하는데, 둘 다 사실은 같은 Firestore 조회(getChartsOnce)
+   결과를 서로 다르게 나눠 쓰는 것뿐이다. 두 요청이 겹치는 아주 짧은
+   순간에는 새로 조회하지 않고 이미 날아간 요청 하나를 같이 기다려서,
+   같은 데이터를 두 번 읽는 것을 피한다. */
+let chartsOnceInFlight = null;
+function fbGetChartsOnceShared() {
+  if (!fbUser) return Promise.resolve([]);
+  if (!chartsOnceInFlight) {
+    chartsOnceInFlight = fb.getChartsOnce(fbUser.uid, fbUser.email).finally(() => {
+      chartsOnceInFlight = null;
+    });
+  }
+  return chartsOnceInFlight;
+}
+
+async function fbListMyPersonalCharts() {
+  if (!fbUser) return [];
+  const charts = await fbGetChartsOnceShared();
+  return fbListPersonalCharts(charts);
+}
+
+function validateChartMetaFields(data, base) {
+  const has = (k) => data[k] !== undefined && data[k] !== null;
+  const fields = {};
+
+  if (has("name")) {
+    const name = strLimited(data.name, LIMITS.name, "차트 이름").trim();
+    if (!name) {
+      throw new Error("차트 이름을 입력해주세요.");
+    }
+    fields.name = name;
+  }
+
+  const rangeStart = has("rangeStart") ? String(data.rangeStart).trim() : base.rangeStart;
+  const rangeEnd = has("rangeEnd") ? String(data.rangeEnd).trim() : base.rangeEnd;
+
+  if (has("rangeStart")) {
+    if (rangeStart && !isRealDateStr(rangeStart)) {
+      throw new Error("표시 시작일 형식이 올바르지 않습니다.");
+    }
+    fields.rangeStart = rangeStart;
+  }
+  if (has("rangeEnd")) {
+    if (rangeEnd && !isRealDateStr(rangeEnd)) {
+      throw new Error("표시 종료일 형식이 올바르지 않습니다.");
+    }
+    fields.rangeEnd = rangeEnd;
+  }
+  if (rangeStart && rangeEnd && rangeEnd < rangeStart) {
+    throw new Error("표시 종료일은 시작일보다 빠를 수 없습니다.");
+  }
+
+  if (has("hidden")) {
+    fields.hidden = !!data.hidden;
+  }
+  if (has("order")) {
+    fields.order = Number(data.order) || 0;
+  }
+
+  return fields;
+}
+
+/* (성능) chart 메타(특히 calendarId)는 작업 하나 고칠 때마다 매번
+   다시 읽지 않고, 이 페이지가 켜져 있는 동안만 잠깐 기억해둔다.
+   addCalendarToChart/removeCalendarFromChart/updateChart처럼 chart
+   문서가 실제로 바뀌는 액션에서만 캐시를 지워서 다음 읽기 때 새로
+   받아오게 한다. (여러 탭에서 동시에 캘린더를 추가/삭제하는 건
+   원래도 드문 경우라, 이 정도 캐시로 인한 아주 짧은 지연은 감수한다.) */
+const chartMetaCache = {};
+
+async function getChartMetaCached(chartId) {
+  if (!chartMetaCache[chartId]) {
+    chartMetaCache[chartId] = fb.getChartOnce(chartId);
+  }
+  return chartMetaCache[chartId];
+}
+
+function invalidateChartMetaCache(chartId) {
+  delete chartMetaCache[chartId];
+}
+
+async function coreApiPost(action, chartId, body = {}) {
   switch (action) {
     case "load":
-    case "loadChart":
-      return { ok: true, data: resolveTasksAndCats(bucket) };
-
-    case "create":
-    case "createForChart": {
-      const task = await createTaskRow(bucket, body.data || {});
-      await syncCalendarOnCreate(chart, task);
-      await writeDb(db);
-      return { ok: true, result: task.id };
+    case "loadChart": {
+      const [tasks, categories] = await Promise.all([
+        fb.getTasksOnce(chartId), fb.getCategoriesOnce(chartId)
+      ]);
+      /* (마이그레이션, 1회성) Rules를 get() 없는 새 버전으로 바꾸기 전엔
+         기존 작업/카테고리 문서에 ownerId/memberEmails 복사값이 없다.
+         이 차트를 여는 시점에 한 번 조용히 채워 넣는다 — 이미 채워져
+         있으면(마이그레이션 끝났으면) 아무 일도 안 하고 그냥 지나간다.
+         Rules를 새 버전으로 바꾸기 *전에* app2.js를 먼저 올려서 이
+         자동 채우기가 한 번씩 돌게 한 다음에 Rules를 바꿔야 안전하다. */
+      const needsAclStamp = tasks.some((t) => t.ownerId === undefined) || categories.some((c) => c.ownerId === undefined);
+      if (needsAclStamp) {
+        try {
+          const chartForStamp = await getChartMetaCached(chartId);
+          if (chartForStamp) {
+            await fb.restampChartAcl(chartId, chartForStamp.ownerId, chartForStamp.memberEmails || []);
+          }
+        } catch (error) {
+          console.error("ACL 마이그레이션 실패(다음에 다시 시도됨):", error);
+        }
+      }
+      return { ok: true, data: resolveTasksAndCats({ tasks, categories }) };
     }
 
-    case "update":
-    case "updateForChart": {
-      const task = updateTaskRow(bucket, body.data || {});
-      await syncCalendarOnUpdate(chart, task);
-      await writeDb(db);
+    case "create": {
+      /* (성능) 서로 의존 관계가 없는 읽기(카테고리 목록 검증용, 작업
+         개수 - 순서 계산용, 차트 메타 - 캘린더 확인용)를 순서대로 기다리지
+         않고 동시에 보낸다. */
+      const [cats, existingTasks, chart] = await Promise.all([
+        fb.getCategoriesOnce(chartId), fb.getTasksOnce(chartId), getChartMetaCached(chartId)
+      ]);
+      const t = applyTaskFields(
+        { name: "", categoryId: "", start: "", end: "", progress: 0, color: "", memo: "", target: "", owner: "" },
+        body.data || {}, cats
+      );
+      const ref = await fb.createTask(chartId, { ...t, order: existingTasks.length },
+        { ownerId: chart ? chart.ownerId : fbUser && fbUser.uid, memberEmails: chart ? (chart.memberEmails || []) : [] });
+      await syncCalendarOnCreate(chart, chartId, ref.id, t);
+      return { ok: true, result: ref.id };
+    }
+
+    case "update": {
+      const data = body.data || {};
+      const [task, cats, chart] = await Promise.all([
+        fb.getTaskOnce(chartId, String(data.id)), fb.getCategoriesOnce(chartId), getChartMetaCached(chartId)
+      ]);
+      if (!task) {
+        throw new Error("해당 작업을 찾을 수 없습니다.");
+      }
+      const t = applyTaskFields(task, data, cats);
+      await fb.updateTask(chartId, task.id, t);
+      await syncCalendarOnUpdate(chart, chartId, task.id, { ...t, calendarEventId: task.calendarEventId });
       return { ok: true, result: null };
     }
 
-    case "delete":
-    case "deleteForChart": {
-      const removed = deleteTaskRow(bucket, body.id);
-      await syncCalendarOnDelete(chart, removed);
-      await writeDb(db);
+    case "delete": {
+      const [task, chart] = await Promise.all([
+        fb.getTaskOnce(chartId, String(body.id)), getChartMetaCached(chartId)
+      ]);
+      if (!task) {
+        throw new Error("삭제할 작업을 찾을 수 없습니다.");
+      }
+      await fb.deleteTask(chartId, task.id);
+      await syncCalendarOnDelete(chart, task);
       return { ok: true, result: null };
     }
 
     case "reorder":
-    case "reorderForChart":
-      reorderList(bucket.tasks, body.ids || []);
-      await writeDb(db);
+      await fb.reorderTasks(chartId, body.ids || []);
       return { ok: true, result: null };
 
-    case "createCategory":
-    case "createCategoryForChart": {
-      const id = createCategoryRow(bucket, body.data || {});
-      await writeDb(db);
-      return { ok: true, result: id };
+    case "createCategory": {
+      const data = body.data || {};
+      const c = cleanCategory(
+        { name: data.name === undefined ? "새 카테고리" : data.name, color: data.color },
+        { name: "새 카테고리", color: DEFAULT_COLOR }
+      );
+      const [existingCats, chartForCat] = await Promise.all([
+        fb.getCategoriesOnce(chartId), getChartMetaCached(chartId)
+      ]);
+      const ref = await fb.createCategory(chartId, { ...c, order: existingCats.length },
+        { ownerId: chartForCat ? chartForCat.ownerId : fbUser && fbUser.uid, memberEmails: chartForCat ? (chartForCat.memberEmails || []) : [] });
+      return { ok: true, result: ref.id };
     }
 
-    case "updateCategory":
-    case "updateCategoryForChart":
-      updateCategoryRow(bucket, body.data || {});
-      await writeDb(db);
+    case "updateCategory": {
+      const data = body.data || {};
+      const cat = await fb.getCategoryOnce(chartId, String(data.id));
+      if (!cat) {
+        throw new Error("카테고리를 찾을 수 없습니다.");
+      }
+      const c = cleanCategory(data, { name: cat.name, color: validColorStr(cat.color) || DEFAULT_COLOR });
+      await fb.updateCategory(chartId, cat.id, c);
       return { ok: true, result: null };
+    }
 
     case "deleteCategory":
-    case "deleteCategoryForChart":
-      deleteCategoryRow(bucket, body.id);
-      await writeDb(db);
+      await fb.deleteCategory(chartId, String(body.id));
       return { ok: true, result: null };
 
     case "reorderCategories":
-    case "reorderCategoriesForChart":
-      reorderList(bucket.categories, body.ids || []);
-      await writeDb(db);
+      await fb.reorderCategories(chartId, body.ids || []);
       return { ok: true, result: null };
 
-    case "listCharts":
-      return { ok: true, result: listChartsImpl(db) };
-
-    case "createChart": {
-      const result = createChartImpl(db, body.data || {});
-      await writeDb(db);
-      /* (성능 개선) 차트 추가/삭제/이름변경 직후 화면에 쓰려고
-         클라이언트가 전체 DB를 다시 통째로 받아오는(listCharts) 왕복을
-         또 보냈는데, 이미 메모리에 있는 db로 만든 가벼운 목록을 같은
-         응답에 실어서 그 중복 왕복을 없앤다. */
-      return { ok: true, result, charts: listChartsImpl(db) };
-    }
-
-    /* (성능 개선, 추가 액션 — 기존 createChart/createCategoryForChart/
-     * createForChart는 전혀 안 건드림) "공유 해제 후 개인 차트로 되돌리기"
-     * 할 때, 전체 개인 DB 파일을 카테고리/작업 개수만큼 매번 다시
-     * 읽고 써서(그만큼 Drive 왕복이 났다) 느렸던 걸, 새 차트 생성 +
-     * 카테고리 전부 + 작업 전부를 전부 메모리에서 채운 뒤 딱 한 번만
-     * readDb/writeDb 하도록 묶은 전용 액션. */
-    case "createChartWithData": {
-      const result = createChartImpl(db, body.data || {});
-      const newBucket = chartData(db, result.id);
-
-      const catIdMap = {};
-      (body.categories || []).forEach((cat) => {
-        const newCatId = createCategoryRow(newBucket, { name: cat.name, color: cat.color });
-        catIdMap[cat.id] = newCatId;
-      });
-
-      for (const t of body.tasks || []) {
-        await createTaskRow(newBucket, {
-          name: t.name, categoryId: catIdMap[t.categoryId] || "",
-          start: t.start, end: t.end, progress: t.progress, color: t.color,
-          memo: t.memo, target: t.target, owner: t.owner
-        });
-      }
-
-      await writeDb(db);
+    case "listCharts": {
+      const result = await fbListMyPersonalCharts();
       return { ok: true, result };
     }
 
-    case "updateChart":
-      updateChartImpl(db, body.data || {});
-      await writeDb(db);
-      return { ok: true, result: null, charts: listChartsImpl(db) };
+    case "createChart": {
+      const data = body.data || {};
+      const name = strLimited(data.name === undefined ? "새 차트" : data.name, LIMITS.name, "차트 이름").trim() || "새 차트";
+      const fields = validateChartMetaFields(data, { rangeStart: "", rangeEnd: "" });
+      if (!fbUser) {
+        throw new Error("로그인이 필요합니다.");
+      }
+      const ref = await fb.createChart(fbUser.uid, fbUser.email, name);
+      if (fields.rangeStart !== undefined || fields.rangeEnd !== undefined) {
+        await fb.updateChartMeta(ref.id, fields);
+      }
+      const result = {
+        id: ref.id, name, rangeStart: fields.rangeStart || "", rangeEnd: fields.rangeEnd || "",
+        hidden: false, order: 0
+      };
+      /* (성능 개선) 차트 추가/삭제/이름변경 직후 화면에 쓰려고 클라이언트가
+         전체 목록을 다시 받아오는 왕복을 또 보냈는데, 여기서 만든 최신
+         목록을 같은 응답에 실어서 그 중복 왕복을 없앤다. */
+      return { ok: true, result, charts: await fbListMyPersonalCharts() };
+    }
+
+    /* (Firebase 전환으로 단순해진 점) 예전엔 "공유 해제 후 개인 차트로
+     * 되돌리기" 할 때 새 차트를 만들어 데이터를 전부 복사해야 했지만,
+     * 이제는 같은 Firestore 문서를 그대로 쓰므로 멤버만 비우면 끝난다
+     * (shareFetch의 revokeAllSharing 참고). 이 액션은 "다른 데이터로
+     * 새 차트를 만들기" 용도로만 남겨둔다(당장 UI에서 쓰는 곳은 없지만
+     * 호환을 위해 유지). */
+    case "createChartWithData": {
+      if (!fbUser) {
+        throw new Error("로그인이 필요합니다.");
+      }
+      const data = body.data || {};
+      const name = strLimited(data.name === undefined ? "새 차트" : data.name, LIMITS.name, "차트 이름").trim() || "새 차트";
+      const fields = validateChartMetaFields(data, { rangeStart: "", rangeEnd: "" });
+      const ref = await fb.createChart(fbUser.uid, fbUser.email, name);
+      if (fields.rangeStart !== undefined || fields.rangeEnd !== undefined) {
+        await fb.updateChartMeta(ref.id, fields);
+      }
+
+      /* 새로 만드는 차트라 아직 멤버가 없다 — ownerId/memberEmails 복사값은
+         소유자만, 멤버는 빈 배열로 찍어둔다(성능/Rules 수정 참고). */
+      const newChartAcl = { ownerId: fbUser.uid, memberEmails: [] };
+
+      const catIdMap = {};
+      let catOrder = 0;
+      for (const cat of body.categories || []) {
+        const catRef = await fb.createCategory(ref.id, { name: cat.name, color: cat.color, order: catOrder++ }, newChartAcl);
+        catIdMap[cat.id] = catRef.id;
+      }
+
+      let taskOrder = 0;
+      for (const t of body.tasks || []) {
+        await fb.createTask(ref.id, {
+          name: t.name, categoryId: catIdMap[t.categoryId] || "",
+          start: t.start, end: t.end, progress: t.progress, color: t.color,
+          memo: t.memo, target: t.target, owner: t.owner, order: taskOrder++
+        }, newChartAcl);
+      }
+
+      const result = {
+        id: ref.id, name, rangeStart: fields.rangeStart || "", rangeEnd: fields.rangeEnd || "",
+        hidden: false, order: 0
+      };
+      return { ok: true, result };
+    }
+
+    case "updateChart": {
+      const data = body.data || {};
+      const chart = await fb.getChartOnce(chartId || data.id);
+      if (!chart) {
+        throw new Error("차트를 찾을 수 없습니다.");
+      }
+      const fields = validateChartMetaFields(data, chart);
+      if (Object.keys(fields).length) {
+        await fb.updateChartMeta(chartId || data.id, fields);
+        invalidateChartMetaCache(chartId || data.id);
+      }
+      return { ok: true, result: null, charts: await fbListMyPersonalCharts() };
+    }
 
     case "deleteChart": {
-      const removedChart = deleteChartImpl(db, body.id);
-      if (removedChart && removedChart.calendarId) {
+      const id = body.id || chartId;
+      if (!id) {
+        throw new Error("삭제할 차트를 찾을 수 없습니다.");
+      }
+      const chart = await fb.getChartOnce(id);
+      if (!chart) {
+        throw new Error("삭제할 차트를 찾을 수 없습니다.");
+      }
+      if (chart.calendarId) {
         try {
-          await calDeleteCalendar(removedChart.calendarId);
+          await calDeleteCalendar(chart.calendarId);
         } catch (error) {
           console.error(error);
         }
       }
-      await writeDb(db);
-      return { ok: true, result: null, charts: listChartsImpl(db) };
+      await fb.deleteChart(id);
+      invalidateChartMetaCache(id);
+      return { ok: true, result: null, charts: await fbListMyPersonalCharts() };
     }
 
     case "addCalendarToChart": {
+      const chart = await fb.getChartOnce(chartId);
       if (!chart) {
         throw new Error("차트를 찾을 수 없습니다.");
       }
@@ -1175,19 +953,22 @@ async function dispatchAction(action, body) {
         return { ok: true, result: { already: true } };
       }
       const calendarId = await calCreateCalendar(chart.name + " - 간트차트");
-      chart.calendarId = calendarId;
-      for (const task of bucket.tasks) {
+      const tasks = await fb.getTasksOnce(chartId);
+      for (const task of tasks) {
         try {
-          task.calendarEventId = await calCreateEvent(calendarId, task);
+          const eventId = await calCreateEvent(calendarId, task);
+          await fb.updateTask(chartId, task.id, { calendarEventId: eventId });
         } catch (error) {
           console.error(error);
         }
       }
-      await writeDb(db);
+      await fb.updateChartMeta(chartId, { calendarId });
+      invalidateChartMetaCache(chartId);
       return { ok: true, result: { already: false } };
     }
 
     case "removeCalendarFromChart": {
+      const chart = await fb.getChartOnce(chartId);
       if (!chart) {
         throw new Error("차트를 찾을 수 없습니다.");
       }
@@ -1197,42 +978,69 @@ async function dispatchAction(action, body) {
       try {
         await calDeleteCalendar(chart.calendarId);
       } catch (error) {
+        /* (버그 수정, 문제 1) 404(이미 없음)일 때만 "이미 지워진 걸로 치고"
+           계속 진행하고, 그 외 오류는 그대로 사용자에게 보여주고
+           calendarId도 그대로 둬서 다시 시도할 수 있게 한다. */
+        if (error.status !== 404) {
+          throw error;
+        }
         console.error(error);
       }
-      chart.calendarId = "";
-      bucket.tasks.forEach((t) => { t.calendarEventId = ""; });
-      await writeDb(db);
+      await fb.updateChartMeta(chartId, { calendarId: "" });
+      invalidateChartMetaCache(chartId);
+      const tasks = await fb.getTasksOnce(chartId);
+      for (const task of tasks) {
+        if (task.calendarEventId) {
+          await fb.updateTask(chartId, task.id, { calendarEventId: "" });
+        }
+      }
       return { ok: true, result: { missing: false } };
     }
 
-    case "exportChartCsv":
-      return { ok: true, result: buildCsvForBucket(bucket) };
+    case "exportChartCsv": {
+      const [tasks, categories] = await Promise.all([
+        fb.getTasksOnce(chartId), fb.getCategoriesOnce(chartId)
+      ]);
+      return { ok: true, result: buildCsvForBucket({ tasks, categories }) };
+    }
 
     default:
       throw new Error("알 수 없는 action입니다: " + action);
   }
 }
 
-async function request(action, data = {}) {
-  return dispatchAction(action, { ...data, action });
-}
-
 async function apiGet() {
-  const result = await request("loadChart", { chartId: CHART_ID });
+  const chartId = IS_SHARED_CHART ? SHARED_CHART_ID : CHART_ID;
+  const result = await coreApiPost("loadChart", chartId, {});
+
+  /* (성능 수정) 예전엔 "shared:" 접두사가 붙은 URL(?chart=shared:X)로
+     열렸을 때만 역할을 확인했다. 이제 셸 화면이 개인/공유 박스 전부
+     접두사 없는 같은 chartId로 iframe을 여니(아래 shellRenderList 참고,
+     박스 상태가 바뀌어도 iframe을 다시 로드하지 않기 위해), 이 체크도
+     접두사와 상관없이 "내가 소유자가 아닌 차트"면 항상 하도록 바꾼다. */
+  if (fbUser) {
+    const chart = await getChartMetaCached(chartId);
+    if (chart && chart.ownerId !== fbUser.uid) {
+      const role = ((chart.members || {})[fbUser.email] || {}).role || "viewer";
+      if (role === "viewer") {
+        document.body.classList.add("shared-viewer-readonly");
+      }
+    }
+  }
 
   return result.data;
 }
 
 async function apiPost(action, data = {}) {
-  const mapped = CHART_ACTION_MAP[action] || action;
-  return request(mapped, { ...data, chartId: CHART_ID });
+  const chartId = IS_SHARED_CHART ? SHARED_CHART_ID : CHART_ID;
+  return coreApiPost(action, chartId, data);
 }
 
 /* 멀티 차트 화면에서 "지금 보고 있는 차트(CHART_ID)"가 아니라, 차트 박스마다
    있는 캘린더 추가/삭제·CSV 내보내기 버튼이 그 박스의 차트 하나만 골라서
    쓰는 용도. apiPost처럼 CHART_ID를 자동으로 끼워 넣지 않는다. */
 async function apiPostForChart(action, chartId, data = {}) {
-  return request(action, { ...data, chartId });
+  return coreApiPost(action, chartId, data);
 }
 
 
@@ -5036,7 +4844,7 @@ async function shellLoadCharts() {
     /* (공유 기능 추가분) 내가 수락한 공유 차트도 같이 불러와서 합친다.
        공유 서버가 아직 설정 안 돼 있거나 로그인 전이면 조용히 빈 목록으로 둔다
        (개인 차트 목록 불러오기는 그것과 상관없이 항상 그대로 동작). */
-    const sharedPromise = (accessToken && typeof shareFetch === "function")
+    const sharedPromise = (fbUser && typeof shareFetch === "function")
       ? shareFetch("listMySharedCharts", {}).catch((error) => {
           console.error(error);
           // 공유 목록을 못 가져와도 개인 차트 목록은 그대로 보여준다.
@@ -5047,8 +4855,17 @@ async function shellLoadCharts() {
     const [result, list] = await Promise.all([personalPromise, sharedPromise]);
 
     const personal = (Array.isArray(result.result) ? result.result : []).map((c) => ({ ...c, shared: false }));
+    /* (성능 수정) id에 "shared:" 접두사를 더 이상 붙이지 않는다. 접두사가
+       붙으면, 차트를 공유/해제할 때마다 (개인 ↔ 공유 전환으로) id가
+       바뀌어서 shellRenderList가 그 차트의 박스를 "새 차트"로 착각해
+       박스/iframe을 통째로 지우고 새로 만들었다 — iframe이 다시 만들어질
+       때마다 그 안에서 Firebase를 처음부터 새로 켜야 해서(로그인 상태
+       확인, 연결 등) 공유 전환·해제가 유독 느렸던 가장 큰 원인이다.
+       이제 접두사 없는 같은 chartId를 그대로 써서, 상태가 바뀌어도
+       shellRenderList가 같은 박스로 인식하고 iframe은 그대로 둔 채
+       버튼 영역만 바꿔 끼운다(아래 shellRenderList 참고). */
     const shared = (Array.isArray(list) ? list : []).map((c) => ({
-      id: "shared:" + c.chartId,
+      id: c.chartId,
       chartId: c.chartId,
       name: c.name,
       rangeStart: c.rangeStart || "",
@@ -5063,10 +4880,122 @@ async function shellLoadCharts() {
 
     shellChartsCache = personal.concat(shared);
     shellRenderList();
+    shellBroadcastRefreshToIframes();
   } catch (error) {
     console.error(error);
     showToast(error.message || "차트 목록을 불러오지 못했습니다.", true, 0);
   }
+}
+
+/* (버그 수정) "관리" 모달 등 부모(셸) 쪽에서 차트 메타(이름/표시기간)가
+   바뀌었을 수 있을 때, 지금 떠 있는 모든 차트 박스의 iframe에게 자기
+   메타를 다시 읽으라고 알려준다 — 안 그러면 iframe 안의 이름/표시기간
+   표시가 새로고침 전까지 예전 값에 머물러 있는다("위아래 연동 안 됨"). */
+function shellBroadcastRefreshToIframes() {
+  document.querySelectorAll("#mcChartList iframe").forEach((iframe) => {
+    try {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: "gantt:refreshMeta" }, window.location.origin);
+      }
+    } catch (error) {
+      // 교차 출처 등 예외적인 경우만 조용히 무시.
+    }
+  });
+}
+
+/* (성능 수정) 박스 헤더의 액션 버튼 영역(공유/캘린더/CSV/나가기 등)을
+   만드는 부분을 별도 함수로 뺐다. 전엔 이 블록이 박스를 "새로 만들 때만"
+   실행됐는데, 이제 공유 id에 접두사를 안 붙여서(shellLoadCharts/
+   shellApplySharedChartsList 쪽 주석 참고) 같은 박스가 공유 상태만 바뀐
+   채로 유지되므로, 아래 shellRenderList에서 상태가 바뀐 기존 박스에도
+   이 함수를 다시 호출해 버튼 영역만 교체한다(iframe은 그대로 둔다). */
+function shellBuildActionsEl(chart, box) {
+  const actions = document.createElement("div");
+  actions.className = "mc-chart-box-actions";
+
+  if (!chart.shared) {
+    const csvBtn = document.createElement("button");
+    csvBtn.type = "button";
+    csvBtn.className = "mc-btn mc-btn-ghost";
+    csvBtn.textContent = "엑셀로 내보내기";
+    csvBtn.title = "이 차트의 작업을 CSV 파일로 내보냅니다";
+    csvBtn.addEventListener("click", () => shellHandleExportCsv(chart.id, box));
+
+    const calAddBtn = document.createElement("button");
+    calAddBtn.type = "button";
+    calAddBtn.className = "mc-btn mc-btn-ghost";
+    calAddBtn.textContent = "캘린더에 추가";
+    calAddBtn.title = "이 차트 전용 구글 캘린더를 만들어 작업을 추가합니다";
+    calAddBtn.addEventListener("click", () => shellHandleCalendarAdd(chart.id));
+
+    const calRemoveBtn = document.createElement("button");
+    calRemoveBtn.type = "button";
+    calRemoveBtn.className = "mc-btn mc-btn-ghost";
+    calRemoveBtn.textContent = "캘린더에서 삭제";
+    calRemoveBtn.title = "이 차트 전용 구글 캘린더를 삭제합니다";
+    calRemoveBtn.addEventListener("click", () => shellHandleCalendarRemove(chart.id));
+
+    const shareBtn = document.createElement("button");
+    shareBtn.type = "button";
+    shareBtn.className = "mc-btn mc-btn-ghost";
+    shareBtn.textContent = "공유";
+    shareBtn.title = "이 차트를 다른 구글 계정과 공유합니다";
+    shareBtn.addEventListener("click", () => withBusy(shareBtn, "공유 설정 중…", () => shellStartSharing(chart.id, chart.name)));
+
+    actions.appendChild(csvBtn);
+    actions.appendChild(calAddBtn);
+    actions.appendChild(calRemoveBtn);
+    actions.appendChild(shareBtn);
+  } else {
+    if (chart.role === "owner" || chart.role === "admin") {
+      /* (요청사항) "공유 관리" 안에 멤버 목록이 이미 보이므로, 따로 있던
+         "공유 구성원 보기" 버튼은 없애고 이 버튼 이름만 바꾼다. */
+      const manageBtn = document.createElement("button");
+      manageBtn.type = "button";
+      manageBtn.className = "mc-btn mc-btn-ghost";
+      manageBtn.textContent = "공유 권한/사용자 설정";
+      manageBtn.title = "이 차트의 공유 멤버를 관리합니다";
+      manageBtn.addEventListener("click", () => shellOpenShareModal(chart.chartId, chart.name, true, chart.role));
+      actions.appendChild(manageBtn);
+    }
+
+    /* (공유 기능 추가분) 캘린더/CSV는 뷰어 포함 모든 권한에서 가능. */
+    const sharedCsvBtn = document.createElement("button");
+    sharedCsvBtn.type = "button";
+    sharedCsvBtn.className = "mc-btn mc-btn-ghost";
+    sharedCsvBtn.textContent = "엑셀로 내보내기";
+    sharedCsvBtn.addEventListener("click", () => shellHandleSharedExportCsv(chart.chartId, box));
+    actions.appendChild(sharedCsvBtn);
+
+    const sharedCalAddBtn = document.createElement("button");
+    sharedCalAddBtn.type = "button";
+    sharedCalAddBtn.className = "mc-btn mc-btn-ghost";
+    sharedCalAddBtn.textContent = "캘린더에 추가";
+    sharedCalAddBtn.addEventListener("click", () => shellHandleSharedCalendarAdd(chart.chartId));
+    actions.appendChild(sharedCalAddBtn);
+
+    const sharedCalRemoveBtn = document.createElement("button");
+    sharedCalRemoveBtn.type = "button";
+    sharedCalRemoveBtn.className = "mc-btn mc-btn-ghost";
+    sharedCalRemoveBtn.textContent = "캘린더에서 삭제";
+    sharedCalRemoveBtn.addEventListener("click", () => shellHandleSharedCalendarRemove(chart.chartId));
+    actions.appendChild(sharedCalRemoveBtn);
+
+    if (chart.role !== "owner") {
+      const leaveBtn = document.createElement("button");
+      leaveBtn.type = "button";
+      leaveBtn.className = "mc-btn mc-btn-ghost";
+      leaveBtn.textContent = "공유 차트 나가기";
+      leaveBtn.addEventListener("click", () => shellHandleLeaveShared(chart.chartId, chart.name));
+      actions.appendChild(leaveBtn);
+    }
+  }
+
+  return actions;
+}
+
+function shellSharedStateKey(chart) {
+  return (chart.shared ? "1" : "0") + ":" + (chart.role || "");
 }
 
 function shellRenderList() {
@@ -5085,11 +5014,13 @@ function shellRenderList() {
   visible.forEach((chart) => {
     seen[chart.id] = true;
     let box = existing[chart.id];
+    const stateKey = shellSharedStateKey(chart);
 
     if (!box) {
       box = document.createElement("div");
       box.className = "mc-chart-box";
       box.dataset.chartId = chart.id;
+      box.dataset.sharedState = stateKey;
       if (chart.shared) box.classList.add("mc-chart-box-shared");
 
       const head = document.createElement("div");
@@ -5122,86 +5053,7 @@ function shellRenderList() {
       /* (추가분) 캘린더 연동 + CSV 내보내기: 이 차트 박스 위에만 둔다.
          (공유 기능 추가분) 공유 차트 박스는 아직 캘린더/CSV 버튼 대신
          공유 관련 버튼만 둔다 — 개인 차트 쪽은 전혀 안 바뀜. */
-      const actions = document.createElement("div");
-      actions.className = "mc-chart-box-actions";
-
-      if (!chart.shared) {
-        const csvBtn = document.createElement("button");
-        csvBtn.type = "button";
-        csvBtn.className = "mc-btn mc-btn-ghost";
-        csvBtn.textContent = "엑셀로 내보내기";
-        csvBtn.title = "이 차트의 작업을 CSV 파일로 내보냅니다";
-        csvBtn.addEventListener("click", () => shellHandleExportCsv(chart.id, box));
-
-        const calAddBtn = document.createElement("button");
-        calAddBtn.type = "button";
-        calAddBtn.className = "mc-btn mc-btn-ghost";
-        calAddBtn.textContent = "캘린더에 추가";
-        calAddBtn.title = "이 차트 전용 구글 캘린더를 만들어 작업을 추가합니다";
-        calAddBtn.addEventListener("click", () => shellHandleCalendarAdd(chart.id));
-
-        const calRemoveBtn = document.createElement("button");
-        calRemoveBtn.type = "button";
-        calRemoveBtn.className = "mc-btn mc-btn-ghost";
-        calRemoveBtn.textContent = "캘린더에서 삭제";
-        calRemoveBtn.title = "이 차트 전용 구글 캘린더를 삭제합니다";
-        calRemoveBtn.addEventListener("click", () => shellHandleCalendarRemove(chart.id));
-
-        const shareBtn = document.createElement("button");
-        shareBtn.type = "button";
-        shareBtn.className = "mc-btn mc-btn-ghost";
-        shareBtn.textContent = "공유";
-        shareBtn.title = "이 차트를 다른 구글 계정과 공유합니다";
-        shareBtn.addEventListener("click", () => withBusy(shareBtn, "공유 설정 중…", () => shellStartSharing(chart.id, chart.name)));
-
-        actions.appendChild(csvBtn);
-        actions.appendChild(calAddBtn);
-        actions.appendChild(calRemoveBtn);
-        actions.appendChild(shareBtn);
-      } else {
-        if (chart.role === "owner" || chart.role === "admin") {
-          /* (요청사항) "공유 관리" 안에 멤버 목록이 이미 보이므로, 따로 있던
-             "공유 구성원 보기" 버튼은 없애고 이 버튼 이름만 바꾼다. */
-          const manageBtn = document.createElement("button");
-          manageBtn.type = "button";
-          manageBtn.className = "mc-btn mc-btn-ghost";
-          manageBtn.textContent = "공유 권한/사용자 설정";
-          manageBtn.title = "이 차트의 공유 멤버를 관리합니다";
-          manageBtn.addEventListener("click", () => shellOpenShareModal(chart.chartId, chart.name, true, chart.role));
-          actions.appendChild(manageBtn);
-        }
-
-        /* (공유 기능 추가분) 캘린더/CSV는 뷰어 포함 모든 권한에서 가능. */
-        const sharedCsvBtn = document.createElement("button");
-        sharedCsvBtn.type = "button";
-        sharedCsvBtn.className = "mc-btn mc-btn-ghost";
-        sharedCsvBtn.textContent = "엑셀로 내보내기";
-        sharedCsvBtn.addEventListener("click", () => shellHandleSharedExportCsv(chart.chartId, box));
-        actions.appendChild(sharedCsvBtn);
-
-        const sharedCalAddBtn = document.createElement("button");
-        sharedCalAddBtn.type = "button";
-        sharedCalAddBtn.className = "mc-btn mc-btn-ghost";
-        sharedCalAddBtn.textContent = "캘린더에 추가";
-        sharedCalAddBtn.addEventListener("click", () => shellHandleSharedCalendarAdd(chart.chartId));
-        actions.appendChild(sharedCalAddBtn);
-
-        const sharedCalRemoveBtn = document.createElement("button");
-        sharedCalRemoveBtn.type = "button";
-        sharedCalRemoveBtn.className = "mc-btn mc-btn-ghost";
-        sharedCalRemoveBtn.textContent = "캘린더에서 삭제";
-        sharedCalRemoveBtn.addEventListener("click", () => shellHandleSharedCalendarRemove(chart.chartId));
-        actions.appendChild(sharedCalRemoveBtn);
-
-        if (chart.role !== "owner") {
-          const leaveBtn = document.createElement("button");
-          leaveBtn.type = "button";
-          leaveBtn.className = "mc-btn mc-btn-ghost";
-          leaveBtn.textContent = "공유 차트 나가기";
-          leaveBtn.addEventListener("click", () => shellHandleLeaveShared(chart.chartId, chart.name));
-          actions.appendChild(leaveBtn);
-        }
-      }
+      const actions = shellBuildActionsEl(chart, box);
       head.appendChild(actions);
 
       box.appendChild(head);
@@ -5219,8 +5071,12 @@ function shellRenderList() {
       wrap.className = "mc-chart-iframe-wrap";
 
       const iframe = document.createElement("iframe");
-      // 같은 index.html 을 ?chart=아이디 로 다시 열면, 그 창은 "그 차트 하나짜리"
-      // 기존 화면 그대로 동작한다 (위 IS_SHELL_MODE 분기 참고).
+      /* (중요, 버그 수정) app.js를 app2.js로 복사해 올 때 이 줄만 그대로
+         남아있었다 — 그래서 셸(차트 목록) 화면은 Firestore(app2.js)를
+         쓰면서도, 각 차트 박스 안의 iframe은 전부 예전 index.html을 열어서
+         그 안의 작업 추가/수정/삭제는 전부 예전 드라이브+Apps Script
+         경로로 갔다(원래 마이그레이션 사유였던 그 느림 그대로). index2.html을
+         열어야 이 박스 안도 Firestore로 동작한다. */
       iframe.src = "index.html?chart=" + encodeURIComponent(chart.id);
       iframe.setAttribute("scrolling", "no");
       iframe.addEventListener("load", () => shellAutoResize(iframe));
@@ -5229,6 +5085,22 @@ function shellRenderList() {
       box.appendChild(wrap);
 
       root.appendChild(box);
+    } else if (box.dataset.sharedState !== stateKey) {
+      /* (성능 수정) 공유 상태(shared/role)가 바뀐 "기존" 박스 — id가 더는
+         안 바뀌므로 여기로 들어온다. 박스/iframe을 통째로 지우지 않고
+         헤더의 버튼 영역과 mc-chart-box-shared 클래스만 새로 교체한다.
+         iframe은 그대로 두므로 Firebase를 다시 켤 필요가 없다 — 공유
+         전환/해제가 느렸던 가장 큰 원인이 이 재생성이었다. */
+      box.dataset.sharedState = stateKey;
+      box.classList.toggle("mc-chart-box-shared", !!chart.shared);
+      const oldActions = box.querySelector(".mc-chart-box-actions");
+      const newActions = shellBuildActionsEl(chart, box);
+      if (oldActions) {
+        oldActions.replaceWith(newActions);
+      } else {
+        const head = box.querySelector(".mc-chart-box-head");
+        if (head) head.appendChild(newActions);
+      }
     }
 
     box.querySelector(".mc-chart-box-name").textContent = chart.name;
@@ -5376,6 +5248,7 @@ function shellApplyPersonalChartsList(charts) {
   const shared = shellChartsCache.filter((c) => c.shared);
   shellChartsCache = personal.concat(shared);
   shellRenderList();
+  shellBroadcastRefreshToIframes();
 }
 
 function shellRenderManageRows() {
@@ -5557,9 +5430,13 @@ function initShell() {
  *  입력칸도 채워 둔다. 설정된 게 없으면 아무것도 안 바뀐다(기존 동작 그대로). */
 async function loadChartRangeMeta() {
   try {
-    const result = await apiPost("listCharts");
-    const list = Array.isArray(result.result) ? result.result : [];
-    const mine = list.find(c => c.id === CHART_ID);
+    /* (버그 수정) 예전엔 "listCharts"(개인 소유이면서 공유 안 된 차트만
+       돌려줌)에서 이 차트를 찾았는데, 지금 보고 있는 차트가 공유
+       중이면 그 목록에 아예 없어서 이름/표시기간을 못 찾았다 — 그래서
+       공유 차트를 열면 이름이 "Gantt Chart"로 보이고, 표시기간도
+       새로고침하면 사라지는 것처럼 보였다. 차트 자신의 ID로 직접
+       문서를 읽으면 개인/공유 상관없이 항상 맞게 찾는다. */
+    const mine = await getChartMetaCached(CHART_ID);
 
     if (mine && mine.rangeStart && mine.rangeEnd) {
       state.customStart = dateObj(mine.rangeStart);
@@ -5581,6 +5458,23 @@ async function loadChartRangeMeta() {
   } catch (error) {
     console.error(error);
     // 못 읽어와도 기존(연도 기준) 동작으로 계속 진행한다.
+  }
+}
+
+/* (버그 수정) 이 화면이 모음(셸) 페이지 안의 iframe으로 떠 있을 때,
+   이름/표시기간을 바꾸면 부모 페이지의 박스 머리글도 같이 바뀌어야
+   한다("위아래 연동"). 예전엔 window.parent.shellLoadCharts()를 직접
+   불렀는데, app2.js가 <script type="module">로 열려서 최상위 함수가
+   window에 안 걸리기 때문에(모듈 스코프는 전역이 아님) 이 호출은 항상
+   조용히 실패하고 있었다(같은 출처인데도). postMessage는 모듈 스코프와
+   무관하게 항상 동작하므로 이걸로 바꾼다. */
+function notifyParentMetaChanged() {
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "gantt:chartMetaChanged", chartId: CHART_ID }, window.location.origin);
+    }
+  } catch (error) {
+    // 교차 출처 등 예외적인 경우만 조용히 무시.
   }
 }
 
@@ -5641,23 +5535,7 @@ function initChartNameUI() {
           await apiPost("updateChart", { data: { id: CHART_ID, name: value } });
           state.chartName = value;
           showToast("차트 이름을 저장했습니다.");
-
-          /* (수정) 이 화면이 모음 페이지 안의 iframe으로 떠 있는 경우,
-             부모(모음) 페이지의 박스 머리글("기본 차트" 줄)은 자기만의
-             캐시(shellChartsCache)를 보고 있어서 여기서 이름을 바꿔도
-             저절로 안 바뀐다. 같은 출처(동일 index.html)라 부모 쪽
-             함수를 직접 불러 목록을 다시 불러오게 한다. */
-          try {
-            if (
-              window.parent &&
-              window.parent !== window &&
-              typeof window.parent.shellLoadCharts === "function"
-            ) {
-              window.parent.shellLoadCharts();
-            }
-          } catch (bridgeError) {
-            // 교차 출처 등으로 못 건드리면 조용히 무시한다 (새로고침하면 어차피 맞는다).
-          }
+          notifyParentMetaChanged();
 
         } catch (error) {
           label.textContent = original;
@@ -5729,6 +5607,7 @@ function initChartRangeUI() {
         resetRange();
         render();
         showToast("표시 기간을 저장했습니다.");
+        notifyParentMetaChanged();
       } catch (error) {
         showToast(error.message || "저장하지 못했습니다.", true, 0);
       }
@@ -5749,6 +5628,7 @@ function initChartRangeUI() {
         resetRange();
         render();
         showToast("연도 보기로 전환했습니다.");
+        notifyParentMetaChanged();
       } catch (error) {
         showToast(error.message || "전환하지 못했습니다.", true, 0);
       }
@@ -5776,11 +5656,23 @@ if (IS_SHELL_MODE) {
   if (shellView) shellView.style.display = "";
 
   initShell();
+  /* (버그 수정) 차트 박스 안의 iframe(개별 차트 화면)에서 이름/표시기간을
+     바꾸면, 거기서 postMessage로 알려준다(notifyParentMetaChanged 참고).
+     받으면 목록을 다시 불러와서 박스 머리글에 바로 반영한다. */
+  window.addEventListener("message", (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (event.data && event.data.type === "gantt:chartMetaChanged") {
+      shellLoadCharts();
+    }
+  });
   /* (공유 기능 추가분) */
   if (typeof initShareUi === "function") initShareUi();
-  /* (요청사항) 이미 로그인돼 있는 상태로 페이지를 새로 열었을 때도
-     프로필 사진을 바로 보여준다. */
-  refreshUserAvatar();
+  /* (Firebase 전환) 예전 refreshUserAvatar()는 삭제됐다 — 로그인
+     상태(프로필 사진 포함)는 이제 fb.onAuthChange 리스너가 Firebase
+     세션을 확인하는 즉시 setLoginButtonsUi()를 불러서 반영하므로,
+     여기서 따로 또 부를 필요가 없다(불렀다간 삭제된 함수라 에러만 남).
+     initShell()이 이미 setLoginButtonsUi()를 한 번 호출해 두므로
+     로그인 전 상태도 바로 올바르게 보인다. */
 
 } else {
 
@@ -5790,6 +5682,16 @@ if (IS_SHELL_MODE) {
 
   initChartRangeUI();
   initChartNameUI();
+  /* (버그 수정) 반대 방향: 모음(셸) 페이지의 "관리" 모달에서 이름을
+     바꾸는 등, 부모 쪽에서 메타가 바뀌었을 때 이 iframe이 알림을
+     받으면(shellLoadCharts 쪽에서 쏴줌) 자기 이름/표시기간을 다시
+     읽어온다. */
+  window.addEventListener("message", (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (event.data && event.data.type === "gantt:refreshMeta") {
+      loadChartRangeMeta();
+    }
+  });
   /* (공유 기능 추가분) 공유 차트인데 내 권한이 "뷰어"면, 수정 관련
      버튼/핸들을 숨긴다 (서버는 이미 막아주지만, 화면도 맞춰줌). */
   if (typeof initSharedViewerReadonly === "function") initSharedViewerReadonly();
@@ -5809,211 +5711,136 @@ if (IS_SHELL_MODE) {
 }
 
 /* =========================================================
- * ▼▼▼ 공유 기능 (추가분) ▼▼▼
+ * ▼▼▼ 공유 기능 (Firebase 전환판) ▼▼▼
  * ---------------------------------------------------------
- * 여기부터는 전부 "새로 추가되는" 코드다. 개인(비공유) 차트의
- * 기존 흐름(Drive API 직접 호출)은 단 한 줄도 바꾸지 않는다.
- * 이 블록 바로 위에서 apiGet/apiPost를 "같은 이름으로 다시"
- * 정의하는데, 이건 "공유 차트일 때만 새 경로로 보내고,
- * 개인 차트일 때는 원래 코드가 하던 것과 완전히 똑같은 동작"을
- * 하도록 만든 것이다 (개인 차트 쪽 분기는 원래 줄을 그대로 복사한 것).
- *
- * 공유 서버 주소(SHARE_SERVER_URL)는 Apps Script를 배포한 뒤
- * 나오는 웹 앱 URL로 바꿔 넣어야 동작한다. 바꾸기 전에는 공유
- * 관련 기능만 "공유 서버 주소가 설정되지 않았습니다" 오류를
- * 보여주고, 개인 차트 기능은 전혀 영향 없다.
+ * (중요) 개인 차트와 공유 차트가 이제 같은 Firestore charts/{chartId}
+ * 문서를 쓴다. 작업/카테고리 CRUD는 위쪽 apiGet/apiPost/coreApiPost가
+ * IS_SHARED_CHART 여부에 따라 chartId만 CHART_ID ↔ SHARED_CHART_ID로
+ * 바꿔서 그대로 처리하므로, 이 블록에서 apiGet/apiPost를 다시 정의하지
+ * 않는다(예전 Drive+ShareServer.gs 2중 구조 때는 꼭 필요했던 것).
+ * 여기 남은 shareFetch는 "멤버십"(초대/수락/거절/공유해제/멤버 목록)
+ * 전용 — SHARE_SERVER_URL(Apps Script)은 더 이상 쓰지 않는다.
  * ========================================================= */
 
-/* (share12) SHARE_SERVER_URL / SHARED_CHART_PREFIX / IS_SHARED_CHART /
-   SHARED_CHART_ID 는 파일 맨 앞(CHART_ID 선언 바로 다음)으로 옮겼다.
+/* (share12, 이제는 역사적 기록) SHARE_SERVER_URL / SHARED_CHART_PREFIX /
+   IS_SHARED_CHART / SHARED_CHART_ID 는 파일 맨 앞(CHART_ID 선언 바로 다음)으로 옮겼다.
    TDZ 버그 수정 이유는 그쪽 주석 참고. */
 
+/* (Firebase 전환) 개인 차트와 공유 차트가 이제 같은 Firestore
+   charts/{chartId} 문서를 쓰므로, 작업/카테고리 CRUD는 위쪽의 apiGet/
+   apiPost(coreApiPost)가 그대로 처리한다(IS_SHARED_CHART일 때는
+   SHARED_CHART_ID를 쓰도록 이미 분기돼 있다). 여기 남은 shareFetch는
+   "멤버십"(초대/수락/거절/공유해제/멤버 목록) 전용으로만 쓰인다 —
+   예전 ShareServer.gs 왕복을 Firestore 문서 업데이트로 바꾼 것. */
+
+function shareMembersShape(chart) {
+  const members = Object.keys((chart && chart.members) || {})
+    .filter((email) => chart.members[email])
+    .map((email) => ({
+      email, role: chart.members[email].role, status: chart.members[email].status
+    }));
+  return { members, ownerEmail: (chart && chart.ownerEmail) || "" };
+}
+
+async function fbListMyInvites(email) {
+  if (!email) return [];
+  const list = await fb.getInvitesOnce(email);
+  return list.map((c) => ({ chartId: c.id, chartName: c.name || "", ownerEmail: c.ownerEmail || "" }));
+}
+
+async function fbListMySharedCharts() {
+  if (!fbUser) return [];
+  const all = await fbGetChartsOnceShared();
+  return all
+    .filter((c) => (c.ownerId === fbUser.uid && hasAnyMembers(c)) || c.ownerId !== fbUser.uid)
+    .map((c) => ({
+      chartId: c.id, name: c.name || "", rangeStart: c.rangeStart || "", rangeEnd: c.rangeEnd || "",
+      role: c.ownerId === fbUser.uid ? "owner" : (((c.members || {})[fbUser.email] || {}).role || "viewer"),
+      ownerEmail: c.ownerEmail || ""
+    }));
+}
+
 async function shareFetch(action, params = {}) {
-  if (!accessToken) {
+  if (!fbUser) {
     throw new Error("로그인이 필요합니다. 'Google 로그인' 버튼을 눌러주세요.");
   }
-  if (!SHARE_SERVER_URL || SHARE_SERVER_URL.indexOf("PASTE_") === 0) {
-    throw new Error("공유 서버 주소가 아직 설정되지 않았습니다.");
-  }
+  const chartId = params.chartId;
 
-  let response;
-  try {
-    // Apps Script 웹앱은 application/json 요청에 대한 사전 확인(OPTIONS)을
-    // 처리하지 못해서, text/plain으로 보내고 서버에서 JSON.parse 한다.
-    response = await fetch(SHARE_SERVER_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ ...params, action, accessToken })
-    });
-  } catch (error) {
-    throw new Error("공유 서버에 연결하지 못했습니다.");
-  }
-
-  let body = null;
-  try {
-    body = await response.json();
-  } catch (error) {
-    body = null;
-  }
-
-  if (!body || body.ok === false) {
-    const err = new Error((body && body.error) || "공유 서버 요청에 실패했습니다.");
-    err.conflict = !!(body && body.conflict);
-    err.currentValue = body && body.currentValue;
-    err.currentVersion = body && body.currentVersion;
-    throw err;
-  }
-
-  return body.result !== undefined ? body.result : body;
-}
-
-/* ----- 공유 차트 항목(필드) 버전 캐시 (이 브라우저 탭 안에서만 유지) ----- */
-let sharedTaskVersions = {};
-let sharedCatVersions = {};
-
-async function sharedLoadChart() {
-  const data = await shareFetch("getSharedChartData", { chartId: SHARED_CHART_ID });
-
-  sharedTaskVersions = {};
-  sharedCatVersions = {};
-  (data.tasks || []).forEach((t) => { sharedTaskVersions[t.id] = t.versions || {}; });
-  (data.categories || []).forEach((c) => { sharedCatVersions[c.id] = c.versions || {}; });
-
-  /* (성능 개선) 예전에는 "내 권한이 뷰어인지"를 알아내려고
-     listMySharedCharts를 한 번 더 따로 호출했는데(차트 하나당 서버
-     왕복이 2번씩 나가던 원인), 이제 서버가 차트 데이터와 함께 내 role도
-     같이 내려주므로 여기서 바로 반영해서 그 추가 호출을 없앤다. */
-  if (data.myRole === "viewer") {
-    document.body.classList.add("shared-viewer-readonly");
-  }
-
-  return { tasks: data.tasks || [], categories: data.categories || [] };
-}
-
-async function sharedUpdateFields(kind, id, fields, versionMap) {
-  const keys = Object.keys(fields).filter((k) => k !== "id");
-
-  /* (성능 개선) 필드마다 버전이 따로 있어서 서로 독립적인 쓰기인데,
-     예전에는 한 필드씩 순서대로 기다렸다(상세창에서 이름+날짜+메모를
-     한 번에 고치면 서버 왕복이 그 개수만큼 차례로 쌓였다). 전부 동시에
-     보내고, 그중 가장 늦게 끝나는 것 하나만 기다리면 되게 바꾼다.
-     충돌 감지·버전 갱신 로직(updateSharedField 쪼 결과 처리)은 그대로다. */
-  const settled = await Promise.allSettled(
-    keys.map((field) => {
-      const expectedVersion = (versionMap[id] || {})[field] || 1;
-      return shareFetch("updateSharedField", {
-        chartId: SHARED_CHART_ID, kind, id, field, value: fields[field], expectedVersion
-      }).then((res) => ({ field, res }));
-    })
-  );
-
-  versionMap[id] = versionMap[id] || {};
-  let firstError = null;
-
-  settled.forEach((outcome, i) => {
-    const field = keys[i];
-    if (outcome.status === "fulfilled") {
-      const res = outcome.value.res;
-      if (!res.ok) {
-        if (res.conflict) {
-          versionMap[id][field] = res.currentVersion;
-        }
-        if (!firstError) {
-          firstError = new Error(res.error || "저장하지 못했습니다. 최신 내용으로 다시 시도해주세요.");
-        }
-      } else {
-        versionMap[id][field] = res.newVersion;
-      }
-    } else if (!firstError) {
-      firstError = outcome.reason;
-    }
-  });
-
-  if (firstError) {
-    throw firstError;
-  }
-}
-
-async function sharedApiPost(action, data) {
   switch (action) {
-    case "create": {
-      const row = await shareFetch("createSharedTask", { chartId: SHARED_CHART_ID, ...(data.data || {}) });
-      sharedTaskVersions[row.id] = row.versions || {};
-      return { ok: true, result: row.id };
+    case "listMySharedCharts":
+      return await fbListMySharedCharts();
+
+    case "listMyInvites":
+      return await fbListMyInvites(fbUser.email);
+
+    case "respondInvite": {
+      await fb.respondInvite(chartId, fbUser.email, !!params.accept);
+      invalidateChartMetaCache(chartId);
+      const invites = await fbListMyInvites(fbUser.email);
+      const sharedCharts = await fbListMySharedCharts();
+      return { invites, sharedCharts };
     }
 
-    case "update": {
-      const fields = data.data || {};
-      await sharedUpdateFields("task", fields.id, fields, sharedTaskVersions);
-      return { ok: true, result: null };
+    case "shareChart": {
+      await fb.inviteMember(chartId, params.targetEmail, params.role);
+      invalidateChartMetaCache(chartId);
+      const chart = await fb.getChartOnce(chartId);
+      if (!chart) throw new Error("차트를 찾을 수 없습니다.");
+      return shareMembersShape(chart);
     }
 
-    case "delete": {
-      await shareFetch("deleteSharedTask", { chartId: SHARED_CHART_ID, id: data.id });
-      delete sharedTaskVersions[data.id];
-      return { ok: true, result: null };
+    case "unshareMember":
+      /* removeMember가 memberEmails 변경에 맞춰 작업/카테고리의 ACL
+         복사값도 같이 재조정한다(firebase-core.js 참고). */
+      await fb.removeMember(chartId, params.targetEmail);
+      invalidateChartMetaCache(chartId);
+      return { ok: true };
+
+    case "getSharedChartMembers": {
+      const chart = await fb.getChartOnce(chartId);
+      if (!chart) throw new Error("차트를 찾을 수 없습니다.");
+      return shareMembersShape(chart);
     }
 
-    case "reorder": {
-      await shareFetch("reorderSharedTasks", { chartId: SHARED_CHART_ID, orderedIds: data.ids || [] });
-      return { ok: true, result: null };
+    case "getSharedChartData": {
+      const chart = await fb.getChartOnce(chartId);
+      if (!chart) throw new Error("차트를 찾을 수 없습니다.");
+      const [tasks, categories] = await Promise.all([
+        fb.getTasksOnce(chartId), fb.getCategoriesOnce(chartId)
+      ]);
+      const resolved = resolveTasksAndCats({ tasks, categories });
+      const myRole = chart.ownerId === fbUser.uid
+        ? "owner"
+        : (((chart.members || {})[fbUser.email] || {}).role || "viewer");
+      return {
+        name: chart.name || "", rangeStart: chart.rangeStart || "", rangeEnd: chart.rangeEnd || "",
+        tasks: resolved.tasks, categories: resolved.categories, myRole
+      };
     }
 
-    case "createCategory": {
-      const row = await shareFetch("createSharedCategory", { chartId: SHARED_CHART_ID, ...(data.data || {}) });
-      sharedCatVersions[row.id] = row.versions || {};
-      return { ok: true, result: row.id };
-    }
-
-    case "updateCategory": {
-      const fields = data.data || {};
-      await sharedUpdateFields("category", fields.id, fields, sharedCatVersions);
-      return { ok: true, result: null };
-    }
-
-    case "deleteCategory": {
-      await shareFetch("deleteSharedCategory", { chartId: SHARED_CHART_ID, id: data.id });
-      delete sharedCatVersions[data.id];
-      return { ok: true, result: null };
-    }
-
-    case "reorderCategories": {
-      await shareFetch("reorderSharedCategories", { chartId: SHARED_CHART_ID, orderedIds: data.ids || [] });
-      return { ok: true, result: null };
-    }
-
-    case "updateChart": {
-      const fields = data.data || {};
-      await shareFetch("updateSharedChartMeta", {
-        chartId: SHARED_CHART_ID, name: fields.name, rangeStart: fields.rangeStart, rangeEnd: fields.rangeEnd
+    case "updateSharedChartMeta":
+      await fb.updateChartMeta(chartId, {
+        name: params.name, rangeStart: params.rangeStart, rangeEnd: params.rangeEnd
       });
-      return { ok: true, result: null };
-    }
+      return { ok: true };
+
+    case "revokeAllSharing":
+      /* (단순해진 점) 새 차트로 복사할 필요 없이, 이 차트의 멤버만
+         전부 비우면 바로 "개인 전용" 상태로 돌아간다. revokeAllSharing이
+         멤버를 비우는 것과 작업/카테고리의 ACL 복사값 재조정을 한 번에
+         처리한다(firebase-core.js 참고). */
+      await fb.revokeAllSharing(chartId);
+      invalidateChartMetaCache(chartId);
+      return { ok: true };
+
+    case "leaveSharedChart":
+      await fb.removeMember(chartId, fbUser.email);
+      invalidateChartMetaCache(chartId);
+      return { ok: true };
 
     default:
-      throw new Error("공유 차트에서는 아직 지원하지 않는 기능입니다: " + action);
+      throw new Error("지원하지 않는 공유 기능입니다: " + action);
   }
-}
-
-/* (공유 기능 추가분) apiGet/apiPost를 다시 정의한다. 개인 차트(IS_SHARED_CHART가
-   거짓)일 때는 원래 코드와 완전히 동일하게 동작하고, 공유 차트일 때만 위의
-   sharedLoadChart/sharedApiPost로 보낸다. 원래 정의는 위쪽에 그대로 남아있고,
-   자바스크립트에서는 같은 이름의 함수를 나중에 또 선언하면 "나중 것"이
-   적용되므로, 개인 차트 쪽 동작은 바뀌지 않는다. */
-async function apiGet() {
-  if (IS_SHARED_CHART) {
-    return await sharedLoadChart();
-  }
-  const result = await request("loadChart", { chartId: CHART_ID });
-  return result.data;
-}
-
-async function apiPost(action, data = {}) {
-  if (IS_SHARED_CHART) {
-    return await sharedApiPost(action, data);
-  }
-  const mapped = CHART_ACTION_MAP[action] || action;
-  return request(mapped, { ...data, chartId: CHART_ID });
 }
 
 /* =========================================================
@@ -6066,40 +5893,14 @@ function shellRenderShareMembersList(members, ownerEmail, canManage, chartId) {
    추가를 한 번에 묶어서 하면, 추가 후 화면 갱신이 "전체 새로고침"
    없이는 반영이 안 되는 문제가 있었는데, 분리하면 멤버 추가 쪽은
    이미 빨라진 inline 갱신 경로를 그대로 타게 된다. */
+/* (Firebase 전환으로 단순해진 점) 예전엔 "공유로 전환"할 때 개인 Drive
+   데이터를 공유 서버로 복사하고 개인 차트를 지워야 했지만, 이제는 같은
+   Firestore 문서를 그대로 쓰므로 복사/삭제가 전혀 필요 없다. 그냥 공유
+   모달을 "아직 공유되지 않은 차트" 상태로 열어서, 사용자가 이메일을
+   추가하는 순간(shellHandleShareAdd) 처음으로 멤버가 생기며 공유 차트로
+   보이게 된다. */
 async function shellStartSharing(chartId, chartName) {
-  try {
-    try {
-      const loaded = await apiPostForChart("loadChart", chartId);
-      const meta = shellFindChart(chartId) || {};
-
-      await shareFetch("createSharedChart", {
-        chartId: chartId, name: meta.name || chartName || "", rangeStart: meta.rangeStart || "", rangeEnd: meta.rangeEnd || "",
-        tasks: (loaded.data || {}).tasks || [], categories: (loaded.data || {}).categories || []
-      });
-    } catch (error) {
-      /* (버그 수정) 아래 deleteChart 호출이 id 전달 버그 때문에 계속
-         실패해서, 서버 쪽엔 이미 공유로 등록됐는데 개인 차트는 안
-         지워진 채로 남아있을 수 있다. 그 경우 여기서 멈추지 않고
-         이어서 개인 차트만 마저 정리한다. */
-      if (!error || !/이미 공유로 등록된 차트/.test(error.message || "")) {
-        throw error;
-      }
-    }
-
-    /* (버그 수정) apiPostForChart는 body에 chartId만 넣어주는데,
-       deleteChart는 body.id를 읽는다 — id를 안 넘겨서 "삭제할 차트를
-       찾을 수 없습니다" 오류가 나며 여기서 멈춰버렸던 것(그래서 공유
-       차트가 안 만들어지는 것처럼 보였다). id를 명시적으로 넘긴다. */
-    await apiPostForChart("deleteChart", chartId, { id: chartId }); // 개인 드라이브 쪽 내용은 지움(서버로 옮겼으니까)
-
-    /* (요청사항) 공유 버튼을 누르면 모달을 자동으로 열어서 바로 사용자를
-       입력받지 않고, 그냥 공유 상태의 차트 박스만 아래에 만든다. 사용자
-       추가는 그 박스의 "공유 권한/사용자 설정" 버튼을 눌렀을 때 따로 한다. */
-    await shellLoadCharts();
-    showToast("공유 차트로 전환했습니다. 아래 차트에서 사용자를 추가하세요.");
-  } catch (error) {
-    showToast(error.message || "공유로 전환하지 못했습니다.", true, 0);
-  }
+  await shellOpenShareModal(chartId, chartName, false, "owner");
 }
 
 async function shellOpenShareModal(chartId, chartName, alreadyShared, myRole) {
@@ -6139,36 +5940,30 @@ async function shellHandleShareAdd() {
   if (!email) { showToast("이메일을 입력하세요.", true); return; }
 
   try {
+    /* (Firebase 전환으로 단순해진 점) 처음 초대하든 추가로 초대하든
+       Firestore 쪽은 이 차트 문서의 members 맵에 한 명 더하는 것으로
+       완전히 동일하다 — 데이터를 다른 곳으로 옮길 필요가 없다. */
+    const shareRes = await shareFetch("shareChart", { chartId, targetEmail: email, role });
+    showToast("공유를 추가했습니다.");
+    document.getElementById("mcShareEmail").value = "";
+    shellRenderShareMembersList(shareRes.members, shareRes.ownerEmail, true, chartId);
+
     if (!shareModalIsExisting) {
-      // 처음 공유로 전환하는 순간: 개인 차트 데이터를 공유 서버로 옮긴다.
-      const loaded = await apiPostForChart("loadChart", chartId);
-      const meta = shellFindChart(chartId) || {};
-
-      await shareFetch("createSharedChart", {
-        chartId: chartId, name: meta.name || "", rangeStart: meta.rangeStart || "", rangeEnd: meta.rangeEnd || "",
-        tasks: (loaded.data || {}).tasks || [], categories: (loaded.data || {}).categories || []
-      });
-      const shareRes = await shareFetch("shareChart", { chartId, targetEmail: email, role });
-      await apiPostForChart("deleteChart", chartId, { id: chartId }); // 개인 드라이브 쪽 내용은 지움(서버로 옮겼으니까) — (버그 수정) id를 넘겨야 함
-
       shareModalIsExisting = true;
-
-      showToast("공유를 추가했습니다.");
-      document.getElementById("mcShareEmail").value = "";
-      shellRenderShareMembersList(shareRes.members, shareRes.ownerEmail, true, chartId);
-      /* 개인→공유 전환은 차트 목록 자체(개인 쪽에서 빠지고 공유 쪽에
-         새로 생김)가 바뀌니, 이 경우만 전체 목록을 새로고침한다. */
-      await shellLoadCharts();
-    } else {
-      /* (성능 개선) 이미 공유 중인 차트에 멤버만 추가하는, 가장 흔한
-         경우다. 예전엔 추가 후 전체 차트 목록 새로고침(2개 요청) +
-         멤버 모달 재조회(1개 요청)까지 왕복 3번을 더 보냈는데, 이제
-         shareChart 응답에 최신 멤버 목록이 같이 오므로 그걸로 바로
-         화면을 갱신해서 왕복 1번으로 끝낸다. */
-      const shareRes = await shareFetch("shareChart", { chartId, targetEmail: email, role });
-      showToast("공유를 추가했습니다.");
-      document.getElementById("mcShareEmail").value = "";
-      shellRenderShareMembersList(shareRes.members, shareRes.ownerEmail, true, chartId);
+      /* (성능 수정) 개인→공유 전환 때문에 차트 목록 전체를 다시 긁어오던
+         것을, 이 차트 하나만 캐시에서 "공유 중" 상태로 바꿔주는 걸로
+         대체한다 — id가 더 이상 안 바뀌니(shellLoadCharts 주석 참고)
+         박스/iframe도 그대로 유지된 채 헤더 버튼만 바뀐다. */
+      const entry = shellChartsCache.find((c) => c.id === chartId);
+      if (entry) {
+        entry.shared = true;
+        entry.chartId = chartId;
+        entry.role = "owner";
+        shellRenderList();
+      } else {
+        // 캐시에 없는 경우(드묾)만 안전하게 전체 새로고침.
+        await shellLoadCharts();
+      }
     }
   } catch (error) {
     showToast(error.message || "공유하지 못했습니다.", true, 0);
@@ -6180,26 +5975,26 @@ async function shellHandleRevokeAllSharing() {
   if (!chartId) return;
 
   try {
-    const data = await shareFetch("getSharedChartData", { chartId });
+    /* (Firebase 전환으로 단순해진 점) 데이터를 새 차트로 복사했다가
+       예전 공유 차트를 지우는 과정 없이, 이 차트 문서의 멤버만 전부
+       비우면 바로 개인 전용 차트로 돌아간다(같은 chartId 그대로). */
     await shareFetch("revokeAllSharing", { chartId });
-
-    /* (성능 개선) 예전엔 카테고리/작업 하나당 개인 DB 파일을 통째로
-       다시 읽고 쓰는 요청을 따로 보내서(개수만큼 Drive 왕복), 작업이
-       많은 차트일수록 "개인 차트로 되돌리기"가 느려졌다. 이제 새 차트
-       생성 + 카테고리 전부 + 작업 전부를 한 번의 요청(createChartWithData)
-       으로 묶어서 보낸다. */
-    const created = await apiPost("createChartWithData", {
-      data: { name: data.name, rangeStart: data.rangeStart, rangeEnd: data.rangeEnd },
-      categories: data.categories || [],
-      tasks: data.tasks || []
-    });
-    const newChartId = created.result.id;
-
-    await shareFetch("deleteSharedChartCompletely", { chartId });
 
     shellCloseModal("mcShareModal");
     showToast("공유를 해제하고 개인 차트로 되돌렸습니다.");
-    await shellLoadCharts();
+
+    /* (성능 수정) 여기서도 전체 차트 목록을 다시 받아오지 않고, 이
+       차트 하나만 캐시에서 "개인 전용" 상태로 바꾼다. id는 그대로라
+       박스/iframe이 유지된다. */
+    const entry = shellChartsCache.find((c) => c.id === chartId);
+    if (entry) {
+      entry.shared = false;
+      delete entry.role;
+      delete entry.ownerEmail;
+      shellRenderList();
+    } else {
+      await shellLoadCharts();
+    }
   } catch (error) {
     showToast(error.message || "공유 해제에 실패했습니다.", true, 0);
   }
@@ -6314,7 +6109,7 @@ async function shellRenderInvites() {
   const box = document.getElementById("mcInvitesList");
   if (!box) return;
 
-  if (!accessToken) {
+  if (!fbUser) {
     box.innerHTML = "<div class=\"mc-hint\">먼저 Google 로그인을 해주세요.</div>";
     return;
   }
@@ -6334,7 +6129,7 @@ function shellApplySharedChartsList(sharedList) {
     return;
   }
   const shared = sharedList.map((c) => ({
-    id: "shared:" + c.chartId,
+    id: c.chartId, // (성능 수정) 접두사 없이 그대로 — shellLoadCharts 쪽 주석 참고
     chartId: c.chartId,
     name: c.name,
     rangeStart: c.rangeStart || "",
@@ -6349,6 +6144,7 @@ function shellApplySharedChartsList(sharedList) {
   const personal = shellChartsCache.filter((c) => !c.shared);
   shellChartsCache = personal.concat(shared);
   shellRenderList();
+  shellBroadcastRefreshToIframes();
 }
 
 function initShareUi() {
@@ -6512,6 +6308,14 @@ function initSharedCalendarUi() {
       try {
         await calDeleteCalendar(info.calendarId);
       } catch (error) {
+        /* (버그 수정, 문제 1) 개인 차트 쪽과 같은 이유로, 404(이미 없음)가
+           아닌 실제 실패는 그대로 알려주고 로컬 정보도 지우지 않아서
+           다시 시도할 수 있게 한다. */
+        if (error.status !== 404) {
+          console.error(error);
+          showToast(error.message || "캘린더에서 삭제하지 못했습니다.", true, 0);
+          return;
+        }
         console.error(error);
       }
     }
