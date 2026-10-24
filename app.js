@@ -34,6 +34,16 @@ const CHART_PARAM = new URLSearchParams(window.location.search).get("chart");
 const IS_SHELL_MODE = CHART_PARAM === null;
 const CHART_ID = CHART_PARAM || "default";
 
+/* (디자인 추가분) 모음(셸) 페이지의 차트 박스 안 iframe으로 떠 있을 때는
+   바깥 카드와 이어져 보이도록 배경을 흰색으로 바꾸기 위한 표시만 단다. */
+try {
+  if (window.self !== window.top) {
+    document.documentElement.classList.add("is-embedded");
+  }
+} catch (error) {
+  document.documentElement.classList.add("is-embedded");
+}
+
 /* (버그 수정, share12) 아래 4개는 원래 파일 뒤쪽(공유 기능 추가분)에
    선언돼 있었는데, 로그인이 이미 되어 있는 상태로 페이지를 열면
    initShell()이 스크립트 실행 중에 곧바로 shellLoadCharts()를 불러서
@@ -60,7 +70,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v2";
+const APP_VERSION = "2026-10-24-design-v4";
 
 
 /* =========================================================
@@ -90,8 +100,33 @@ let state = {
   scrollToToday: true,
 
   // 차트 전체 높이(px). 아래쪽 손잡이로 사용자가 직접 조절한다.
-  chartHeight: 420
+  chartHeight: 420,
+
+  /* (디자인 추가분) 접어 둔 카테고리 id 목록("기타"는 ""). 이 브라우저에만 기억한다. */
+  collapsedGroups: loadCollapsedGroups()
 };
+
+function collapsedStorageKey() {
+  return "ganttCollapsed:" + CHART_ID;
+}
+
+function loadCollapsedGroups() {
+  try {
+    const list = JSON.parse(localStorage.getItem(collapsedStorageKey()) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function toggleGroupCollapsed(groupId) {
+  const list = state.collapsedGroups;
+  const index = list.indexOf(groupId);
+  if (index >= 0) list.splice(index, 1);
+  else list.push(groupId);
+  try { localStorage.setItem(collapsedStorageKey(), JSON.stringify(list)); } catch (error) { /* 무시 */ }
+  render();
+}
 
 
 /* =========================================================
@@ -148,6 +183,7 @@ let accessToken = ""; // 캘린더 API 전용 토큰
 function setLoginButtonsUi() {
   document.querySelectorAll(".gantt-login-btn").forEach((btn) => {
     btn.textContent = fbUser ? "로그아웃" : "Google 로그인";
+    btn.classList.toggle("is-logged-in", !!fbUser);
     btn.title = fbUser ? "Google 계정에서 로그아웃합니다" : "Google 계정으로 로그인합니다";
   });
 
@@ -161,6 +197,15 @@ function setLoginButtonsUi() {
       avatar.classList.add("hidden");
       avatar.src = "";
     }
+  }
+
+  /* (디자인 추가분) 사진이 없는 계정은 이름 글자 동그라미로 대신 보여준다. */
+  const initial = document.getElementById("mcUserInitial");
+  if (initial) {
+    const showInitial = !!fbUser && !fbUser.photoURL;
+    initial.textContent = showInitial ? shellPersonInitial(fbUser.displayName || fbUser.email, true) : "";
+    initial.title = fbUser ? (fbUser.email || "") : "";
+    initial.classList.toggle("hidden", !showInitial);
   }
 }
 
@@ -1031,16 +1076,32 @@ async function apiGet() {
   return result.data;
 }
 
+/* (디자인 추가분) "마지막 저장" 시각. 읽기만 하는 요청은 빼고, 저장이
+   성공하면 localStorage에 적어 둔다. 같은 사이트의 셸 페이지와 iframe들이
+   모두 같은 값을 보고, 셸은 storage 이벤트로 바로 알아챈다. */
+const READ_ONLY_ACTIONS = ["load", "loadChart", "listCharts", "exportChartCsv"];
+const LAST_SAVED_KEY = "ganttLastSavedAt";
+
+function markSaved(action) {
+  if (READ_ONLY_ACTIONS.includes(action)) return;
+  try { localStorage.setItem(LAST_SAVED_KEY, String(Date.now())); } catch (error) { /* 무시 */ }
+  if (IS_SHELL_MODE && typeof shellUpdatePageSub === "function") shellUpdatePageSub();
+}
+
 async function apiPost(action, data = {}) {
   const chartId = IS_SHARED_CHART ? SHARED_CHART_ID : CHART_ID;
-  return coreApiPost(action, chartId, data);
+  const result = await coreApiPost(action, chartId, data);
+  markSaved(action);
+  return result;
 }
 
 /* 멀티 차트 화면에서 "지금 보고 있는 차트(CHART_ID)"가 아니라, 차트 박스마다
    있는 캘린더 추가/삭제·CSV 내보내기 버튼이 그 박스의 차트 하나만 골라서
    쓰는 용도. apiPost처럼 CHART_ID를 자동으로 끼워 넣지 않는다. */
 async function apiPostForChart(action, chartId, data = {}) {
-  return coreApiPost(action, chartId, data);
+  const result = await coreApiPost(action, chartId, data);
+  markSaved(action);
+  return result;
 }
 
 
@@ -1092,7 +1153,9 @@ async function withBusy(button, label, task) {
     return;
   }
 
-  const original = button ? button.textContent : "";
+  /* (디자인 추가분) 버튼 안에 아이콘(svg)이 있으므로 글자만이 아니라
+     내용 전체를 기억했다가 그대로 되돌린다. */
+  const original = button ? button.innerHTML : "";
 
   if (button) {
     button.disabled = true;
@@ -1107,7 +1170,7 @@ async function withBusy(button, label, task) {
   } finally {
     if (button) {
       button.disabled = false;
-      button.textContent = original;
+      button.innerHTML = original;
     }
   }
 }
@@ -1351,6 +1414,7 @@ function render() {
   if (clearBtn) clearBtn.classList.toggle("hidden", !state.customStart);
 
   syncRowRange();
+  fitChartHeightToRows();
   applyGanttHeight();
   computeRowScale();
 
@@ -1369,6 +1433,72 @@ function render() {
     state.scrollToToday = false;
     scrollTimelineToToday();
   }
+
+  syncRowHeightSlider();
+  postStatsToParent();
+}
+
+
+/* (디자인 추가분) 모음(셸) 페이지 카드 머리·사이드바에 보여줄 요약값을
+   부모에게 알려준다: 평균 진행률, 카테고리 목록, 지금 보이는 기간. */
+function postStatsToParent() {
+
+  if (IS_SHELL_MODE || window.parent === window) {
+    return;
+  }
+
+  const tasks = state.tasks || [];
+  const avg = tasks.length
+    ? Math.round(tasks.reduce((sum, t) => sum + (Math.max(0, Math.min(100, Number(t.progress) || 0))), 0) / tasks.length)
+    : null;
+
+  try {
+    window.parent.postMessage({
+      type: "gantt:stats",
+      chartId: CHART_ID,
+      avgProgress: avg,
+      categories: (state.categories || []).map(c => ({ name: c.name, color: validHex(c.color) || DEFAULT_COLOR })),
+      windowStart: dateKey(getYearStart()),
+      windowEnd: dateKey(getYearEnd()),
+      windowDays: windowTotalDays(),
+      custom: !!state.customStart,
+      readonly: document.body.classList.contains("shared-viewer-readonly")
+    }, window.location.origin);
+  } catch (error) {
+    // 교차 출처 등 예외적인 경우만 조용히 무시.
+  }
+}
+
+
+/* (디자인 추가분) 행 높이 슬라이더 = 차트 전체 높이(state.chartHeight).
+   아래쪽 높이 손잡이와 같은 값을 다루므로 기능은 그대로다. */
+const MIN_CHART_HEIGHT = 160;
+const MAX_CHART_HEIGHT = 1400;
+
+function rowHeightSliderMax() {
+  const natural = 52 + (state.rowsTotal || 0) * MAX_ROW_SCALE;
+  return Math.max(MIN_CHART_HEIGHT + 1, Math.min(MAX_CHART_HEIGHT, natural));
+}
+
+/* (디자인 추가분) 사용자가 높이를 직접 바꾸기 전까지는, 줄이 적으면 차트
+   높이를 내용에 딱 맞춘다(아래 빈 공간이 생기지 않게). 줄이 많으면 예전처럼
+   420px 안에 맞춰 줄이 촘촘해진다. */
+const DEFAULT_CHART_HEIGHT = 420;
+
+function fitChartHeightToRows() {
+  if (state.chartHeightTouched) return;
+  state.chartHeight = Math.max(
+    MIN_CHART_HEIGHT,
+    Math.min(DEFAULT_CHART_HEIGHT, 52 + (state.rowsTotal || 0))
+  );
+}
+
+function syncRowHeightSlider() {
+  const slider = document.getElementById("rowHeightSlider");
+  if (!slider) return;
+  const max = rowHeightSliderMax();
+  const ratio = (state.chartHeight - MIN_CHART_HEIGHT) / (max - MIN_CHART_HEIGHT);
+  slider.value = String(Math.round(Math.max(0, Math.min(1, ratio)) * 100));
 }
 
 
@@ -1551,13 +1681,18 @@ function groupTasks() {
  * 세로 범위 슬라이더는 이 하나의 목록에서 구간만 잘라 보여 준다.
  * ========================================================= */
 
-function buildRows() {
+function buildRows(includeCollapsed = false) {
 
   const rows = [];
 
   groupTasks().forEach(group => {
 
     rows.push({ kind: "category", group });
+
+    /* (디자인 추가분) 접은 카테고리는 아래 작업 줄을 그리지 않는다. */
+    if (!includeCollapsed && state.collapsedGroups.includes(group.id)) {
+      return;
+    }
 
     group.tasks.forEach(task => {
       rows.push({ kind: "task", group, task });
@@ -1794,6 +1929,30 @@ function renderTaskColumn() {
       }
 
 
+      /* (디자인 추가분) 카테고리 접기/펼치기 */
+      if (!group.empty) {
+
+        const collapsed = state.collapsedGroups.includes(group.id);
+        const toggle = document.createElement("button");
+
+        toggle.type = "button";
+        toggle.className = "category-toggle";
+        toggle.setAttribute("aria-expanded", String(!collapsed));
+        toggle.setAttribute("aria-label", group.name + (collapsed ? " 펼치기" : " 접기"));
+        toggle.title = collapsed ? "펼치기" : "접기";
+        toggle.innerHTML =
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>';
+
+        toggle.addEventListener("click", event => {
+          event.preventDefault();
+          event.stopPropagation();
+          toggleGroupCollapsed(group.id);
+        });
+
+        category.appendChild(toggle);
+      }
+
+
       const name = document.createElement("span");
 
       name.className = "category-label-name";
@@ -1820,6 +1979,18 @@ function renderTaskColumn() {
       }
 
       category.appendChild(name);
+
+
+      /* (디자인 추가분) 카테고리 이름 옆에 작업 개수 배지 */
+      if (!group.empty) {
+
+        const count = document.createElement("span");
+
+        count.className = "category-count";
+        count.textContent = String(group.tasks.length);
+
+        category.appendChild(count);
+      }
 
 
       if (group.empty) {
@@ -1888,6 +2059,8 @@ function renderTaskColumn() {
         aria-hidden="true"
       ><i></i><i></i><i></i></span>
 
+      ${ownerBadgeHtml(task, group)}
+
       <div
         class="task-name"
         title="두 번 눌러 이름 수정"
@@ -1943,6 +2116,26 @@ function renderTaskColumn() {
 
     rowsInner.appendChild(card);
   });
+}
+
+
+/* (디자인 추가분) 담당자가 적혀 있으면 이름 첫 글자를 카테고리 색 동그라미로 */
+function ownerBadgeHtml(task, group) {
+
+  const owner = String(task.owner || "").trim();
+
+  if (!owner) {
+    return "";
+  }
+
+  const color = validHex(group.color) || DEFAULT_COLOR;
+
+  return `<span
+        class="owner-badge"
+        style="--cat-color:${color}"
+        title="담당자: ${escapeHtml(owner)}"
+        aria-hidden="true"
+      >${escapeHtml(Array.from(owner)[0])}</span>`;
 }
 
 
@@ -2135,6 +2328,7 @@ function renderTimeline() {
 
       categoryRow.className = "timeline-category";
       categoryRow.style.height = h + "px";
+      categoryRow.style.setProperty("--cat-color", validHex(item.group.color) || DEFAULT_COLOR); /* (디자인 추가분) */
 
       rowsInner.appendChild(categoryRow);
 
@@ -2264,8 +2458,12 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
 
     const cell = document.createElement("div");
 
+    const now = new Date();
+
     cell.className =
-      "month-cell" + (month % 2 === 1 ? " alt" : "");
+      "month-cell" + (month % 2 === 1 ? " alt" : "") +
+      ((year === undefined ? state.year : year) === now.getFullYear() &&
+       month === now.getMonth() ? " current" : "");
 
     cell.title =
       `${year === undefined ? state.year : year}-${String(month + 1).padStart(2, "0")}`;
@@ -2388,12 +2586,8 @@ function renderTaskBar(
 
   bar.className = "task-bar";
 
-  /* 막대(색상 박스)는 줄 높이를 그대로 채운다(위아래 여백 없음).
-     줄 사이 구분은 줄 자체의 아래쪽 테두리선이 대신한다. */
-  const h = rowHeight || 72;
-
-  bar.style.top = "0px";
-  bar.style.height = h + "px";
+  /* (디자인 변경) 막대는 줄 가운데에 놓인 얇은 알약 모양이다. */
+  applyBarGeometry(bar, rowHeight || TASK_ROW_HEIGHT);
 
   const color = validHex(task.color) || DEFAULT_COLOR;
 
@@ -2417,11 +2611,7 @@ function renderTaskBar(
       style="width:${progress}%"
     ></div>
 
-    <div class="task-bar-text">
-      ${escapeHtml(task.name)}
-      &nbsp;
-      ${progress}%
-    </div>
+    <div class="task-bar-text">${progress}%</div>
   `;
 
   bar.addEventListener("click", event => {
@@ -2432,6 +2622,18 @@ function renderTaskBar(
   });
 
   row.appendChild(bar);
+}
+
+
+/* 줄 높이에 맞춰 막대(알약) 높이와 세로 위치를 정한다.
+   화면과 캡처가 같은 규칙을 쓴다. */
+function applyBarGeometry(bar, rowHeight) {
+
+  const barHeight =
+    Math.max(12, Math.min(26, Math.round(rowHeight * 0.46)));
+
+  bar.style.top = Math.round((rowHeight - barHeight) / 2) + "px";
+  bar.style.height = barHeight + "px";
 }
 
 
@@ -3873,7 +4075,7 @@ function buildCaptureChart() {
   const totalDays = windowTotalDays();
   const width = totalDays * CAPTURE_PX_PER_DAY;
 
-  const rows = buildRows(); // 세로 확대와 무관하게 전체 줄
+  const rows = buildRows(true); // 세로 확대·카테고리 접기와 무관하게 전체 줄
   const heights = rows.map(rowHeightOf);
   const contentHeight = heights.reduce((a, b) => a + b, 0);
 
@@ -4072,6 +4274,7 @@ function buildCaptureChart() {
 
       categoryRow.className = "timeline-category";
       categoryRow.style.height = heights[i] + "px";
+      categoryRow.style.setProperty("--cat-color", validHex(row.group.color) || DEFAULT_COLOR); /* (디자인 추가분) */
 
       rowsInnerRight.appendChild(categoryRow);
 
@@ -4111,8 +4314,7 @@ function buildCaptureChart() {
             bar.classList.add("light");
           }
 
-          bar.style.top = "0px";
-          bar.style.height = heights[i] + "px";
+          applyBarGeometry(bar, heights[i]);
           bar.style.left = (startDay / totalDays * 100) + "%";
           bar.style.width =
             ((endDay - startDay + 1) / totalDays * 100) + "%";
@@ -4634,15 +4836,14 @@ const heightHandle = document.getElementById("chartHeightHandle");
 
 if (heightHandle) {
 
-  const MIN_CHART_HEIGHT = 160;
-  const MAX_CHART_HEIGHT = 1400;
-
   heightHandle.addEventListener("pointerdown", event => {
 
     event.preventDefault();
 
     const startY = event.clientY;
     const startHeight = state.chartHeight;
+
+    state.chartHeightTouched = true;
 
     function move(e2) {
 
@@ -4655,6 +4856,7 @@ if (heightHandle) {
       computeRowScale();
       renderTaskColumn();
       renderTimeline();
+      syncRowHeightSlider();
     }
 
     function up() {
@@ -4664,6 +4866,28 @@ if (heightHandle) {
 
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+  });
+}
+
+
+const rowHeightSlider = document.getElementById("rowHeightSlider");
+
+if (rowHeightSlider) {
+
+  rowHeightSlider.addEventListener("input", () => {
+
+    const ratio = Number(rowHeightSlider.value) / 100;
+
+    state.chartHeightTouched = true;
+
+    state.chartHeight = Math.round(
+      MIN_CHART_HEIGHT + (rowHeightSliderMax() - MIN_CHART_HEIGHT) * ratio
+    );
+
+    applyGanttHeight();
+    computeRowScale();
+    renderTaskColumn();
+    renderTimeline();
   });
 }
 
@@ -4827,12 +5051,6 @@ function checkVersions() {
 
 let shellChartsCache = [];
 
-function shellRangeLabel(chart) {
-  if (chart.rangeStart && chart.rangeEnd) {
-    return chart.rangeStart + " ~ " + chart.rangeEnd;
-  }
-  return "표시 기간: 박스 안에서 설정";
-}
 
 async function shellLoadCharts() {
   try {
@@ -4887,7 +5105,8 @@ async function shellLoadCharts() {
       hasCalendar: false,
       shared: true,
       role: c.role,
-      ownerEmail: c.ownerEmail
+      ownerEmail: c.ownerEmail,
+      members: Array.isArray(c.members) ? c.members : []
     }));
 
     shellChartsCache = personal.concat(shared);
@@ -4921,93 +5140,430 @@ function shellBroadcastRefreshToIframes() {
    shellApplySharedChartsList 쪽 주석 참고) 같은 박스가 공유 상태만 바뀐
    채로 유지되므로, 아래 shellRenderList에서 상태가 바뀐 기존 박스에도
    이 함수를 다시 호출해 버튼 영역만 교체한다(iframe은 그대로 둔다). */
+/* (디자인 추가분) 차트 박스 머리 버튼에 쓰는 선 아이콘들 */
+const MC_ICONS = {
+  download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4"></path><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>',
+  calAdd: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M9 2.5v3M15 2.5v3"></path><path d="M12 13v5M9.5 15.5h5"></path>',
+  calRemove: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M9 2.5v3M15 2.5v3"></path><path d="M9.8 13.5l4.4 4.4M14.2 13.5l-4.4 4.4"></path>',
+  share: '<circle cx="18" cy="5" r="2.5"></circle><circle cx="6" cy="12" r="2.5"></circle><circle cx="18" cy="19" r="2.5"></circle><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4"></path>',
+  users: '<circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M16 4.5a3 3 0 0 1 0 6M21 20a5 5 0 0 0-3.5-4.8"></path>',
+  leave: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"></path><path d="M10 17l-5-5 5-5M5 12h11"></path>',
+  reload: '<path d="M3 12a9 9 0 0 1 15.3-6.4L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"></path><path d="M3 21v-5h5"></path>',
+  full: '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"></path>',
+  today: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17"></path><circle cx="12" cy="15" r="1.6" fill="currentColor" stroke="none"></circle>',
+  capture: '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-1.8h7l1 1.8h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"></path><circle cx="12" cy="12.5" r="3.4"></circle>',
+  more: '<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"></circle>'
+};
+
+function mcIconSvg(name) {
+  return '<svg class="mc-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    MC_ICONS[name] + "</svg>";
+}
+
+/* 아이콘 + 글자 버튼. iconOnly면 글자는 툴팁/스크린리더용으로만 쓴다. */
+function mcActionButton(icon, label, iconOnly) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "mc-btn mc-btn-ghost" + (iconOnly ? " mc-btn-icon" : "");
+  if (iconOnly) {
+    btn.innerHTML = mcIconSvg(icon);
+    btn.setAttribute("aria-label", label);
+    btn.title = label;
+  } else {
+    btn.innerHTML = mcIconSvg(icon) + "<span>" + escapeHtml(label) + "</span>";
+  }
+  return btn;
+}
+
+/* 캘린더 추가/삭제처럼 짝을 이루는 아이콘 버튼을 회색 알약 하나로 묶는다. */
+function mcButtonGroup(buttons) {
+  const group = document.createElement("div");
+  group.className = "mc-btn-group";
+  buttons.forEach((btn) => group.appendChild(btn));
+  return group;
+}
+
+/* (디자인 추가분) 차트 iframe 안의 기존 버튼을 카드 머리에서 누르기 위한 명령 전달.
+   iframe은 받은 명령대로 자기 화면의 원래 버튼을 눌러서 기존 동작을 그대로 쓴다. */
+function shellSendCommand(box, message) {
+  const iframe = box.querySelector("iframe");
+  if (!iframe || !iframe.contentWindow) return;
+  try {
+    iframe.contentWindow.postMessage({ type: "gantt:command", ...message }, window.location.origin);
+  } catch (error) {
+    // 교차 출처 등 예외적인 경우만 조용히 무시.
+  }
+}
+
+/* 이름 첫 글자(한글 세 글자 이름이면 뒤 두 글자) — 프로필 동그라미용 */
+function shellPersonInitial(nameOrEmail, long) {
+  const raw = String(nameOrEmail || "").trim();
+  const base = raw.includes("@") ? raw.split("@")[0] : raw;
+  const chars = Array.from(base);
+  if (!chars.length) return "?";
+  if (long && /^[가-힣]{2,4}$/.test(base)) return chars.slice(-2).join("");
+  return chars[0].toUpperCase();
+}
+
+function shellMyName() {
+  return fbUser ? (fbUser.displayName || fbUser.email || "") : "";
+}
+
+/* 공유 버튼 안 겹친 동그라미: 나 + 같이 보는 사람 수(+N) */
+function shellShareAvatarsHtml(chart) {
+  const me = (fbUser && fbUser.email) || "";
+  const others = chart.shared
+    ? Array.from(new Set((chart.members || []).concat(chart.ownerEmail ? [chart.ownerEmail] : [])))
+      .filter((email) => email && email !== me)
+    : [];
+
+  let html = '<span class="mc-avatar-stack" aria-hidden="true">' +
+    '<span class="mc-avatar mc-avatar-me">' + escapeHtml(Array.from(shellPersonInitial(shellMyName() || "나", true))[0]) + "</span>";
+  if (others.length) {
+    html += '<span class="mc-avatar mc-avatar-other" title="' + escapeAttr(others.join(", ")) + '">+' + others.length + "</span>";
+  }
+  return html + "</span>";
+}
+
+/* ---- 카드 머리의 ⋯ 메뉴 / 표시 기간 창 (화면에 하나씩만 띄운다) ---- */
+let shellOpenPopover = null;
+
+function shellClosePopover() {
+  if (shellOpenPopover) {
+    shellOpenPopover.remove();
+    shellOpenPopover = null;
+  }
+}
+
+function shellPlacePopover(pop, anchor, alignRight) {
+  document.body.appendChild(pop);
+  const rect = anchor.getBoundingClientRect();
+  const width = pop.offsetWidth;
+  let left = alignRight ? rect.right - width : rect.left;
+  left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+  pop.style.left = (left + window.scrollX) + "px";
+  pop.style.top = (rect.bottom + 6 + window.scrollY) + "px";
+  shellOpenPopover = pop;
+}
+
+document.addEventListener("click", (event) => {
+  if (shellOpenPopover && !shellOpenPopover.contains(event.target) && !event.target.closest("[data-popover-anchor]")) {
+    shellClosePopover();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") shellClosePopover();
+});
+
+function shellCanEdit(chart) {
+  if (chart.role === "viewer") return false;
+  const stats = shellStats[chart.id];
+  return !(stats && stats.readonly);
+}
+
+function shellOpenMoreMenu(chart, box, anchor) {
+  const wasOpen = shellOpenPopover && shellOpenPopover.dataset.for === "menu:" + chart.id;
+  shellClosePopover();
+  if (wasOpen) return;
+
+  const menu = document.createElement("div");
+  menu.className = "mc-popover mc-menu";
+  menu.dataset.for = "menu:" + chart.id;
+  menu.setAttribute("role", "menu");
+
+  const add = (label, onClick, danger) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "mc-menu-item" + (danger ? " mc-menu-item-danger" : "");
+    item.setAttribute("role", "menuitem");
+    item.textContent = label;
+    item.addEventListener("click", () => {
+      shellClosePopover();
+      onClick();
+    });
+    menu.appendChild(item);
+  };
+
+  if (shellCanEdit(chart)) {
+    add("이름 바꾸기", () => shellStartRename(chart, box));
+    add("표시 기간 설정", () => shellOpenRangePopover(chart, box, box.querySelector(".mc-chart-box-range")));
+  }
+
+  if (chart.shared && (chart.role === "owner" || chart.role === "admin")) {
+    add("공유 권한/사용자 설정", () => shellOpenShareModal(chart.chartId, chart.name, true, chart.role));
+  }
+
+  if (chart.shared && chart.role !== "owner") {
+    add("공유 구성원 보기", () => shellOpenMembersModal(chart.chartId));
+    add("공유 차트 나가기", () => shellHandleLeaveShared(chart.chartId, chart.name), true);
+  }
+
+  if (!menu.children.length) {
+    add("공유 구성원 보기", () => shellOpenMembersModal(chart.chartId));
+  }
+
+  shellPlacePopover(menu, anchor, true);
+}
+
+/* 기간 알약을 누르면 뜨는 "표시 기간(이 차트만)" 창.
+   저장/연도 보기로는 iframe 안의 원래 버튼이 그대로 처리한다. */
+function shellOpenRangePopover(chart, box, anchor) {
+  if (!anchor) return;
+  const wasOpen = shellOpenPopover && shellOpenPopover.dataset.for === "range:" + chart.id;
+  shellClosePopover();
+  if (wasOpen || !shellCanEdit(chart)) return;
+
+  const stats = shellStats[chart.id] || {};
+  const custom = stats.custom !== undefined ? stats.custom : !!(chart.rangeStart && chart.rangeEnd);
+
+  const pop = document.createElement("div");
+  pop.className = "mc-popover mc-range-pop";
+  pop.dataset.for = "range:" + chart.id;
+  pop.innerHTML =
+    '<div class="mc-range-pop-title">표시 기간(이 차트만)</div>' +
+    '<div class="mc-range-pop-row">' +
+      '<label class="mc-visually-hidden" for="mcRangePopStart">표시 시작일</label>' +
+      '<input id="mcRangePopStart" type="date">' +
+      '<span class="mc-range-pop-sep">~</span>' +
+      '<label class="mc-visually-hidden" for="mcRangePopEnd">표시 종료일</label>' +
+      '<input id="mcRangePopEnd" type="date">' +
+    "</div>" +
+    '<p class="mc-range-pop-hint">이 차트만 이 기간으로 보입니다. "연도 보기로"를 누르면 연도 단위로 돌아갑니다.</p>' +
+    '<div class="mc-range-pop-actions">' +
+      (custom ? '<button type="button" class="mc-btn mc-btn-ghost" data-act="clear">연도 보기로</button>' : "") +
+      '<button type="button" class="mc-btn mc-btn-ghost" data-act="cancel">취소</button>' +
+      '<button type="button" class="mc-btn mc-btn-primary" data-act="save">저장</button>' +
+    "</div>";
+
+  const startInput = pop.querySelector("#mcRangePopStart");
+  const endInput = pop.querySelector("#mcRangePopEnd");
+  startInput.value = chart.rangeStart || stats.windowStart || "";
+  endInput.value = chart.rangeEnd || stats.windowEnd || "";
+
+  pop.querySelector('[data-act="cancel"]').addEventListener("click", shellClosePopover);
+
+  pop.querySelector('[data-act="save"]').addEventListener("click", () => {
+    if (!startInput.value || !endInput.value) {
+      showToast("시작일과 종료일을 모두 입력하세요.", true);
+      return;
+    }
+    if (endInput.value < startInput.value) {
+      showToast("종료일은 시작일보다 빠를 수 없습니다.", true);
+      return;
+    }
+    shellSendCommand(box, { cmd: "setRange", start: startInput.value, end: endInput.value });
+    shellClosePopover();
+  });
+
+  const clearBtn = pop.querySelector('[data-act="clear"]');
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      shellSendCommand(box, { cmd: "clearRange" });
+      shellClosePopover();
+    });
+  }
+
+  shellPlacePopover(pop, anchor, false);
+  startInput.focus();
+}
+
+/* 카드 머리의 차트 이름을 눌러 그 자리에서 수정 (iframe 안에서 고치던 것과 같은 저장) */
+function shellStartRename(chart, box) {
+  const nameEl = box.querySelector(".mc-chart-box-name");
+  if (!nameEl || nameEl.querySelector("input") || !shellCanEdit(chart)) return;
+
+  const original = chart.name || "";
+  nameEl.textContent = "";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "chart-name-edit mc-chart-name-edit";
+  input.value = original;
+  input.maxLength = 200;
+  nameEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+
+  async function finish(save) {
+    if (done) return;
+    done = true;
+    const value = input.value.trim();
+    nameEl.textContent = save && value ? value : original;
+    if (!save || !value || value === original) return;
+
+    try {
+      await apiPostForChart("updateChart", chart.id, { data: { id: chart.id, name: value } });
+      invalidateChartMetaCache(chart.id);
+      chart.name = value;
+      showToast("차트 이름을 저장했습니다.");
+      shellLoadCharts();
+    } catch (error) {
+      nameEl.textContent = original;
+      showToast(error.message || "이름을 저장하지 못했습니다.", true, 0);
+    }
+  }
+
+  input.addEventListener("blur", () => finish(true));
+  input.addEventListener("click", (event) => event.stopPropagation());
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); input.blur(); }
+    else if (event.key === "Escape") { event.preventDefault(); done = true; nameEl.textContent = original; }
+  });
+}
+
+/* (디자인 변경) 시안 순서: [새로고침·전체·오늘·캡처] [엑셀로 내보내기]
+   [캘린더 추가·삭제] [공유] [⋯]. 공유 차트 전용 버튼은 ⋯ 메뉴로 옮겼다. */
 function shellBuildActionsEl(chart, box) {
   const actions = document.createElement("div");
   actions.className = "mc-chart-box-actions";
 
+  const tool = (icon, label, cmd) => {
+    const btn = mcActionButton(icon, label, true);
+    btn.addEventListener("click", () => shellSendCommand(box, { cmd }));
+    return btn;
+  };
+
+  const todayBtn = tool("today", "오늘 전후 보기", "today");
+  todayBtn.classList.add("mc-btn-active");
+
+  const toolGroup = mcButtonGroup([
+    tool("reload", "새로고침", "reload"),
+    tool("full", "전체 보기", "full"),
+    todayBtn,
+    tool("capture", "이미지로 캡처", "capture")
+  ]);
+  toolGroup.classList.add("mc-chart-tools");
+  actions.appendChild(toolGroup);
+
+  const csvBtn = mcActionButton("download", "엑셀로 내보내기", false);
+  csvBtn.classList.add("mc-chart-tools");
+  csvBtn.title = "이 차트의 작업을 CSV 파일로 내보냅니다";
+  csvBtn.addEventListener("click", () => chart.shared
+    ? shellHandleSharedExportCsv(chart.chartId, box)
+    : shellHandleExportCsv(chart.id, box));
+  actions.appendChild(csvBtn);
+
+  /* (공유 기능 추가분) 캘린더/CSV는 뷰어 포함 모든 권한에서 가능. */
+  const calAddBtn = mcActionButton("calAdd", "캘린더에 추가", true);
+  calAddBtn.title = "캘린더에 추가 — 이 차트 전용 구글 캘린더를 만들어 작업을 추가합니다";
+  calAddBtn.addEventListener("click", () => chart.shared
+    ? shellHandleSharedCalendarAdd(chart.chartId)
+    : shellHandleCalendarAdd(chart.id));
+
+  const calRemoveBtn = mcActionButton("calRemove", "캘린더에서 삭제", true);
+  calRemoveBtn.title = "캘린더에서 삭제 — 이 차트 전용 구글 캘린더를 삭제합니다";
+  calRemoveBtn.addEventListener("click", () => chart.shared
+    ? shellHandleSharedCalendarRemove(chart.chartId)
+    : shellHandleCalendarRemove(chart.id));
+
+  const calGroup = mcButtonGroup([calAddBtn, calRemoveBtn]);
+  calGroup.classList.add("mc-chart-tools");
+  actions.appendChild(calGroup);
+
+  const shareBtn = document.createElement("button");
+  shareBtn.type = "button";
+  shareBtn.className = "mc-btn mc-btn-ghost mc-btn-pill mc-share-btn";
+  shareBtn.innerHTML = shellShareAvatarsHtml(chart) + "<span>공유</span>";
   if (!chart.shared) {
-    const csvBtn = document.createElement("button");
-    csvBtn.type = "button";
-    csvBtn.className = "mc-btn mc-btn-ghost";
-    csvBtn.textContent = "엑셀로 내보내기";
-    csvBtn.title = "이 차트의 작업을 CSV 파일로 내보냅니다";
-    csvBtn.addEventListener("click", () => shellHandleExportCsv(chart.id, box));
-
-    const calAddBtn = document.createElement("button");
-    calAddBtn.type = "button";
-    calAddBtn.className = "mc-btn mc-btn-ghost";
-    calAddBtn.textContent = "캘린더에 추가";
-    calAddBtn.title = "이 차트 전용 구글 캘린더를 만들어 작업을 추가합니다";
-    calAddBtn.addEventListener("click", () => shellHandleCalendarAdd(chart.id));
-
-    const calRemoveBtn = document.createElement("button");
-    calRemoveBtn.type = "button";
-    calRemoveBtn.className = "mc-btn mc-btn-ghost";
-    calRemoveBtn.textContent = "캘린더에서 삭제";
-    calRemoveBtn.title = "이 차트 전용 구글 캘린더를 삭제합니다";
-    calRemoveBtn.addEventListener("click", () => shellHandleCalendarRemove(chart.id));
-
-    const shareBtn = document.createElement("button");
-    shareBtn.type = "button";
-    shareBtn.className = "mc-btn mc-btn-ghost";
-    shareBtn.textContent = "공유";
     shareBtn.title = "이 차트를 다른 구글 계정과 공유합니다";
     shareBtn.addEventListener("click", () => withBusy(shareBtn, "공유 설정 중…", () => shellStartSharing(chart.id, chart.name)));
-
-    actions.appendChild(csvBtn);
-    actions.appendChild(calAddBtn);
-    actions.appendChild(calRemoveBtn);
-    actions.appendChild(shareBtn);
+  } else if (chart.role === "owner" || chart.role === "admin") {
+    /* (요청사항) "공유 관리" 안에 멤버 목록이 이미 보인다. */
+    shareBtn.title = "공유 권한/사용자 설정";
+    shareBtn.addEventListener("click", () => shellOpenShareModal(chart.chartId, chart.name, true, chart.role));
   } else {
-    if (chart.role === "owner" || chart.role === "admin") {
-      /* (요청사항) "공유 관리" 안에 멤버 목록이 이미 보이므로, 따로 있던
-         "공유 구성원 보기" 버튼은 없애고 이 버튼 이름만 바꾼다. */
-      const manageBtn = document.createElement("button");
-      manageBtn.type = "button";
-      manageBtn.className = "mc-btn mc-btn-ghost";
-      manageBtn.textContent = "공유 권한/사용자 설정";
-      manageBtn.title = "이 차트의 공유 멤버를 관리합니다";
-      manageBtn.addEventListener("click", () => shellOpenShareModal(chart.chartId, chart.name, true, chart.role));
-      actions.appendChild(manageBtn);
-    }
-
-    /* (공유 기능 추가분) 캘린더/CSV는 뷰어 포함 모든 권한에서 가능. */
-    const sharedCsvBtn = document.createElement("button");
-    sharedCsvBtn.type = "button";
-    sharedCsvBtn.className = "mc-btn mc-btn-ghost";
-    sharedCsvBtn.textContent = "엑셀로 내보내기";
-    sharedCsvBtn.addEventListener("click", () => shellHandleSharedExportCsv(chart.chartId, box));
-    actions.appendChild(sharedCsvBtn);
-
-    const sharedCalAddBtn = document.createElement("button");
-    sharedCalAddBtn.type = "button";
-    sharedCalAddBtn.className = "mc-btn mc-btn-ghost";
-    sharedCalAddBtn.textContent = "캘린더에 추가";
-    sharedCalAddBtn.addEventListener("click", () => shellHandleSharedCalendarAdd(chart.chartId));
-    actions.appendChild(sharedCalAddBtn);
-
-    const sharedCalRemoveBtn = document.createElement("button");
-    sharedCalRemoveBtn.type = "button";
-    sharedCalRemoveBtn.className = "mc-btn mc-btn-ghost";
-    sharedCalRemoveBtn.textContent = "캘린더에서 삭제";
-    sharedCalRemoveBtn.addEventListener("click", () => shellHandleSharedCalendarRemove(chart.chartId));
-    actions.appendChild(sharedCalRemoveBtn);
-
-    if (chart.role !== "owner") {
-      const leaveBtn = document.createElement("button");
-      leaveBtn.type = "button";
-      leaveBtn.className = "mc-btn mc-btn-ghost";
-      leaveBtn.textContent = "공유 차트 나가기";
-      leaveBtn.addEventListener("click", () => shellHandleLeaveShared(chart.chartId, chart.name));
-      actions.appendChild(leaveBtn);
-    }
+    shareBtn.title = "공유 구성원 보기";
+    shareBtn.addEventListener("click", () => shellOpenMembersModal(chart.chartId));
   }
+  actions.appendChild(shareBtn);
+
+  const moreBtn = mcActionButton("more", "더보기", true);
+  moreBtn.dataset.popoverAnchor = "1";
+  moreBtn.addEventListener("click", () => shellOpenMoreMenu(chart, box, moreBtn));
+  actions.appendChild(moreBtn);
 
   return actions;
 }
 
 function shellSharedStateKey(chart) {
-  return (chart.shared ? "1" : "0") + ":" + (chart.role || "");
+  return (chart.shared ? "1" : "0") + ":" + (chart.role || "") + ":" +
+    (chart.members || []).join(",") + ":" + shellMyName();
+}
+
+/* ---- 차트 iframe이 알려준 요약값(평균 진행률·카테고리·보이는 기간) ---- */
+const shellStats = {};
+let shellActiveChartId = "";
+
+function shellRangeLabel(chart) {
+  const stats = shellStats[chart.id];
+  if (stats && stats.windowStart) {
+    return stats.windowStart + " ~ " + stats.windowEnd + " · " + stats.windowDays + "일";
+  }
+  if (chart.rangeStart && chart.rangeEnd) {
+    return chart.rangeStart + " ~ " + chart.rangeEnd;
+  }
+  return "";
+}
+
+function shellApplyStats(chartId) {
+  const chart = shellFindChart(chartId);
+  const stats = shellStats[chartId];
+  const box = document.getElementById("mc-chart-anchor-" + chartId);
+  if (!chart || !stats) return;
+
+  if (box) {
+    box.querySelector(".mc-chart-box-range").textContent = shellRangeLabel(chart);
+    const avg = box.querySelector(".mc-chart-box-avg");
+    avg.textContent = stats.avgProgress === null ? "" : "평균 진행률 " + stats.avgProgress + "%";
+    box.classList.toggle("mc-chart-box-readonly", !shellCanEdit(chart));
+  }
+
+  const pct = document.querySelector('.mc-sidebar-item[data-chart-id="' + CSS.escape(chartId) + '"] .mc-sidebar-item-pct');
+  if (pct) pct.textContent = stats.avgProgress === null ? "" : stats.avgProgress + "%";
+
+  if (chartId === shellActiveChartId) shellRenderLegend();
+}
+
+/* 사이드바 아래 카테고리 범례: 지금 선택된 차트의 카테고리 */
+function shellRenderLegend() {
+  const wrap = document.getElementById("mcSidebarLegend");
+  const list = document.getElementById("mcSidebarLegendList");
+  if (!wrap || !list) return;
+
+  const stats = shellStats[shellActiveChartId];
+  const categories = (stats && stats.categories) || [];
+  list.innerHTML = "";
+  categories.forEach((cat) => {
+    const item = document.createElement("span");
+    item.className = "mc-legend-item";
+    const dot = document.createElement("span");
+    dot.className = "mc-legend-dot";
+    dot.style.background = cat.color;
+    item.appendChild(dot);
+    item.appendChild(document.createTextNode(cat.name));
+    list.appendChild(item);
+  });
+  wrap.classList.toggle("hidden", !categories.length);
+}
+
+/* "총 N개 · 마지막 저장 …" */
+function shellUpdatePageSub() {
+  const sub = document.getElementById("mcChartCount");
+  if (!sub) return;
+  const count = shellChartsCache.filter((c) => !c.hidden).length;
+  let text = "총 " + count + "개";
+  try {
+    const savedAt = Number(localStorage.getItem(LAST_SAVED_KEY));
+    if (savedAt) {
+      text += " · 마지막 저장 " + new Date(savedAt).toLocaleString("ko-KR", {
+        year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit"
+      });
+    }
+  } catch (error) { /* 무시 */ }
+  sub.textContent = text;
 }
 
 function shellRenderList() {
@@ -5039,33 +5595,43 @@ function shellRenderList() {
       const head = document.createElement("div");
       head.className = "mc-chart-box-head";
 
-      /* (추가분) 접기/펼치기 토글: 펼친 상태엔 ▼ 만, 접힌 상태엔 ▶ + "펼치기". */
+      /* (추가분) 접기/펼치기 토글. 화살표 방향은 aria-expanded 값을 보고 CSS가 돌린다. */
       const toggle = document.createElement("button");
       toggle.type = "button";
       toggle.className = "mc-chart-toggle";
       toggle.setAttribute("aria-expanded", "true");
       toggle.title = "접기/펼치기";
+      toggle.setAttribute("aria-label", "접기/펼치기");
       toggle.innerHTML =
-        '<span class="mc-chart-toggle-arrow">▼</span>' +
-        '<span class="mc-chart-toggle-label"></span>';
+        '<svg class="mc-chart-toggle-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>';
       head.appendChild(toggle);
 
       const headInfo = document.createElement("div");
       headInfo.className = "mc-chart-box-headinfo";
 
-      const name = document.createElement("div");
+      /* (디자인 추가분) 이름을 누르면 그 자리에서 이름 수정 */
+      const name = document.createElement("h2");
       name.className = "mc-chart-box-name";
+      name.title = "눌러서 이 차트 이름 수정";
+      name.addEventListener("click", () => shellStartRename(shellFindChart(chart.id) || chart, box));
       headInfo.appendChild(name);
 
-      const range = document.createElement("div");
+      /* (디자인 추가분) 기간 알약을 누르면 표시 기간 설정 창 */
+      const range = document.createElement("button");
+      range.type = "button";
       range.className = "mc-chart-box-range";
+      range.title = "표시 기간 설정";
+      range.dataset.popoverAnchor = "1";
+      range.addEventListener("click", () => shellOpenRangePopover(shellFindChart(chart.id) || chart, box, range));
       headInfo.appendChild(range);
+
+      /* 접혔을 때만 보이는 평균 진행률 */
+      const avg = document.createElement("span");
+      avg.className = "mc-chart-box-avg";
+      headInfo.appendChild(avg);
 
       head.appendChild(headInfo);
 
-      /* (추가분) 캘린더 연동 + CSV 내보내기: 이 차트 박스 위에만 둔다.
-         (공유 기능 추가분) 공유 차트 박스는 아직 캘린더/CSV 버튼 대신
-         공유 관련 버튼만 둔다 — 개인 차트 쪽은 전혀 안 바뀜. */
       const actions = shellBuildActionsEl(chart, box);
       head.appendChild(actions);
 
@@ -5074,24 +5640,16 @@ function shellRenderList() {
       toggle.addEventListener("click", () => {
         const collapsed = box.classList.toggle("mc-chart-box-collapsed");
         toggle.setAttribute("aria-expanded", String(!collapsed));
-        toggle.querySelector(".mc-chart-toggle-arrow").textContent =
-          collapsed ? "▶" : "▼";
-        toggle.querySelector(".mc-chart-toggle-label").textContent =
-          collapsed ? "펼치기" : "";
       });
 
       const wrap = document.createElement("div");
       wrap.className = "mc-chart-iframe-wrap";
 
       const iframe = document.createElement("iframe");
-      /* (중요, 버그 수정) app.js를 app2.js로 복사해 올 때 이 줄만 그대로
-         남아있었다 — 그래서 셸(차트 목록) 화면은 Firestore(app2.js)를
-         쓰면서도, 각 차트 박스 안의 iframe은 전부 예전 index.html을 열어서
-         그 안의 작업 추가/수정/삭제는 전부 예전 드라이브+Apps Script
-         경로로 갔다(원래 마이그레이션 사유였던 그 느림 그대로). index2.html을
-         열어야 이 박스 안도 Firestore로 동작한다. */
+      /* (중요, 버그 수정) 이 박스 안도 Firestore로 동작하도록 index.html?chart= 를 연다. */
       iframe.src = "index.html?chart=" + encodeURIComponent(chart.id);
       iframe.setAttribute("scrolling", "no");
+      iframe.title = chart.name + " 차트";
       iframe.addEventListener("load", () => shellAutoResize(iframe));
 
       wrap.appendChild(iframe);
@@ -5099,11 +5657,8 @@ function shellRenderList() {
 
       root.appendChild(box);
     } else if (box.dataset.sharedState !== stateKey) {
-      /* (성능 수정) 공유 상태(shared/role)가 바뀐 "기존" 박스 — id가 더는
-         안 바뀌므로 여기로 들어온다. 박스/iframe을 통째로 지우지 않고
-         헤더의 버튼 영역과 mc-chart-box-shared 클래스만 새로 교체한다.
-         iframe은 그대로 두므로 Firebase를 다시 켤 필요가 없다 — 공유
-         전환/해제가 느렸던 가장 큰 원인이 이 재생성이었다. */
+      /* (성능 수정) 공유 상태가 바뀐 "기존" 박스 — 박스/iframe은 그대로 두고
+         헤더의 버튼 영역과 mc-chart-box-shared 클래스만 새로 교체한다. */
       box.dataset.sharedState = stateKey;
       box.classList.toggle("mc-chart-box-shared", !!chart.shared);
       const oldActions = box.querySelector(".mc-chart-box-actions");
@@ -5116,7 +5671,8 @@ function shellRenderList() {
       }
     }
 
-    box.querySelector(".mc-chart-box-name").textContent = chart.name;
+    const nameEl = box.querySelector(".mc-chart-box-name");
+    if (!nameEl.querySelector("input")) nameEl.textContent = chart.name;
     box.querySelector(".mc-chart-box-range").textContent = shellRangeLabel(chart);
   });
 
@@ -5124,53 +5680,111 @@ function shellRenderList() {
     if (!seen[id]) existing[id].remove();
   });
 
+  if (!visible.some((c) => c.id === shellActiveChartId)) {
+    shellActiveChartId = visible.length ? visible[0].id : "";
+  }
+
   shellRenderSidebar(visible); /* (사이드바 추가분) */
+  visible.forEach((chart) => shellApplyStats(chart.id));
+  shellRenderLegend();
+  shellUpdatePageSub();
+
+  shellApplySearch();
+}
+
+/* (디자인 추가분) 차트 검색: 이름에 검색어가 들어간 차트 박스/사이드바 항목만 보인다.
+   목록 데이터는 건드리지 않고 화면 표시만 거른다. */
+function shellApplySearch() {
+  const input = document.getElementById("mcSearch");
+  const query = input ? input.value.trim().toLowerCase() : "";
+
+  shellChartsCache.forEach((chart) => {
+    const match = !query || String(chart.name || "").toLowerCase().includes(query);
+    const box = document.getElementById("mc-chart-anchor-" + chart.id);
+    if (box) box.classList.toggle("mc-search-miss", !match);
+  });
+
+  document.querySelectorAll("#shellView .mc-sidebar-list .mc-sidebar-item").forEach((item) => {
+    const match = !query || String(item.title || "").toLowerCase().includes(query);
+    item.classList.toggle("mc-search-miss", !match);
+  });
 }
 
 /* ▼▼▼ 접이식 사이드바 (추가분) ▼▼▼
    왼쪽 사이드바에 지금 보이는 차트 목록을 나열하고, 클릭하면 아래
    해당 차트 박스로 스크롤 이동한다. 데이터는 shellRenderList가 이미
    들고 있는 목록(visible)을 그대로 재사용하므로 별도 조회가 없다. */
+/* 남이 공유해 준 차트(내가 소유자가 아닌 공유 차트) */
+function shellIsReceivedChart(chart) {
+  return !!chart.shared && chart.role !== "owner";
+}
+
 function shellRenderSidebar(visible) {
   const list = document.getElementById("mcSidebarList");
   if (!list) return;
 
+  /* (디자인 추가분) 공유받은 차트는 "공유받은 차트" 칸에 따로 모은다. */
+  const sharedList = document.getElementById("mcSidebarSharedList");
+  const sharedSection = document.getElementById("mcSidebarSharedSection");
+
   list.innerHTML = "";
+  if (sharedList) sharedList.innerHTML = "";
+  if (sharedSection) {
+    sharedSection.classList.toggle("hidden", !sharedList || !visible.some(shellIsReceivedChart));
+  }
 
   visible.forEach((chart) => {
+    const received = shellIsReceivedChart(chart);
     const item = document.createElement("button");
     item.type = "button";
-    item.className = "mc-sidebar-item" + (chart.shared ? " mc-sidebar-item-shared" : "");
+    item.className = "mc-sidebar-item" + (received ? " mc-sidebar-item-shared" : "");
+    item.classList.toggle("active", chart.id === shellActiveChartId);
+    item.dataset.chartId = chart.id;
     item.title = chart.name;
 
+    /* 내 차트는 점, 공유받은 차트는 소유자 첫 글자 동그라미 */
     const dot = document.createElement("span");
     dot.className = "mc-sidebar-item-dot";
+    if (received) {
+      dot.textContent = shellPersonInitial(chart.ownerEmail);
+      dot.setAttribute("aria-hidden", "true");
+    }
     item.appendChild(dot);
+
+    /* (디자인 추가분) 사이드바를 접었을 때는 점 대신 이름 첫 글자 타일로 보인다. */
+    const initial = document.createElement("span");
+    initial.className = "mc-sidebar-item-initial";
+    initial.setAttribute("aria-hidden", "true");
+    initial.textContent = Array.from(String(chart.name || "?").trim() || "?")[0];
+    item.appendChild(initial);
 
     const name = document.createElement("span");
     name.className = "mc-sidebar-item-name";
     name.textContent = chart.name;
     item.appendChild(name);
 
+    /* 평균 진행률 (차트 iframe이 알려주면 채워진다) */
+    const pct = document.createElement("span");
+    pct.className = "mc-sidebar-item-pct";
+    if (!received) item.appendChild(pct);
+
     item.addEventListener("click", () => {
+      shellActiveChartId = chart.id;
+      document.querySelectorAll(".mc-sidebar-item.active").forEach((el) => el.classList.remove("active"));
+      item.classList.add("active");
+      shellRenderLegend();
+
       const target = document.getElementById("mc-chart-anchor-" + chart.id);
       if (!target) return;
       target.classList.remove("mc-chart-box-collapsed");
       const toggle = target.querySelector(".mc-chart-toggle");
       if (toggle) {
         toggle.setAttribute("aria-expanded", "true");
-        const arrow = toggle.querySelector(".mc-chart-toggle-arrow");
-        if (arrow) arrow.textContent = "▼";
-        const label = toggle.querySelector(".mc-chart-toggle-label");
-        if (label) label.textContent = "";
       }
       target.scrollIntoView({ behavior: "smooth", block: "start" });
-
-      document.querySelectorAll(".mc-sidebar-item.active").forEach((el) => el.classList.remove("active"));
-      item.classList.add("active");
     });
 
-    list.appendChild(item);
+    (received && sharedList ? sharedList : list).appendChild(item);
   });
 }
 
@@ -5196,6 +5810,18 @@ function shellInitSidebarToggle() {
       if (mainAddBtn) mainAddBtn.click();
     });
   }
+
+  /* (디자인 추가분) 사이드바 아래 "차트 관리"는 상단 "차트 관리" 버튼과 같은 동작 */
+  const manageBtn = document.getElementById("mcSidebarManageBtn");
+  if (manageBtn) {
+    manageBtn.addEventListener("click", () => {
+      const mainManageBtn = document.getElementById("mcManageBtn");
+      if (mainManageBtn) mainManageBtn.click();
+    });
+  }
+
+  const search = document.getElementById("mcSearch");
+  if (search) search.addEventListener("input", shellApplySearch);
 }
 /* ▲▲▲ 접이식 사이드바 (추가분) 끝 ▲▲▲ */
 
@@ -5724,6 +6350,32 @@ function initChartRangeUI() {
     }));
   }
 }
+
+/* (디자인 추가분) 셸의 카드 머리에서 온 명령 처리 */
+function handleParentCommand(data) {
+
+  const click = id => {
+    const button = document.getElementById(id);
+    if (button && !button.disabled) button.click();
+  };
+
+  switch (data.cmd) {
+    case "reload": click("reloadBtn"); break;
+    case "full": click("fullBtn"); break;
+    case "today": click("todayBtn"); break;
+    case "capture": click("captureBtn"); break;
+    case "setRange": {
+      const startInput = document.getElementById("chartRangeStart");
+      const endInput = document.getElementById("chartRangeEnd");
+      if (startInput) startInput.value = data.start || "";
+      if (endInput) endInput.value = data.end || "";
+      click("chartRangeSaveBtn");
+      break;
+    }
+    case "clearRange": click("chartRangeClearBtn"); break;
+    default: break;
+  }
+}
 /* ▲▲▲ 멀티 차트: 커스텀 표시 기간 (추가분) 끝 ▲▲▲ */
 
 
@@ -5753,6 +6405,15 @@ if (IS_SHELL_MODE) {
     if (event.data && event.data.type === "gantt:chartMetaChanged") {
       shellLoadCharts();
     }
+    /* (디자인 추가분) 차트 iframe이 보내는 요약값(평균 진행률·카테고리·기간) */
+    if (event.data && event.data.type === "gantt:stats" && event.data.chartId) {
+      shellStats[event.data.chartId] = event.data;
+      shellApplyStats(event.data.chartId);
+    }
+  });
+  /* (디자인 추가분) iframe에서 저장하면 "마지막 저장" 시각을 바로 바꾼다. */
+  window.addEventListener("storage", (event) => {
+    if (event.key === LAST_SAVED_KEY) shellUpdatePageSub();
   });
   /* (공유 기능 추가분) */
   if (typeof initShareUi === "function") initShareUi();
@@ -5779,6 +6440,12 @@ if (IS_SHELL_MODE) {
     if (event.origin !== window.location.origin) return;
     if (event.data && event.data.type === "gantt:refreshMeta") {
       loadChartRangeMeta();
+    }
+
+    /* (디자인 추가분) 카드 머리(셸)에 있는 버튼들이 보내는 명령.
+       이 화면의 기존 버튼을 그대로 눌러서 기존 동작을 그대로 쓴다. */
+    if (event.data && event.data.type === "gantt:command") {
+      handleParentCommand(event.data);
     }
   });
   /* (공유 기능 추가분) 공유 차트인데 내 권한이 "뷰어"면, 수정 관련
@@ -5845,7 +6512,9 @@ async function fbListMySharedCharts() {
     .map((c) => ({
       chartId: c.id, name: c.name || "", rangeStart: c.rangeStart || "", rangeEnd: c.rangeEnd || "",
       role: c.ownerId === fbUser.uid ? "owner" : (((c.members || {})[fbUser.email] || {}).role || "viewer"),
-      ownerEmail: c.ownerEmail || ""
+      ownerEmail: c.ownerEmail || "",
+      /* (디자인 추가분) 공유 버튼에 "+N" 동그라미를 띄우기 위한 멤버 이메일 목록 */
+      members: Object.keys(c.members || {}).filter((email) => c.members[email])
     }));
 }
 
@@ -6243,7 +6912,8 @@ function shellApplySharedChartsList(sharedList) {
     hasCalendar: false,
     shared: true,
     role: c.role,
-    ownerEmail: c.ownerEmail
+    ownerEmail: c.ownerEmail,
+    members: Array.isArray(c.members) ? c.members : []
   }));
   const personal = shellChartsCache.filter((c) => !c.shared);
   shellChartsCache = personal.concat(shared);
