@@ -1729,7 +1729,7 @@ function groupTasks() {
  * 세로 범위 슬라이더는 이 하나의 목록에서 구간만 잘라 보여 준다.
  * ========================================================= */
 
-function buildRows(includeCollapsed = false) {
+function buildRows() {
 
   const rows = [];
 
@@ -1738,7 +1738,7 @@ function buildRows(includeCollapsed = false) {
     rows.push({ kind: "category", group });
 
     /* (디자인 추가분) 접은 카테고리는 아래 작업 줄을 그리지 않는다. */
-    if (!includeCollapsed && state.collapsedGroups.includes(group.id)) {
+    if (state.collapsedGroups.includes(group.id)) {
       return;
     }
 
@@ -2709,8 +2709,9 @@ function renderTaskBar(
    화면과 캡처가 같은 규칙을 쓴다. */
 function applyBarGeometry(bar, rowHeight) {
 
+  /* (요청사항) 막대를 살짝 두껍게: 기본 줄(48px)에서 27px */
   const barHeight =
-    Math.max(12, Math.min(26, Math.round(rowHeight * 0.46)));
+    Math.max(14, Math.min(32, Math.round(rowHeight * 0.56)));
 
   bar.style.top = Math.round((rowHeight - barHeight) / 2) + "px";
   bar.style.height = barHeight + "px";
@@ -4136,332 +4137,55 @@ if (nextYear) {
 
 
 /* =========================================================
- * CAPTURE  (지금 확대 상태와 무관하게, 연도 전체를 이미지로 저장)
+ * CAPTURE  (지금 화면에 보이는 차트를 그대로 이미지로 저장)
  *
- * 화면의 확대/축소 상태를 그대로 두고, 화면 밖(-99999px)에 그 연도
- * 전체(1/1~12/31, 모든 카테고리·작업을 원래 크기로)를 따로 그려서
- * 캡처한 뒤 없앤다. 작업이 많은 연도일수록 이미지가 길어진다.
+ * (요청사항) 예전엔 화면 밖에 기간 전체를 원래 크기로 따로 그려서
+ * 찍었다. 이제는 화면의 차트(.gantt)를 그대로 찍는다 — 확대한 기간,
+ * 세로로 고른 줄, 접은 카테고리, 오늘 선이 화면과 똑같이 나온다.
+ * 세로 표시 범위 슬라이더(조작용 손잡이)만 이미지에서 뺀다.
  * ========================================================= */
-
-const CAPTURE_PX_PER_DAY = 8;
-
-function buildCaptureChart() {
-
-  const totalDays = windowTotalDays();
-  const width = totalDays * CAPTURE_PX_PER_DAY;
-
-  const rows = buildRows(true); // 세로 확대·카테고리 접기와 무관하게 전체 줄
-  const heights = rows.map(rowHeightOf);
-  const contentHeight = heights.reduce((a, b) => a + b, 0);
-
-  const root = document.createElement("div");
-
-  root.className = "gantt capture-gantt";
-  root.style.cssText =
-    "position:fixed; left:-99999px; top:0; width:" +
-    (260 + width) + "px; height:" +
-    (52 + contentHeight) + "px;";
-
-  /* 왼쪽 목록 */
-  const col = document.createElement("div");
-
-  col.className = "task-column";
-
-  const header = document.createElement("div");
-
-  header.className = "task-header";
-  header.textContent =
-    (state.customStart
-      ? dateKey(getYearStart()) + " ~ " + dateKey(getYearEnd())
-      : state.year + "년") + " 작업";
-
-  col.appendChild(header);
-
-  const rowsInnerLeft = document.createElement("div");
-
-  rowsInnerLeft.className = "rows-inner";
-
-  col.appendChild(rowsInnerLeft);
-
-  rows.forEach((row, i) => {
-
-    if (row.kind === "category") {
-
-      const group = row.group;
-      const category = document.createElement("div");
-
-      category.className = "category-label";
-      category.style.height = heights[i] + "px";
-      applyCategoryTint(category, group.color); /* (디자인 추가분) */
-
-      if (group.id) {
-
-        const dot = document.createElement("span");
-
-        dot.className = "cat-dot";
-        dot.style.background = validHex(group.color) || DEFAULT_COLOR;
-
-        category.appendChild(dot);
-      }
-
-      const name = document.createElement("span");
-
-      name.className = "category-label-name";
-      name.textContent = group.name;
-
-      category.appendChild(name);
-
-      rowsInnerLeft.appendChild(category);
-
-      return;
-    }
-
-    const task = row.task;
-    const card = document.createElement("div");
-
-    card.className = "task-card";
-    card.style.height = heights[i] + "px";
-
-    card.innerHTML =
-      '<div class="task-name">' + escapeHtml(task.name) + "</div>";
-
-    rowsInnerLeft.appendChild(card);
-  });
-
-
-  /* 오른쪽 타임라인 */
-  const timelineEl = document.createElement("div");
-
-  timelineEl.className = "timeline";
-  timelineEl.style.overflow = "visible";
-
-  const inner = document.createElement("div");
-
-  inner.className = "timeline-inner";
-  inner.style.width = width + "px";
-  inner.style.setProperty(
-    "--week-width",
-    (CAPTURE_PX_PER_DAY * 7) + "px"
-  );
-
-  timelineEl.appendChild(inner);
-
-
-  /* 월 + 주 헤더 (연도 전체 기준) */
-  const headerRow = document.createElement("div");
-
-  headerRow.className = "week-header";
-
-  const monthRow = document.createElement("div");
-
-  monthRow.className = "month-row";
-
-  const monthCols = [];
-  let acc = 0;
-
-  /* (추가분) 커스텀 기간이 없으면 windowMonths()가 예전처럼
-     state.year의 1~12월 12개를, 각 달의 실제 날짜수로 돌려준다. */
-  windowMonths().forEach(({ month, days }) => {
-
-    const cell = document.createElement("div");
-
-    cell.className =
-      "month-cell" + (month % 2 === 1 ? " alt" : "");
-
-    cell.textContent = (month + 1) + "월";
-
-    monthRow.appendChild(cell);
-    monthCols.push((days * CAPTURE_PX_PER_DAY) + "px");
-
-    acc += days;
-  });
-
-  monthRow.style.gridTemplateColumns = monthCols.join(" ");
-  headerRow.appendChild(monthRow);
-
-  const weekRow = document.createElement("div");
-
-  weekRow.className = "week-row";
-
-  const weekCols = [];
-
-  for (let offset = 0; offset < totalDays; offset += 7) {
-
-    const days = Math.min(7, totalDays - offset);
-    const date = dateFromYearDay(offset);
-    const cell = document.createElement("div");
-
-    cell.className = "week-cell";
-    cell.textContent =
-      (date.getMonth() + 1) + "/" + date.getDate();
-
-    weekRow.appendChild(cell);
-    weekCols.push((days * CAPTURE_PX_PER_DAY) + "px");
-  }
-
-  weekRow.style.gridTemplateColumns = weekCols.join(" ");
-  headerRow.appendChild(weekRow);
-
-  inner.appendChild(headerRow);
-
-
-  /* 월별 뒷배경 */
-  const bands = document.createElement("div");
-
-  bands.className = "month-bands";
-
-  /* 공용 .month-bands 스타일은 세로 창(뷰포트) 기준으로 top:0 인데,
-     여기서는 그런 창이 없으니 헤더(52px) 아래부터 시작하도록
-     직접 지정한다. 안 그러면 배경이 헤더 글자를 덮어 버린다. */
-  bands.style.top = "52px";
-
-  let dayAcc = 0;
-
-  windowMonths().forEach(({ month, days }) => {
-
-    const band = document.createElement("div");
-
-    band.className =
-      "month-band" + (month % 2 === 1 ? " alt" : "");
-
-    band.style.left = (dayAcc * CAPTURE_PX_PER_DAY) + "px";
-    band.style.width = (days * CAPTURE_PX_PER_DAY) + "px";
-
-    bands.appendChild(band);
-    dayAcc += days;
-  });
-
-  inner.appendChild(bands);
-
-
-  /* 줄 */
-  const rowsInnerRight = document.createElement("div");
-
-  rowsInnerRight.className = "rows-inner";
-
-  inner.appendChild(rowsInnerRight);
-
-  rows.forEach((row, i) => {
-
-    if (row.kind === "category") {
-
-      const categoryRow = document.createElement("div");
-
-      categoryRow.className = "timeline-category";
-      categoryRow.style.height = heights[i] + "px";
-      applyCategoryTint(categoryRow, row.group.color); /* (디자인 추가분) */
-
-      rowsInnerRight.appendChild(categoryRow);
-
-      return;
-    }
-
-    const task = row.task;
-    const barRow = document.createElement("div");
-
-    barRow.className = "timeline-task-row";
-    barRow.style.height = heights[i] + "px";
-
-    if (task.start && task.end) {
-
-      const start = dateObj(task.start);
-      const end = dateObj(task.end);
-
-      if (start && end) {
-
-        const yearStart = getYearStart();
-        const yearEnd = getYearEnd();
-        const clippedStart = start < yearStart ? yearStart : start;
-        const clippedEnd = end > yearEnd ? yearEnd : end;
-
-        if (clippedStart <= clippedEnd) {
-
-          const startDay = dayOffsetFromYearStart(clippedStart);
-          const endDay = dayOffsetFromYearStart(clippedEnd);
-
-          const bar = document.createElement("div");
-
-          bar.className = "task-bar";
-
-          const color = validHex(task.color) || DEFAULT_COLOR;
-
-          if (isLightColor(color)) {
-            bar.classList.add("light");
-          }
-
-          applyBarGeometry(bar, heights[i]);
-          bar.style.left = (startDay / totalDays * 100) + "%";
-          bar.style.width =
-            ((endDay - startDay + 1) / totalDays * 100) + "%";
-          bar.style.background = color;
-
-          const progress =
-            Math.max(0, Math.min(100, Number(task.progress) || 0));
-
-          bar.innerHTML =
-            '<div class="task-progress" style="width:' +
-            progress + '%"></div>' +
-            '<div class="task-bar-text">' +
-            escapeHtml(task.name) + "&nbsp;" + progress + "%</div>";
-
-          barRow.appendChild(bar);
-        }
-      }
-    }
-
-    rowsInnerRight.appendChild(barRow);
-  });
-
-
-  root.appendChild(col);
-  root.appendChild(timelineEl);
-
-  return root;
-}
-
 
 async function captureChart() {
 
   const button = document.getElementById("captureBtn");
+
+  const gantt = document.querySelector("#chartSingleView .gantt");
 
   if (typeof html2canvas === "undefined") {
     alert("캡처 기능을 불러오지 못했습니다. 인터넷 연결을 확인하세요.");
     return;
   }
 
+  if (!gantt) {
+    return;
+  }
+
   await withBusy(button, "캡처 중…", async () => {
-
-    const root = buildCaptureChart();
-
-    document.body.appendChild(root);
 
     try {
 
-      // 폰트/레이아웃이 자리 잡을 시간을 아주 조금 준다.
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      const canvas = await html2canvas(root, {
+      const canvas = await html2canvas(gantt, {
         backgroundColor: "#ffffff",
-        scale: 2
+        scale: 2,
+        ignoreElements: element => element.id === "vRangeSlider"
       });
+
+      const from = dateKey(dateFromYearDay(state.rangeStart));
+      const to = dateKey(dateFromYearDay(state.rangeEnd));
 
       const link = document.createElement("a");
 
       // 한글 파일명은 일부 브라우저/환경에서 저장 시 깨지거나
       // "download"로만 저장되는 경우가 있어, 영문+숫자로 안전하게 만든다.
-      link.download = "gantt-chart-" + state.year + ".png";
+      link.download = "gantt-chart-" + from + "_" + to + ".png";
       link.href = canvas.toDataURL("image/png");
       link.click();
 
-      showToast(state.year + "년 전체 차트를 저장했습니다.");
+      showToast("화면에 보이는 차트(" + from + " ~ " + to + ")를 저장했습니다.");
 
     } catch (error) {
 
       alert("캡처 실패\n" + error.message);
-
-    } finally {
-
-      root.remove();
     }
   });
 }

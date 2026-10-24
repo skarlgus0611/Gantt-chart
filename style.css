@@ -3558,11 +3558,6 @@ main {
   font-size: 10px;
 }
 
-/* 캡처 이미지는 막대 안에 작업명도 함께 보여준다 */
-.capture-gantt .task-bar-text {
-  justify-content: flex-start;
-}
-
 /* 오늘 날짜 세로 빨간 선 */
 .today-line {
   width: 2px;
