@@ -2796,91 +2796,174 @@ function showTaskDetail(id) {
   ].join("");
 
 
+  const taskColor = validHex(task.color) || DEFAULT_COLOR;
+  const progress = Math.max(0, Math.min(100, Number(task.progress) || 0));
+
+  /* (디자인 변경) 머리: 색 점 + 작업명 + 카테고리·기간 요약,
+     본문: 칸별로 묶은 입력, 아래: 삭제 | 취소·저장 */
   panel.innerHTML = `
 
     <div class="detail-title">
 
-      <h2>${escapeHtml(task.name)}</h2>
+      <div class="detail-head">
+        <span class="detail-swatch" id="detailHeadSwatch" style="background:${escapeAttr(taskColor)}"></span>
+        <div class="detail-head-text">
+          <h2 id="detailHeadName">${escapeHtml(task.name)}</h2>
+          <div class="detail-head-meta">
+            <span class="detail-chip" id="detailHeadCategory"></span>
+            <span class="detail-head-range" id="detailHeadRange"></span>
+          </div>
+        </div>
+      </div>
 
       <button
         id="closeDetail"
         type="button"
+        class="detail-close"
         aria-label="닫기"
-      >×</button>
+      ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
 
     </div>
 
 
     <div class="detail-grid">
 
-      <div class="detail-item">
+      <label class="detail-item detail-item-wide">
         <span>작업명</span>
         <input id="detailName" value="${escapeAttr(task.name)}">
-      </div>
+      </label>
 
-      <div class="detail-item">
+      <label class="detail-item">
         <span>카테고리</span>
         <select id="detailCategory">${categoryOptions}</select>
+      </label>
+
+      <label class="detail-item">
+        <span>담당자</span>
+        <input id="detailOwner" value="${escapeAttr(task.owner)}" placeholder="이름">
+      </label>
+
+      <div class="detail-item detail-item-wide">
+        <span>기간</span>
+        <div class="detail-dates">
+          <input id="detailStart" type="date" value="${escapeAttr(task.start)}" aria-label="시작일">
+          <span class="detail-dates-sep">~</span>
+          <input id="detailEnd" type="date" value="${escapeAttr(task.end)}" aria-label="종료일">
+        </div>
       </div>
 
-      <div class="detail-item">
-        <span>시작일</span>
-        <input id="detailStart" type="date" value="${escapeAttr(task.start)}">
-      </div>
-
-      <div class="detail-item">
-        <span>종료일</span>
-        <input id="detailEnd" type="date" value="${escapeAttr(task.end)}">
-      </div>
-
-      <div class="detail-item">
-        <span>진행률</span>
-        <input
-          id="detailProgress"
-          type="number"
-          min="0"
-          max="100"
-          value="${Number(task.progress) || 0}"
-        >
-      </div>
+      <label class="detail-item">
+        <span>대상처</span>
+        <input id="detailTarget" value="${escapeAttr(task.target)}" placeholder="학교 / 회사 / 개인 등">
+      </label>
 
       <div class="detail-item">
         <span>막대 색상</span>
-        <input
-          id="detailColor"
-          type="color"
-          value="${escapeAttr(validHex(task.color) || DEFAULT_COLOR)}"
-        >
+        <label class="detail-color">
+          <input id="detailColor" type="color" value="${escapeAttr(taskColor)}" aria-label="막대 색상">
+          <span id="detailColorHex">${escapeHtml(taskColor.toUpperCase())}</span>
+        </label>
       </div>
 
-      <div class="detail-item">
-        <span>대상처</span>
-        <input id="detailTarget" value="${escapeAttr(task.target)}">
-      </div>
-
-      <div class="detail-item">
-        <span>담당자</span>
-        <input id="detailOwner" value="${escapeAttr(task.owner)}">
+      <div class="detail-item detail-item-full">
+        <span>진행률</span>
+        <div class="detail-progress">
+          <input id="detailProgressRange" type="range" min="0" max="100" step="5" value="${progress}" aria-label="진행률 슬라이더" style="--progress-color:${escapeAttr(taskColor)};--progress:${progress}%">
+          <div class="detail-progress-num">
+            <input id="detailProgress" type="number" min="0" max="100" value="${progress}" aria-label="진행률(%)">
+            <span>%</span>
+          </div>
+        </div>
       </div>
 
     </div>
 
 
-    <div class="detail-memo">
+    <label class="detail-memo">
       <span>메모</span>
-      <textarea id="detailMemo">${escapeHtml(task.memo)}</textarea>
-    </div>
+      <textarea id="detailMemo" placeholder="메모를 남겨 두세요">${escapeHtml(task.memo)}</textarea>
+    </label>
 
 
     <div class="detail-actions">
 
-      <button id="deleteTaskBtn" type="button">삭제</button>
+      <button id="deleteTaskBtn" type="button" class="detail-delete">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>
+        삭제
+      </button>
+
+      <span class="detail-actions-spacer"></span>
+
+      <button id="cancelDetailBtn" type="button">취소</button>
 
       <button id="saveDetailBtn" class="primary" type="button">저장</button>
 
     </div>
 
   `;
+
+
+  /* 입력을 바꾸면 머리의 요약(이름·카테고리·기간·색)과 진행률 막대도 바로 따라 바뀐다. */
+  const refreshDetailHead = () => {
+
+    const name = document.getElementById("detailName").value.trim();
+    const categoryId = document.getElementById("detailCategory").value;
+    const start = document.getElementById("detailStart").value;
+    const end = document.getElementById("detailEnd").value;
+    const color = document.getElementById("detailColor").value;
+
+    const category = state.categories.find(item => item.id === categoryId);
+
+    document.getElementById("detailHeadName").textContent = name || task.name;
+
+    const chip = document.getElementById("detailHeadCategory");
+    chip.textContent = category ? category.name : "기타";
+    applyCategoryTint(chip, category ? category.color : "#a1a1aa");
+
+    const startDate = dateObj(start);
+    const endDate = dateObj(end);
+    document.getElementById("detailHeadRange").textContent =
+      startDate && endDate && endDate >= startDate
+        ? start + " ~ " + end + " · " + (Math.round((endDate - startDate) / 86400000) + 1) + "일"
+        : "";
+
+    document.getElementById("detailHeadSwatch").style.background = color;
+    document.getElementById("detailColorHex").textContent = color.toUpperCase();
+    document.getElementById("detailProgressRange").style.setProperty("--progress-color", color);
+  };
+
+  ["detailName", "detailCategory", "detailStart", "detailEnd", "detailColor"].forEach(fieldId => {
+    const field = document.getElementById(fieldId);
+    field.addEventListener("input", refreshDetailHead);
+    field.addEventListener("change", refreshDetailHead);
+  });
+
+  const progressRange = document.getElementById("detailProgressRange");
+  const progressNumber = document.getElementById("detailProgress");
+
+  const syncProgress = value => {
+    const clamped = Math.max(0, Math.min(100, Number(value) || 0));
+    progressRange.value = String(clamped);
+    progressRange.style.setProperty("--progress", clamped + "%");
+    return clamped;
+  };
+
+  progressRange.addEventListener("input", () => {
+    progressNumber.value = String(syncProgress(progressRange.value));
+  });
+
+  progressNumber.addEventListener("input", () => syncProgress(progressNumber.value));
+
+  refreshDetailHead();
+
+  const cancelButton = document.getElementById("cancelDetailBtn");
+
+  if (cancelButton) {
+    cancelButton.onclick = () => {
+      panel.classList.add("hidden");
+      state.selectedTask = null;
+    };
+  }
 
 
   const closeButton = document.getElementById("closeDetail");
