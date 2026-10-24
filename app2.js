@@ -988,15 +988,18 @@ async function apiGet() {
   const chartId = IS_SHARED_CHART ? SHARED_CHART_ID : CHART_ID;
   const result = await coreApiPost("loadChart", chartId, {});
 
-  /* (공유 차트) 뷰어 권한이면 입력을 막는 클래스를 붙인다 —
-     예전 sharedLoadChart()가 하던 일을 그대로 가져온다. */
-  if (IS_SHARED_CHART && fbUser) {
-    const chart = await fb.getChartOnce(SHARED_CHART_ID);
-    const role = chart && chart.ownerId === fbUser.uid
-      ? "owner"
-      : (((chart && chart.members) || {})[fbUser.email] || {}).role || "viewer";
-    if (role === "viewer") {
-      document.body.classList.add("shared-viewer-readonly");
+  /* (성능 수정) 예전엔 "shared:" 접두사가 붙은 URL(?chart=shared:X)로
+     열렸을 때만 역할을 확인했다. 이제 셸 화면이 개인/공유 박스 전부
+     접두사 없는 같은 chartId로 iframe을 여니(아래 shellRenderList 참고,
+     박스 상태가 바뀌어도 iframe을 다시 로드하지 않기 위해), 이 체크도
+     접두사와 상관없이 "내가 소유자가 아닌 차트"면 항상 하도록 바꾼다. */
+  if (fbUser) {
+    const chart = await getChartMetaCached(chartId);
+    if (chart && chart.ownerId !== fbUser.uid) {
+      const role = ((chart.members || {})[fbUser.email] || {}).role || "viewer";
+      if (role === "viewer") {
+        document.body.classList.add("shared-viewer-readonly");
+      }
     }
   }
 
@@ -4827,8 +4830,17 @@ async function shellLoadCharts() {
     const [result, list] = await Promise.all([personalPromise, sharedPromise]);
 
     const personal = (Array.isArray(result.result) ? result.result : []).map((c) => ({ ...c, shared: false }));
+    /* (성능 수정) id에 "shared:" 접두사를 더 이상 붙이지 않는다. 접두사가
+       붙으면, 차트를 공유/해제할 때마다 (개인 ↔ 공유 전환으로) id가
+       바뀌어서 shellRenderList가 그 차트의 박스를 "새 차트"로 착각해
+       박스/iframe을 통째로 지우고 새로 만들었다 — iframe이 다시 만들어질
+       때마다 그 안에서 Firebase를 처음부터 새로 켜야 해서(로그인 상태
+       확인, 연결 등) 공유 전환·해제가 유독 느렸던 가장 큰 원인이다.
+       이제 접두사 없는 같은 chartId를 그대로 써서, 상태가 바뀌어도
+       shellRenderList가 같은 박스로 인식하고 iframe은 그대로 둔 채
+       버튼 영역만 바꿔 끼운다(아래 shellRenderList 참고). */
     const shared = (Array.isArray(list) ? list : []).map((c) => ({
-      id: "shared:" + c.chartId,
+      id: c.chartId,
       chartId: c.chartId,
       name: c.name,
       rangeStart: c.rangeStart || "",
@@ -4849,6 +4861,101 @@ async function shellLoadCharts() {
   }
 }
 
+/* (성능 수정) 박스 헤더의 액션 버튼 영역(공유/캘린더/CSV/나가기 등)을
+   만드는 부분을 별도 함수로 뺐다. 전엔 이 블록이 박스를 "새로 만들 때만"
+   실행됐는데, 이제 공유 id에 접두사를 안 붙여서(shellLoadCharts/
+   shellApplySharedChartsList 쪽 주석 참고) 같은 박스가 공유 상태만 바뀐
+   채로 유지되므로, 아래 shellRenderList에서 상태가 바뀐 기존 박스에도
+   이 함수를 다시 호출해 버튼 영역만 교체한다(iframe은 그대로 둔다). */
+function shellBuildActionsEl(chart, box) {
+  const actions = document.createElement("div");
+  actions.className = "mc-chart-box-actions";
+
+  if (!chart.shared) {
+    const csvBtn = document.createElement("button");
+    csvBtn.type = "button";
+    csvBtn.className = "mc-btn mc-btn-ghost";
+    csvBtn.textContent = "엑셀로 내보내기";
+    csvBtn.title = "이 차트의 작업을 CSV 파일로 내보냅니다";
+    csvBtn.addEventListener("click", () => shellHandleExportCsv(chart.id, box));
+
+    const calAddBtn = document.createElement("button");
+    calAddBtn.type = "button";
+    calAddBtn.className = "mc-btn mc-btn-ghost";
+    calAddBtn.textContent = "캘린더에 추가";
+    calAddBtn.title = "이 차트 전용 구글 캘린더를 만들어 작업을 추가합니다";
+    calAddBtn.addEventListener("click", () => shellHandleCalendarAdd(chart.id));
+
+    const calRemoveBtn = document.createElement("button");
+    calRemoveBtn.type = "button";
+    calRemoveBtn.className = "mc-btn mc-btn-ghost";
+    calRemoveBtn.textContent = "캘린더에서 삭제";
+    calRemoveBtn.title = "이 차트 전용 구글 캘린더를 삭제합니다";
+    calRemoveBtn.addEventListener("click", () => shellHandleCalendarRemove(chart.id));
+
+    const shareBtn = document.createElement("button");
+    shareBtn.type = "button";
+    shareBtn.className = "mc-btn mc-btn-ghost";
+    shareBtn.textContent = "공유";
+    shareBtn.title = "이 차트를 다른 구글 계정과 공유합니다";
+    shareBtn.addEventListener("click", () => withBusy(shareBtn, "공유 설정 중…", () => shellStartSharing(chart.id, chart.name)));
+
+    actions.appendChild(csvBtn);
+    actions.appendChild(calAddBtn);
+    actions.appendChild(calRemoveBtn);
+    actions.appendChild(shareBtn);
+  } else {
+    if (chart.role === "owner" || chart.role === "admin") {
+      /* (요청사항) "공유 관리" 안에 멤버 목록이 이미 보이므로, 따로 있던
+         "공유 구성원 보기" 버튼은 없애고 이 버튼 이름만 바꾼다. */
+      const manageBtn = document.createElement("button");
+      manageBtn.type = "button";
+      manageBtn.className = "mc-btn mc-btn-ghost";
+      manageBtn.textContent = "공유 권한/사용자 설정";
+      manageBtn.title = "이 차트의 공유 멤버를 관리합니다";
+      manageBtn.addEventListener("click", () => shellOpenShareModal(chart.chartId, chart.name, true, chart.role));
+      actions.appendChild(manageBtn);
+    }
+
+    /* (공유 기능 추가분) 캘린더/CSV는 뷰어 포함 모든 권한에서 가능. */
+    const sharedCsvBtn = document.createElement("button");
+    sharedCsvBtn.type = "button";
+    sharedCsvBtn.className = "mc-btn mc-btn-ghost";
+    sharedCsvBtn.textContent = "엑셀로 내보내기";
+    sharedCsvBtn.addEventListener("click", () => shellHandleSharedExportCsv(chart.chartId, box));
+    actions.appendChild(sharedCsvBtn);
+
+    const sharedCalAddBtn = document.createElement("button");
+    sharedCalAddBtn.type = "button";
+    sharedCalAddBtn.className = "mc-btn mc-btn-ghost";
+    sharedCalAddBtn.textContent = "캘린더에 추가";
+    sharedCalAddBtn.addEventListener("click", () => shellHandleSharedCalendarAdd(chart.chartId));
+    actions.appendChild(sharedCalAddBtn);
+
+    const sharedCalRemoveBtn = document.createElement("button");
+    sharedCalRemoveBtn.type = "button";
+    sharedCalRemoveBtn.className = "mc-btn mc-btn-ghost";
+    sharedCalRemoveBtn.textContent = "캘린더에서 삭제";
+    sharedCalRemoveBtn.addEventListener("click", () => shellHandleSharedCalendarRemove(chart.chartId));
+    actions.appendChild(sharedCalRemoveBtn);
+
+    if (chart.role !== "owner") {
+      const leaveBtn = document.createElement("button");
+      leaveBtn.type = "button";
+      leaveBtn.className = "mc-btn mc-btn-ghost";
+      leaveBtn.textContent = "공유 차트 나가기";
+      leaveBtn.addEventListener("click", () => shellHandleLeaveShared(chart.chartId, chart.name));
+      actions.appendChild(leaveBtn);
+    }
+  }
+
+  return actions;
+}
+
+function shellSharedStateKey(chart) {
+  return (chart.shared ? "1" : "0") + ":" + (chart.role || "");
+}
+
 function shellRenderList() {
   const root = document.getElementById("mcChartList");
   const empty = document.getElementById("mcEmpty");
@@ -4865,11 +4972,13 @@ function shellRenderList() {
   visible.forEach((chart) => {
     seen[chart.id] = true;
     let box = existing[chart.id];
+    const stateKey = shellSharedStateKey(chart);
 
     if (!box) {
       box = document.createElement("div");
       box.className = "mc-chart-box";
       box.dataset.chartId = chart.id;
+      box.dataset.sharedState = stateKey;
       if (chart.shared) box.classList.add("mc-chart-box-shared");
 
       const head = document.createElement("div");
@@ -4902,86 +5011,7 @@ function shellRenderList() {
       /* (추가분) 캘린더 연동 + CSV 내보내기: 이 차트 박스 위에만 둔다.
          (공유 기능 추가분) 공유 차트 박스는 아직 캘린더/CSV 버튼 대신
          공유 관련 버튼만 둔다 — 개인 차트 쪽은 전혀 안 바뀜. */
-      const actions = document.createElement("div");
-      actions.className = "mc-chart-box-actions";
-
-      if (!chart.shared) {
-        const csvBtn = document.createElement("button");
-        csvBtn.type = "button";
-        csvBtn.className = "mc-btn mc-btn-ghost";
-        csvBtn.textContent = "엑셀로 내보내기";
-        csvBtn.title = "이 차트의 작업을 CSV 파일로 내보냅니다";
-        csvBtn.addEventListener("click", () => shellHandleExportCsv(chart.id, box));
-
-        const calAddBtn = document.createElement("button");
-        calAddBtn.type = "button";
-        calAddBtn.className = "mc-btn mc-btn-ghost";
-        calAddBtn.textContent = "캘린더에 추가";
-        calAddBtn.title = "이 차트 전용 구글 캘린더를 만들어 작업을 추가합니다";
-        calAddBtn.addEventListener("click", () => shellHandleCalendarAdd(chart.id));
-
-        const calRemoveBtn = document.createElement("button");
-        calRemoveBtn.type = "button";
-        calRemoveBtn.className = "mc-btn mc-btn-ghost";
-        calRemoveBtn.textContent = "캘린더에서 삭제";
-        calRemoveBtn.title = "이 차트 전용 구글 캘린더를 삭제합니다";
-        calRemoveBtn.addEventListener("click", () => shellHandleCalendarRemove(chart.id));
-
-        const shareBtn = document.createElement("button");
-        shareBtn.type = "button";
-        shareBtn.className = "mc-btn mc-btn-ghost";
-        shareBtn.textContent = "공유";
-        shareBtn.title = "이 차트를 다른 구글 계정과 공유합니다";
-        shareBtn.addEventListener("click", () => withBusy(shareBtn, "공유 설정 중…", () => shellStartSharing(chart.id, chart.name)));
-
-        actions.appendChild(csvBtn);
-        actions.appendChild(calAddBtn);
-        actions.appendChild(calRemoveBtn);
-        actions.appendChild(shareBtn);
-      } else {
-        if (chart.role === "owner" || chart.role === "admin") {
-          /* (요청사항) "공유 관리" 안에 멤버 목록이 이미 보이므로, 따로 있던
-             "공유 구성원 보기" 버튼은 없애고 이 버튼 이름만 바꾼다. */
-          const manageBtn = document.createElement("button");
-          manageBtn.type = "button";
-          manageBtn.className = "mc-btn mc-btn-ghost";
-          manageBtn.textContent = "공유 권한/사용자 설정";
-          manageBtn.title = "이 차트의 공유 멤버를 관리합니다";
-          manageBtn.addEventListener("click", () => shellOpenShareModal(chart.chartId, chart.name, true, chart.role));
-          actions.appendChild(manageBtn);
-        }
-
-        /* (공유 기능 추가분) 캘린더/CSV는 뷰어 포함 모든 권한에서 가능. */
-        const sharedCsvBtn = document.createElement("button");
-        sharedCsvBtn.type = "button";
-        sharedCsvBtn.className = "mc-btn mc-btn-ghost";
-        sharedCsvBtn.textContent = "엑셀로 내보내기";
-        sharedCsvBtn.addEventListener("click", () => shellHandleSharedExportCsv(chart.chartId, box));
-        actions.appendChild(sharedCsvBtn);
-
-        const sharedCalAddBtn = document.createElement("button");
-        sharedCalAddBtn.type = "button";
-        sharedCalAddBtn.className = "mc-btn mc-btn-ghost";
-        sharedCalAddBtn.textContent = "캘린더에 추가";
-        sharedCalAddBtn.addEventListener("click", () => shellHandleSharedCalendarAdd(chart.chartId));
-        actions.appendChild(sharedCalAddBtn);
-
-        const sharedCalRemoveBtn = document.createElement("button");
-        sharedCalRemoveBtn.type = "button";
-        sharedCalRemoveBtn.className = "mc-btn mc-btn-ghost";
-        sharedCalRemoveBtn.textContent = "캘린더에서 삭제";
-        sharedCalRemoveBtn.addEventListener("click", () => shellHandleSharedCalendarRemove(chart.chartId));
-        actions.appendChild(sharedCalRemoveBtn);
-
-        if (chart.role !== "owner") {
-          const leaveBtn = document.createElement("button");
-          leaveBtn.type = "button";
-          leaveBtn.className = "mc-btn mc-btn-ghost";
-          leaveBtn.textContent = "공유 차트 나가기";
-          leaveBtn.addEventListener("click", () => shellHandleLeaveShared(chart.chartId, chart.name));
-          actions.appendChild(leaveBtn);
-        }
-      }
+      const actions = shellBuildActionsEl(chart, box);
       head.appendChild(actions);
 
       box.appendChild(head);
@@ -4999,9 +5029,13 @@ function shellRenderList() {
       wrap.className = "mc-chart-iframe-wrap";
 
       const iframe = document.createElement("iframe");
-      // 같은 index.html 을 ?chart=아이디 로 다시 열면, 그 창은 "그 차트 하나짜리"
-      // 기존 화면 그대로 동작한다 (위 IS_SHELL_MODE 분기 참고).
-      iframe.src = "index.html?chart=" + encodeURIComponent(chart.id);
+      /* (중요, 버그 수정) app.js를 app2.js로 복사해 올 때 이 줄만 그대로
+         남아있었다 — 그래서 셸(차트 목록) 화면은 Firestore(app2.js)를
+         쓰면서도, 각 차트 박스 안의 iframe은 전부 예전 index.html을 열어서
+         그 안의 작업 추가/수정/삭제는 전부 예전 드라이브+Apps Script
+         경로로 갔다(원래 마이그레이션 사유였던 그 느림 그대로). index2.html을
+         열어야 이 박스 안도 Firestore로 동작한다. */
+      iframe.src = "index2.html?chart=" + encodeURIComponent(chart.id);
       iframe.setAttribute("scrolling", "no");
       iframe.addEventListener("load", () => shellAutoResize(iframe));
 
@@ -5009,6 +5043,22 @@ function shellRenderList() {
       box.appendChild(wrap);
 
       root.appendChild(box);
+    } else if (box.dataset.sharedState !== stateKey) {
+      /* (성능 수정) 공유 상태(shared/role)가 바뀐 "기존" 박스 — id가 더는
+         안 바뀌므로 여기로 들어온다. 박스/iframe을 통째로 지우지 않고
+         헤더의 버튼 영역과 mc-chart-box-shared 클래스만 새로 교체한다.
+         iframe은 그대로 두므로 Firebase를 다시 켤 필요가 없다 — 공유
+         전환/해제가 느렸던 가장 큰 원인이 이 재생성이었다. */
+      box.dataset.sharedState = stateKey;
+      box.classList.toggle("mc-chart-box-shared", !!chart.shared);
+      const oldActions = box.querySelector(".mc-chart-box-actions");
+      const newActions = shellBuildActionsEl(chart, box);
+      if (oldActions) {
+        oldActions.replaceWith(newActions);
+      } else {
+        const head = box.querySelector(".mc-chart-box-head");
+        if (head) head.appendChild(newActions);
+      }
     }
 
     box.querySelector(".mc-chart-box-name").textContent = chart.name;
@@ -5978,7 +6028,7 @@ function shellApplySharedChartsList(sharedList) {
     return;
   }
   const shared = sharedList.map((c) => ({
-    id: "shared:" + c.chartId,
+    id: c.chartId, // (성능 수정) 접두사 없이 그대로 — shellLoadCharts 쪽 주석 참고
     chartId: c.chartId,
     name: c.name,
     rangeStart: c.rangeStart || "",
