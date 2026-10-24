@@ -425,64 +425,77 @@
 
 
     <!-- =========================
-         작업 추가
+         작업 추가 / 카테고리 추가
+         (디자인 변경) 화면 전체 폭 막대 두 개 → 나란한 버튼 두 개
     ========================= -->
 
-    <button
-      id="addTaskBtn"
-      class="add-box"
-      type="button"
-    >
-      ＋ 작업 추가
-    </button>
+    <div class="add-actions">
+
+      <button
+        id="addTaskBtn"
+        class="add-box"
+        type="button"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        작업 추가
+      </button>
+
+      <button
+        id="addCategoryBtn"
+        class="add-category-box"
+        type="button"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        카테고리 추가
+      </button>
+
+    </div>
 
 
     <!-- =========================
-         카테고리 추가
-    ========================= -->
-
-    <button
-      id="addCategoryBtn"
-      class="add-category-box"
-      type="button"
-    >
-      ＋ 카테고리 추가
-    </button>
-
-
-    <!-- =========================
-         확대 / 축소
+         확대 / 축소 + 행 높이
+         (디자인 변경) 이름과 지금 값은 위 줄에, 슬라이더는 아래 줄에
     ========================= -->
 
     <section class="zoom-area">
 
       <div class="zoom-col zoom-col-h">
 
-        <div class="zoom-label">
-          <span>표시 기간 확대 / 축소</span>
+        <div class="zoom-head">
+          <span class="zoom-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"></path></svg>
+            표시 기간 확대 / 축소
+          </span>
+          <span id="rangeLabel" class="zoom-value"></span>
         </div>
 
-        <div class="zoom-row">
-          <!-- 손잡이·막대는 app.js 가 채운다 -->
-          <div class="range-slider" id="hRangeSlider" aria-label="표시 기간"></div>
-          <span id="rangeLabel" class="zoom-range-label"></span>
-        </div>
+        <!-- 손잡이·막대는 app.js 가 채운다 -->
+        <div class="range-slider" id="hRangeSlider" aria-label="표시 기간"></div>
 
       </div>
 
-      <!-- (디자인 추가분) 행 높이: 차트 전체 높이 손잡이와 같은 값(state.chartHeight)을 조절 -->
+      <!-- 행 높이: 차트 전체 높이 손잡이와 같은 값(state.chartHeight)을 조절 -->
       <div class="zoom-col zoom-col-v">
 
-        <label class="zoom-label" for="rowHeightSlider">행 높이</label>
+        <div class="zoom-head">
+          <label class="zoom-label" for="rowHeightSlider">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"></path></svg>
+            행 높이
+          </label>
+        </div>
 
-        <input
-          id="rowHeightSlider"
-          class="row-height-slider"
-          type="range"
-          min="0"
-          max="100"
-          value="40"
-        >
+        <div class="row-height-wrap">
+          <svg class="row-height-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"></path></svg>
+          <input
+            id="rowHeightSlider"
+            class="row-height-slider"
+            type="range"
+            min="0"
+            max="100"
+            value="40"
+          >
+          <svg class="row-height-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"></path></svg>
+        </div>
 
       </div>
 

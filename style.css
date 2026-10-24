@@ -4209,24 +4209,6 @@ html.is-embedded .gantt-resize {
   margin-bottom: 8px;
 }
 
-.zoom-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.zoom-row .range-slider {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.zoom-range-label {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #71717a;
-  white-space: nowrap;
-}
-
 .row-height-slider {
   -webkit-appearance: none;
   appearance: none;
@@ -4282,10 +4264,6 @@ html.is-embedded .gantt-resize {
 @media (max-width: 640px) {
   .zoom-col-v {
     width: 100%;
-  }
-
-  .zoom-range-label {
-    display: none;
   }
 }
 
@@ -5565,3 +5543,221 @@ body.shared-viewer-readonly .detail-swatches {
 }
 
 /* ▲▲▲ 창(모달) 디자인 통일 (추가분) 끝 ▲▲▲ */
+
+/* =========================================================
+ * ▼▼▼ 차트 아래 조작 영역 정리 (추가분) ▼▼▼
+ * 작업/카테고리 추가 버튼, 표시 기간·행 높이 슬라이더, 세로 범위 슬라이더
+ * ========================================================= */
+
+/* 추가 버튼: 화면 전체 폭 막대 → 나란한 버튼 */
+.add-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.add-actions .add-box,
+.add-actions .add-category-box {
+  width: auto;
+  height: 38px;
+  margin: 0;
+  padding: 0 16px 0 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.add-actions .add-box {
+  border: 1px solid #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 118, 110, .25);
+}
+
+.add-actions .add-box:hover:not(:disabled) {
+  background: #0b5b55;
+  border-color: #0b5b55;
+  color: #ffffff;
+}
+
+.add-actions .add-category-box {
+  border: 1px solid #e4e4e7;
+  background: #ffffff;
+  color: #3f3f46;
+}
+
+.add-actions .add-category-box:hover:not(:disabled) {
+  background: #f4f4f5;
+  border-color: #d4d4d8;
+  color: #18181b;
+}
+
+/* 확대/축소 + 행 높이: 위 줄(이름 · 지금 값), 아래 줄(슬라이더) */
+.zoom-area {
+  margin-top: 18px;
+  padding: 16px 0 0;
+  align-items: stretch;
+  gap: 32px;
+}
+
+.zoom-col-v {
+  width: 200px;
+}
+
+.zoom-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+  margin-bottom: 6px;
+}
+
+.zoom-head {
+  flex-wrap: wrap;
+}
+
+.zoom-head .zoom-label {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #71717a;
+}
+
+.zoom-head .zoom-label svg {
+  color: #a1a1aa;
+}
+
+.zoom-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f766e;
+  background: #f0fdfa;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 좌우 슬라이더: 옅은 길 + 고른 구간은 포인트색 + 흰 손잡이 */
+.range-slider {
+  height: 26px;
+}
+
+.range-slider .range-track {
+  top: 11px;
+  height: 4px;
+  background: #ececef;
+}
+
+.range-slider .range-bar {
+  top: 10px;
+  height: 6px;
+  background: #5eead4;
+}
+
+.range-slider .range-handle,
+.row-range .range-handle {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #0f766e;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(24, 24, 27, .2);
+  transition: transform .12s, box-shadow .12s;
+}
+
+.range-slider .range-handle:hover,
+.row-range .range-handle:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 0 0 5px rgba(15, 118, 110, .14), 0 1px 4px rgba(24, 24, 27, .2);
+}
+
+/* 세로 표시 범위 슬라이더: 흐릿한 반투명 대신 얇고 선명하게 */
+.row-range {
+  flex: 0 0 20px;
+  opacity: 1;
+}
+
+.row-range .range-track {
+  width: 4px;
+  background: #ececef;
+}
+
+.row-range .range-bar {
+  width: 6px;
+  background: #5eead4;
+}
+
+.row-range .range-handle {
+  width: 14px;
+  height: 14px;
+}
+
+.row-range .range-handle:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+}
+
+/* 행 높이 슬라이더: 위와 같은 모양(옅은 길 + 채워진 부분) */
+.row-height-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+}
+
+.row-height-icon {
+  flex-shrink: 0;
+  color: #a1a1aa;
+}
+
+.row-height-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+}
+
+.row-height-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  background: linear-gradient(to right, #5eead4 var(--progress, 40%), #ececef var(--progress, 40%));
+}
+
+.row-height-slider::-moz-range-track {
+  height: 4px;
+  background: linear-gradient(to right, #5eead4 var(--progress, 40%), #ececef var(--progress, 40%));
+}
+
+.row-height-slider::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  box-shadow: 0 1px 4px rgba(24, 24, 27, .2);
+}
+
+.row-height-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+}
+
+@media (max-width: 640px) {
+  .zoom-area {
+    gap: 16px;
+  }
+
+  .zoom-col-v {
+    width: 100%;
+  }
+
+  .zoom-value {
+    font-size: 11px;
+  }
+}
+
+/* ▲▲▲ 차트 아래 조작 영역 정리 (추가분) 끝 ▲▲▲ */

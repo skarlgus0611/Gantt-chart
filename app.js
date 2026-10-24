@@ -1557,6 +1557,7 @@ function syncRowHeightSlider() {
   const max = rowHeightSliderMax();
   const ratio = (state.chartHeight - MIN_CHART_HEIGHT) / (max - MIN_CHART_HEIGHT);
   slider.value = String(Math.round(Math.max(0, Math.min(1, ratio)) * 100));
+  slider.style.setProperty("--progress", slider.value + "%");
 }
 
 
@@ -4059,8 +4060,8 @@ function updateRangeLabel() {
 
   label.textContent =
     `${dateKey(dateFromYearDay(state.rangeStart))} ~ ` +
-    `${dateKey(dateFromYearDay(state.rangeEnd))} ` +
-    `(${state.rangeEnd - state.rangeStart + 1}일)`;
+    `${dateKey(dateFromYearDay(state.rangeEnd))} · ` +
+    `${state.rangeEnd - state.rangeStart + 1}일`;
 }
 
 
@@ -4903,6 +4904,7 @@ if (rowHeightSlider) {
     const ratio = Number(rowHeightSlider.value) / 100;
 
     state.chartHeightTouched = true;
+    rowHeightSlider.style.setProperty("--progress", rowHeightSlider.value + "%");
 
     state.chartHeight = Math.round(
       MIN_CHART_HEIGHT + (rowHeightSliderMax() - MIN_CHART_HEIGHT) * ratio
