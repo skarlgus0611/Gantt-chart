@@ -649,9 +649,25 @@ function fbListPersonalCharts(charts) {
     }));
 }
 
+/* (성능) shellLoadCharts()가 "개인 차트 목록"과 "공유 차트 목록"을 거의
+   동시에 요청하는데, 둘 다 사실은 같은 Firestore 조회(getChartsOnce)
+   결과를 서로 다르게 나눠 쓰는 것뿐이다. 두 요청이 겹치는 아주 짧은
+   순간에는 새로 조회하지 않고 이미 날아간 요청 하나를 같이 기다려서,
+   같은 데이터를 두 번 읽는 것을 피한다. */
+let chartsOnceInFlight = null;
+function fbGetChartsOnceShared() {
+  if (!fbUser) return Promise.resolve([]);
+  if (!chartsOnceInFlight) {
+    chartsOnceInFlight = fb.getChartsOnce(fbUser.uid, fbUser.email).finally(() => {
+      chartsOnceInFlight = null;
+    });
+  }
+  return chartsOnceInFlight;
+}
+
 async function fbListMyPersonalCharts() {
   if (!fbUser) return [];
-  const charts = await fb.getChartsOnce(fbUser.uid, fbUser.email);
+  const charts = await fbGetChartsOnceShared();
   return fbListPersonalCharts(charts);
 }
 
@@ -696,6 +712,25 @@ function validateChartMetaFields(data, base) {
   return fields;
 }
 
+/* (성능) chart 메타(특히 calendarId)는 작업 하나 고칠 때마다 매번
+   다시 읽지 않고, 이 페이지가 켜져 있는 동안만 잠깐 기억해둔다.
+   addCalendarToChart/removeCalendarFromChart/updateChart처럼 chart
+   문서가 실제로 바뀌는 액션에서만 캐시를 지워서 다음 읽기 때 새로
+   받아오게 한다. (여러 탭에서 동시에 캘린더를 추가/삭제하는 건
+   원래도 드문 경우라, 이 정도 캐시로 인한 아주 짧은 지연은 감수한다.) */
+const chartMetaCache = {};
+
+async function getChartMetaCached(chartId) {
+  if (!chartMetaCache[chartId]) {
+    chartMetaCache[chartId] = fb.getChartOnce(chartId);
+  }
+  return chartMetaCache[chartId];
+}
+
+function invalidateChartMetaCache(chartId) {
+  delete chartMetaCache[chartId];
+}
+
 async function coreApiPost(action, chartId, body = {}) {
   switch (action) {
     case "load":
@@ -707,39 +742,43 @@ async function coreApiPost(action, chartId, body = {}) {
     }
 
     case "create": {
-      const cats = await fb.getCategoriesOnce(chartId);
+      /* (성능) 서로 의존 관계가 없는 읽기(카테고리 목록 검증용, 작업
+         개수 - 순서 계산용, 차트 메타 - 캘린더 확인용)를 순서대로 기다리지
+         않고 동시에 보낸다. */
+      const [cats, existingTasks, chart] = await Promise.all([
+        fb.getCategoriesOnce(chartId), fb.getTasksOnce(chartId), getChartMetaCached(chartId)
+      ]);
       const t = applyTaskFields(
         { name: "", categoryId: "", start: "", end: "", progress: 0, color: "", memo: "", target: "", owner: "" },
         body.data || {}, cats
       );
-      const existingTasks = await fb.getTasksOnce(chartId);
       const ref = await fb.createTask(chartId, { ...t, order: existingTasks.length });
-      const chart = await fb.getChartOnce(chartId);
       await syncCalendarOnCreate(chart, chartId, ref.id, t);
       return { ok: true, result: ref.id };
     }
 
     case "update": {
       const data = body.data || {};
-      const task = await fb.getTaskOnce(chartId, String(data.id));
+      const [task, cats, chart] = await Promise.all([
+        fb.getTaskOnce(chartId, String(data.id)), fb.getCategoriesOnce(chartId), getChartMetaCached(chartId)
+      ]);
       if (!task) {
         throw new Error("해당 작업을 찾을 수 없습니다.");
       }
-      const cats = await fb.getCategoriesOnce(chartId);
       const t = applyTaskFields(task, data, cats);
       await fb.updateTask(chartId, task.id, t);
-      const chart = await fb.getChartOnce(chartId);
       await syncCalendarOnUpdate(chart, chartId, task.id, { ...t, calendarEventId: task.calendarEventId });
       return { ok: true, result: null };
     }
 
     case "delete": {
-      const task = await fb.getTaskOnce(chartId, String(body.id));
+      const [task, chart] = await Promise.all([
+        fb.getTaskOnce(chartId, String(body.id)), getChartMetaCached(chartId)
+      ]);
       if (!task) {
         throw new Error("삭제할 작업을 찾을 수 없습니다.");
       }
       await fb.deleteTask(chartId, task.id);
-      const chart = await fb.getChartOnce(chartId);
       await syncCalendarOnDelete(chart, task);
       return { ok: true, result: null };
     }
@@ -854,6 +893,7 @@ async function coreApiPost(action, chartId, body = {}) {
       const fields = validateChartMetaFields(data, chart);
       if (Object.keys(fields).length) {
         await fb.updateChartMeta(chartId || data.id, fields);
+        invalidateChartMetaCache(chartId || data.id);
       }
       return { ok: true, result: null, charts: await fbListMyPersonalCharts() };
     }
@@ -875,6 +915,7 @@ async function coreApiPost(action, chartId, body = {}) {
         }
       }
       await fb.deleteChart(id);
+      invalidateChartMetaCache(id);
       return { ok: true, result: null, charts: await fbListMyPersonalCharts() };
     }
 
@@ -897,6 +938,7 @@ async function coreApiPost(action, chartId, body = {}) {
         }
       }
       await fb.updateChartMeta(chartId, { calendarId });
+      invalidateChartMetaCache(chartId);
       return { ok: true, result: { already: false } };
     }
 
@@ -920,6 +962,7 @@ async function coreApiPost(action, chartId, body = {}) {
         console.error(error);
       }
       await fb.updateChartMeta(chartId, { calendarId: "" });
+      invalidateChartMetaCache(chartId);
       const tasks = await fb.getTasksOnce(chartId);
       for (const task of tasks) {
         if (task.calendarEventId) {
@@ -5588,7 +5631,7 @@ async function fbListMyInvites(email) {
 
 async function fbListMySharedCharts() {
   if (!fbUser) return [];
-  const all = await fb.getChartsOnce(fbUser.uid, fbUser.email);
+  const all = await fbGetChartsOnceShared();
   return all
     .filter((c) => (c.ownerId === fbUser.uid && hasAnyMembers(c)) || c.ownerId !== fbUser.uid)
     .map((c) => ({
