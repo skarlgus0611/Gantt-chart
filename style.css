@@ -6139,29 +6139,35 @@ html.is-embedded body {
   margin: 3px 1px;
 }
 
-/* ---------- 캡처 이미지에서만: 막대 위 작업 제목 ---------- */
-.task-bar-caption {
+/* ---------- 캡처 이미지에서만: 알약 안 작업 제목 ----------
+   화면에서는 진행률(%)만, 캡처할 때는 왼쪽에 작업 이름 + 오른쪽에 진행률 */
+.task-bar-name {
   display: none;
-  position: absolute;
-  max-width: 60%;
-  padding: 0 2px;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 10.5px;
-  font-weight: 700;
-  line-height: 13px;
-  color: #3f3f46;
-  pointer-events: none;
-  z-index: 3;
 }
 
-.task-bar-caption.align-right {
-  text-align: right;
+.task-bar-pct {
+  flex-shrink: 0;
 }
 
-.gantt.capturing .task-bar-caption {
+.gantt.capturing .task-bar-text {
+  justify-content: space-between;
+  gap: 8px;
+  left: 10px;
+  right: 9px;
+}
+
+.gantt.capturing .task-bar-name {
   display: block;
+}
+
+/* 캡처에서는 오늘 선이 막대 글자를 가리지 않게 막대를 위로 */
+.gantt.capturing .task-bar {
+  z-index: 13;
 }
 
 /* ---------- 막대 꾹 눌러(1초) 옮기기 ---------- */

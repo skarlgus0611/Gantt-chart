@@ -2830,7 +2830,10 @@ function renderTaskBar(
       style="width:${progress}%"
     ></div>
 
-    <div class="task-bar-text">${progress}%</div>
+    <div class="task-bar-text">
+      <span class="task-bar-name">${escapeHtml(task.name)}</span>
+      <span class="task-bar-pct">${progress}%</span>
+    </div>
   `;
 
   bar.addEventListener("click", event => {
@@ -2847,24 +2850,6 @@ function renderTaskBar(
   });
 
   row.appendChild(bar);
-
-
-  /* (요청사항) 캡처 이미지에서만 보이는 작업 제목(막대 바로 위).
-     막대가 오른쪽에 치우쳐 있으면 잘리지 않게 막대 오른쪽 끝에 맞춘다. */
-  const caption = document.createElement("div");
-
-  caption.className = "task-bar-caption";
-  caption.textContent = task.name;
-  caption.style.bottom = `calc(100% - ${bar.style.top} + 1px)`;
-
-  if (left > 60) {
-    caption.style.right = (100 - left - width) + "%";
-    caption.classList.add("align-right");
-  } else {
-    caption.style.left = left + "%";
-  }
-
-  row.appendChild(caption);
 
 
   /* (요청사항) 꾹 눌러(1초) 띄운 뒤 좌우로 끌어 일정 옮기기 */
@@ -4616,7 +4601,7 @@ async function captureChart() {
         backgroundColor: "#ffffff",
         scale: 2,
         ignoreElements: element => element.id === "vRangeSlider",
-        /* (요청사항) 캡처 이미지에서만 막대 위에 작업 제목을 보여준다(화면은 그대로) */
+        /* (요청사항) 캡처 이미지에서만 알약 안에 작업 제목을 보여준다(화면은 그대로) */
         onclone: clonedDoc => {
           const clonedGantt = clonedDoc.querySelector("#chartSingleView .gantt");
           if (clonedGantt) clonedGantt.classList.add("capturing");
