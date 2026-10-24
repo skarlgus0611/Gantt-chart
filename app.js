@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v8";
+const APP_VERSION = "2026-10-24-design-v9";
 
 
 /* =========================================================
@@ -5586,6 +5586,7 @@ async function shellLoadCharts() {
     shellChartsCache = personal.concat(shared);
     shellRenderList();
     shellBroadcastRefreshToIframes();
+    shellOrgRefreshBadge(); /* (조직 관리 1단계) 받은 조직 초대 수 배지 — 실패해도 다른 기능에 영향 없음 */
   } catch (error) {
     console.error(error);
     showToast(error.message || "차트 목록을 불러오지 못했습니다.", true, 0);
@@ -6425,6 +6426,581 @@ function shellRenderSidebar(visible) {
   });
 }
 
+/* =========================================================
+ * ▼▼▼ 조직 관리 (1단계) ▼▼▼
+ * 사이드바 "조직원 관리" → 조직 만들기, 조직원 초대(이메일·이름·직급·권한),
+ * 초대 수락/거절, 권한·이름·직급 수정, 내보내기, 나가기, 소유권 넘기기,
+ * 조직 이름 변경·삭제. 기존 차트/공유 기능과는 데이터가 따로라 서로 영향이 없다.
+ *
+ * 권한(높은 순): 소유자 > 관리자 > 참여자 > 게스트
+ *  - 게스트: 보기만
+ *  - 참여자: 초대(참여자 이하로), 게스트 권한 수정(참여자 이하로). 추방 불가
+ *  - 관리자: 초대·추방, 이름·직급 수정, 자기보다 낮은 사람 권한 수정(관리자 이하로)
+ *  - 소유자: 전부 + 조직 이름 변경·삭제·소유권 넘기기
+ * 같은 규칙을 서버 쪽 firebase/organizations.rules 에서도 검사한다.
+ * ========================================================= */
+
+const ORG_ROLE_LABEL = { owner: "소유자", admin: "관리자", member: "참여자", guest: "게스트" };
+const ORG_INVITABLE_ROLES = ["guest", "member", "admin"];
+
+function orgRank(role) {
+  return role === "owner" ? 3 : role === "admin" ? 2 : role === "member" ? 1 : 0;
+}
+
+/* 내가 초대하거나 바꿔 줄 수 있는 권한: 맨 아래부터 내 권한까지(소유자는 관리자까지) */
+function orgAssignableRoles(myRole) {
+  return ORG_INVITABLE_ROLES.filter((role) => orgRank(role) <= Math.min(orgRank(myRole), 2));
+}
+
+function orgCanInvite(myRole) {
+  return orgRank(myRole) >= 1;
+}
+
+/* 권한 수정: 게스트 제외, 나보다 낮은 사람만 */
+function orgCanChangeRole(myRole, target) {
+  return orgRank(myRole) >= 1 && orgRank(target.role) < orgRank(myRole);
+}
+
+/* 이름·직급 수정: 소유자는 모두, 관리자는 자기보다 낮은 사람과 자기 자신 */
+function orgCanEditInfo(myRole, target, isSelf) {
+  if (myRole === "owner") return true;
+  return myRole === "admin" && (isSelf || orgRank(target.role) < orgRank(myRole));
+}
+
+/* 내보내기: 관리자 이상, 나보다 낮은 사람만 */
+function orgCanKick(myRole, target) {
+  return orgRank(myRole) >= 2 && orgRank(target.role) < orgRank(myRole);
+}
+
+const orgState = {
+  memberships: [],      // 내 문서들(수락 + 대기)
+  selectedOrgId: "",
+  members: [],          // 고른 조직의 조직원
+  creating: false
+};
+
+function orgMyEmail() {
+  return fbUser ? String(fbUser.email || "").toLowerCase() : "";
+}
+
+function orgEl(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function orgRoleChip(role) {
+  return orgEl("span", "mc-role-chip mc-role-" + (role === "member" ? "editor" : role === "guest" ? "viewer" : role), ORG_ROLE_LABEL[role] || role);
+}
+
+function orgShowError(error, fallback) {
+  console.error(error);
+  const denied = error && (error.code === "permission-denied" || /permission/i.test(error.message || ""));
+  showToast(denied
+    ? "권한이 없어서 하지 못했습니다. (조직 보안 규칙이 아직 적용되지 않았다면 firebase/organizations.rules 를 Firebase 콘솔에 붙여 넣어 주세요)"
+    : (error && error.message) || fallback, true, denied ? 6000 : 0);
+}
+
+function orgUpdateBadge() {
+  const badge = document.getElementById("mcOrgBadge");
+  if (!badge) return;
+  const pending = orgState.memberships.filter((m) => m.status === "pending").length;
+  badge.textContent = pending > 99 ? "99+" : String(pending);
+  badge.classList.toggle("hidden", pending === 0);
+}
+
+/* 사이드바 배지용: 조용히 내 초대 수만 확인한다(실패해도 다른 기능에 영향 없음) */
+async function shellOrgRefreshBadge() {
+  if (!fbUser || typeof fb.getMyOrgMemberships !== "function") return;
+  try {
+    orgState.memberships = await fb.getMyOrgMemberships(orgMyEmail());
+    orgUpdateBadge();
+  } catch (error) {
+    console.warn("조직 정보를 불러오지 못했습니다(보안 규칙 확인 필요):", error);
+  }
+}
+
+async function shellOpenOrgModal() {
+  if (!fbUser) {
+    showToast("먼저 Google 로그인을 해주세요.", true);
+    return;
+  }
+  shellOpenModal("mcOrgModal");
+  await shellOrgLoad();
+}
+
+async function shellOrgLoad() {
+  try {
+    orgState.memberships = await fb.getMyOrgMemberships(orgMyEmail());
+  } catch (error) {
+    orgShowError(error, "조직 목록을 불러오지 못했습니다.");
+    orgState.memberships = [];
+  }
+  orgUpdateBadge();
+
+  const accepted = orgState.memberships.filter((m) => m.status === "accepted");
+  if (!accepted.some((m) => m.orgId === orgState.selectedOrgId)) {
+    orgState.selectedOrgId = accepted.length ? accepted[0].orgId : "";
+  }
+  if (!accepted.length) orgState.creating = true;
+
+  shellOrgRenderSide();
+  await shellOrgLoadMembers();
+}
+
+async function shellOrgLoadMembers() {
+  orgState.members = [];
+  if (orgState.selectedOrgId && !orgState.creating) {
+    try {
+      orgState.members = await fb.getOrgMembers(orgState.selectedOrgId);
+    } catch (error) {
+      orgShowError(error, "조직원 목록을 불러오지 못했습니다.");
+    }
+  }
+  orgState.members.sort((a, b) =>
+    (orgRank(b.role) - orgRank(a.role)) ||
+    ((a.status === "pending") - (b.status === "pending")) ||
+    String(a.name || a.email).localeCompare(String(b.name || b.email), "ko"));
+  shellOrgRenderMain();
+}
+
+function shellOrgRenderSide() {
+  const invites = document.getElementById("mcOrgInvites");
+  const list = document.getElementById("mcOrgList");
+  if (!invites || !list) return;
+
+  /* 받은 초대: 조직 이름과 초대한 사람만 보인다 */
+  invites.innerHTML = "";
+  const pending = orgState.memberships.filter((m) => m.status === "pending");
+  if (pending.length) {
+    invites.appendChild(orgEl("div", "mc-org-side-title", "받은 초대"));
+    pending.forEach((m) => {
+      const card = orgEl("div", "mc-org-invite");
+      card.appendChild(orgEl("div", "mc-org-invite-name", m.orgName || "(이름 없는 조직)"));
+      card.appendChild(orgEl("div", "mc-org-invite-from",
+        "초대한 사람: " + (m.invitedByName ? m.invitedByName + " · " : "") + (m.invitedByEmail || "")));
+      const meta = orgEl("div", "mc-org-invite-meta");
+      meta.appendChild(orgEl("span", "", "받을 권한"));
+      meta.appendChild(orgRoleChip(m.role));
+      card.appendChild(meta);
+
+      const actions = orgEl("div", "mc-org-invite-actions");
+      const accept = orgEl("button", "mc-btn mc-btn-primary", "수락");
+      accept.type = "button";
+      accept.addEventListener("click", () => withBusy(accept, "처리 중…", async () => {
+        try {
+          await fb.acceptOrgInvite(m.orgId, orgMyEmail());
+          showToast("'" + (m.orgName || "조직") + "'에 들어왔습니다.");
+          orgState.selectedOrgId = m.orgId;
+          orgState.creating = false;
+          await shellOrgLoad();
+        } catch (error) {
+          orgShowError(error, "수락하지 못했습니다.");
+        }
+      }));
+      const decline = orgEl("button", "mc-btn mc-btn-ghost", "거절");
+      decline.type = "button";
+      decline.addEventListener("click", () => withBusy(decline, "처리 중…", async () => {
+        if (!confirm("'" + (m.orgName || "조직") + "' 초대를 거절할까요?")) return;
+        try {
+          await fb.removeOrgMembership(m.orgId, orgMyEmail());
+          showToast("초대를 거절했습니다.");
+          await shellOrgLoad();
+        } catch (error) {
+          orgShowError(error, "거절하지 못했습니다.");
+        }
+      }));
+      actions.appendChild(accept);
+      actions.appendChild(decline);
+      card.appendChild(actions);
+      invites.appendChild(card);
+    });
+  }
+
+  /* 내 조직(수락한 것) */
+  list.innerHTML = "";
+  const accepted = orgState.memberships.filter((m) => m.status === "accepted");
+  if (!accepted.length) {
+    list.appendChild(orgEl("div", "mc-org-empty-side", "아직 속한 조직이 없어요."));
+  }
+  accepted.forEach((m) => {
+    const item = orgEl("button", "mc-org-item");
+    item.type = "button";
+    item.classList.toggle("active", !orgState.creating && m.orgId === orgState.selectedOrgId);
+    const tile = orgEl("span", "mc-manage-tile", Array.from(String(m.orgName || "?").trim() || "?")[0]);
+    tile.setAttribute("aria-hidden", "true");
+    item.appendChild(tile);
+    item.appendChild(orgEl("span", "mc-org-item-name", m.orgName || "(이름 없는 조직)"));
+    item.appendChild(orgRoleChip(m.role));
+    item.addEventListener("click", async () => {
+      orgState.selectedOrgId = m.orgId;
+      orgState.creating = false;
+      shellOrgRenderSide();
+      await shellOrgLoadMembers();
+    });
+    list.appendChild(item);
+  });
+}
+
+function shellOrgRenderMain() {
+  const main = document.getElementById("mcOrgMain");
+  if (!main) return;
+  main.innerHTML = "";
+
+  if (orgState.creating || !orgState.selectedOrgId) {
+    main.appendChild(shellOrgCreateForm());
+    return;
+  }
+
+  const myEmail = orgMyEmail();
+  const me = orgState.members.find((m) => m.email === myEmail);
+  const membership = orgState.memberships.find((m) => m.orgId === orgState.selectedOrgId);
+  const myRole = (me && me.role) || (membership && membership.role) || "guest";
+  const orgName = (membership && membership.orgName) || (me && me.orgName) || "";
+
+  /* --- 머리: 이름 · 내 권한 · 조직원 수 · 조직 동작 --- */
+  const head = orgEl("div", "mc-org-head");
+  const titleWrap = orgEl("div", "mc-org-title-wrap");
+
+  if (myRole === "owner") {
+    const nameInput = orgEl("input", "mc-org-name-input");
+    nameInput.type = "text";
+    nameInput.value = orgName;
+    nameInput.maxLength = 100;
+    nameInput.setAttribute("aria-label", "조직 이름");
+    nameInput.title = "눌러서 조직 이름 바꾸기";
+    const saveName = async () => {
+      const value = nameInput.value.trim();
+      if (!value || value === orgName) { nameInput.value = orgName; return; }
+      try {
+        await fb.renameOrganization(orgState.selectedOrgId, value, orgState.members.map((m) => m.email));
+        showToast("조직 이름을 바꿨습니다.");
+        await shellOrgLoad();
+      } catch (error) {
+        nameInput.value = orgName;
+        orgShowError(error, "이름을 바꾸지 못했습니다.");
+      }
+    };
+    nameInput.addEventListener("keydown", (event) => { if (event.key === "Enter") nameInput.blur(); });
+    nameInput.addEventListener("blur", saveName);
+    titleWrap.appendChild(nameInput);
+  } else {
+    titleWrap.appendChild(orgEl("h3", "mc-org-name", orgName));
+  }
+
+  const meta = orgEl("div", "mc-org-meta");
+  meta.appendChild(orgEl("span", "", "내 권한"));
+  meta.appendChild(orgRoleChip(myRole));
+  const acceptedCount = orgState.members.filter((m) => m.status === "accepted").length;
+  const pendingCount = orgState.members.length - acceptedCount;
+  meta.appendChild(orgEl("span", "mc-org-count", "조직원 " + acceptedCount + "명" + (pendingCount ? " · 초대 대기 " + pendingCount + "명" : "")));
+  titleWrap.appendChild(meta);
+  head.appendChild(titleWrap);
+
+  const headActions = orgEl("div", "mc-org-head-actions");
+  if (myRole === "owner") {
+    const transferBtn = orgEl("button", "mc-btn mc-btn-ghost", "소유권 넘기기");
+    transferBtn.type = "button";
+    transferBtn.addEventListener("click", () => shellOrgToggleTransfer(main));
+    const deleteBtn = orgEl("button", "mc-btn mc-btn-ghost mc-org-danger", "조직 삭제");
+    deleteBtn.type = "button";
+    deleteBtn.addEventListener("click", () => withBusy(deleteBtn, "삭제 중…", async () => {
+      if (!confirm("'" + orgName + "' 조직을 삭제할까요? 조직원 목록과 초대가 모두 사라지며 되돌릴 수 없습니다.")) return;
+      try {
+        await fb.deleteOrganization(orgState.selectedOrgId, orgState.members.map((m) => m.email));
+        showToast("조직을 삭제했습니다.");
+        orgState.selectedOrgId = "";
+        await shellOrgLoad();
+      } catch (error) {
+        orgShowError(error, "삭제하지 못했습니다.");
+      }
+    }));
+    headActions.appendChild(transferBtn);
+    headActions.appendChild(deleteBtn);
+  } else {
+    const leaveBtn = orgEl("button", "mc-btn mc-btn-ghost mc-org-danger", "조직 나가기");
+    leaveBtn.type = "button";
+    leaveBtn.addEventListener("click", () => withBusy(leaveBtn, "처리 중…", async () => {
+      if (!confirm("'" + orgName + "' 조직에서 나갈까요?")) return;
+      try {
+        await fb.removeOrgMembership(orgState.selectedOrgId, myEmail);
+        showToast("조직에서 나갔습니다.");
+        orgState.selectedOrgId = "";
+        await shellOrgLoad();
+      } catch (error) {
+        orgShowError(error, "나가지 못했습니다.");
+      }
+    }));
+    headActions.appendChild(leaveBtn);
+  }
+  head.appendChild(headActions);
+  main.appendChild(head);
+
+  /* 소유권 넘기기 패널 (버튼으로 열고 닫음) */
+  const transferBox = orgEl("div", "mc-org-transfer hidden");
+  transferBox.id = "mcOrgTransfer";
+  main.appendChild(transferBox);
+
+  /* --- 초대 (참여자 이상) --- */
+  if (orgCanInvite(myRole)) {
+    main.appendChild(shellOrgInviteForm(myRole, orgName));
+  }
+
+  /* --- 조직원 목록 --- */
+  const list = orgEl("div", "mc-org-members");
+  orgState.members.forEach((member) => list.appendChild(shellOrgMemberRow(member, myRole, myEmail)));
+  main.appendChild(list);
+}
+
+function shellOrgCreateForm() {
+  const box = orgEl("form", "mc-org-create");
+  box.appendChild(orgEl("h3", "mc-org-name", "새 조직 만들기"));
+  box.appendChild(orgEl("p", "mc-modal-sub", "조직을 만들면 내가 소유자가 됩니다. 한 사람이 조직을 여러 개 만들 수 있어요."));
+
+  const field = (label, input) => {
+    const wrap = orgEl("label", "mc-org-field");
+    wrap.appendChild(orgEl("span", "", label));
+    wrap.appendChild(input);
+    return wrap;
+  };
+  const nameInput = orgEl("input");
+  nameInput.type = "text"; nameInput.maxLength = 100; nameInput.required = true;
+  nameInput.placeholder = "예: 디자인팀, 졸업 프로젝트";
+  const myName = orgEl("input");
+  myName.type = "text"; myName.maxLength = 50;
+  myName.value = (fbUser && fbUser.displayName) || "";
+  myName.placeholder = "조직에서 보일 내 이름";
+  const myTitle = orgEl("input");
+  myTitle.type = "text"; myTitle.maxLength = 50;
+  myTitle.placeholder = "예: 팀장 (선택)";
+
+  box.appendChild(field("조직 이름", nameInput));
+  const row = orgEl("div", "mc-org-field-row");
+  row.appendChild(field("내 이름", myName));
+  row.appendChild(field("내 직급", myTitle));
+  box.appendChild(row);
+
+  const actions = orgEl("div", "mc-org-create-actions");
+  if (orgState.memberships.some((m) => m.status === "accepted")) {
+    const cancel = orgEl("button", "mc-btn mc-btn-ghost", "취소");
+    cancel.type = "button";
+    cancel.addEventListener("click", async () => {
+      orgState.creating = false;
+      shellOrgRenderSide();
+      await shellOrgLoadMembers();
+    });
+    actions.appendChild(cancel);
+  }
+  const submit = orgEl("button", "mc-btn mc-btn-primary", "조직 만들기");
+  submit.type = "submit";
+  actions.appendChild(submit);
+  box.appendChild(actions);
+
+  box.addEventListener("submit", (event) => {
+    event.preventDefault();
+    withBusy(submit, "만드는 중…", async () => {
+      const name = nameInput.value.trim();
+      if (!name) { showToast("조직 이름을 입력하세요.", true); return; }
+      try {
+        const orgId = await fb.createOrganization(name, {
+          uid: fbUser.uid, email: orgMyEmail(), name: myName.value.trim(), title: myTitle.value.trim()
+        });
+        showToast("'" + name + "' 조직을 만들었습니다.");
+        orgState.selectedOrgId = orgId;
+        orgState.creating = false;
+        await shellOrgLoad();
+      } catch (error) {
+        orgShowError(error, "조직을 만들지 못했습니다.");
+      }
+    });
+  });
+
+  setTimeout(() => nameInput.focus(), 0);
+  return box;
+}
+
+function shellOrgInviteForm(myRole, orgName) {
+  const form = orgEl("form", "mc-org-invite-form");
+  form.appendChild(orgEl("div", "mc-org-section-title", "조직원 초대"));
+
+  const row = orgEl("div", "mc-org-invite-row");
+  const email = orgEl("input");
+  email.type = "email"; email.required = true; email.placeholder = "구글 계정 이메일";
+  email.setAttribute("aria-label", "초대할 이메일");
+  const name = orgEl("input");
+  name.type = "text"; name.maxLength = 50; name.placeholder = "이름";
+  name.setAttribute("aria-label", "이름");
+  const title = orgEl("input");
+  title.type = "text"; title.maxLength = 50; title.placeholder = "직급";
+  title.setAttribute("aria-label", "직급");
+  const role = orgEl("select");
+  role.setAttribute("aria-label", "조직 권한");
+  orgAssignableRoles(myRole).forEach((r) => {
+    const option = orgEl("option", "", ORG_ROLE_LABEL[r]);
+    option.value = r;
+    role.appendChild(option);
+  });
+  role.value = "member";
+  if (!role.value) role.value = "guest";
+  const submit = orgEl("button", "mc-btn mc-btn-primary", "초대");
+  submit.type = "submit";
+
+  [email, name, title, role, submit].forEach((node) => row.appendChild(node));
+  form.appendChild(row);
+  form.appendChild(orgEl("p", "mc-org-hint", "초대받은 사람이 수락해야 조직원이 돼요. 수락 전에는 조직 이름과 초대한 사람만 보입니다."));
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    withBusy(submit, "초대 중…", async () => {
+      const value = email.value.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) { showToast("이메일 형식을 확인해 주세요.", true); return; }
+      if (orgState.members.some((m) => m.email === value)) { showToast("이미 조직원이거나 초대한 사람입니다.", true); return; }
+      try {
+        await fb.inviteOrgMember(orgState.selectedOrgId, orgName,
+          { email: value, name: name.value.trim(), title: title.value.trim(), role: role.value },
+          { email: orgMyEmail(), name: (fbUser && fbUser.displayName) || "" });
+        showToast(value + " 님을 초대했습니다.");
+        email.value = ""; name.value = ""; title.value = "";
+        await shellOrgLoadMembers();
+      } catch (error) {
+        orgShowError(error, "초대하지 못했습니다.");
+      }
+    });
+  });
+
+  return form;
+}
+
+function shellOrgMemberRow(member, myRole, myEmail) {
+  const isSelf = member.email === myEmail;
+  const row = orgEl("div", "mc-org-member" + (member.status === "pending" ? " is-pending" : ""));
+  row.appendChild(mcAvatarEl(member.name || member.email));
+
+  /* 이름 · 이메일 */
+  const who = orgEl("div", "mc-org-member-who");
+  const editableInfo = orgCanEditInfo(myRole, member, isSelf);
+  const save = async (fields) => {
+    try {
+      await fb.updateOrgMember(orgState.selectedOrgId, member.email, fields);
+      showToast("저장했습니다.");
+      await shellOrgLoadMembers();
+    } catch (error) {
+      orgShowError(error, "저장하지 못했습니다.");
+      await shellOrgLoadMembers();
+    }
+  };
+  const infoInput = (value, field, placeholder, className) => {
+    const input = orgEl("input", "mc-org-inline " + className);
+    input.type = "text"; input.maxLength = 50; input.value = value || ""; input.placeholder = placeholder;
+    input.setAttribute("aria-label", placeholder);
+    input.addEventListener("keydown", (event) => { if (event.key === "Enter") input.blur(); });
+    input.addEventListener("change", () => save({ [field]: input.value.trim() }));
+    return input;
+  };
+
+  if (editableInfo) {
+    who.appendChild(infoInput(member.name, "name", "이름", "mc-org-member-name"));
+  } else {
+    who.appendChild(orgEl("span", "mc-org-member-name", member.name || member.email.split("@")[0]));
+  }
+  const sub = orgEl("span", "mc-org-member-email", member.email + (isSelf ? " (나)" : ""));
+  who.appendChild(sub);
+  row.appendChild(who);
+
+  /* 직급 */
+  if (editableInfo) {
+    row.appendChild(infoInput(member.title, "title", "직급", "mc-org-member-title"));
+  } else {
+    row.appendChild(orgEl("span", "mc-org-member-title", member.title || "—"));
+  }
+
+  /* 상태 */
+  if (member.status === "pending") {
+    row.appendChild(orgEl("span", "mc-org-pending", "수락 대기"));
+  }
+
+  /* 권한: 바꿀 수 있으면 선택 상자, 아니면 칩 */
+  if (!isSelf && orgCanChangeRole(myRole, member)) {
+    const select = orgEl("select", "mc-org-role-select");
+    select.setAttribute("aria-label", (member.name || member.email) + " 권한");
+    orgAssignableRoles(myRole).forEach((r) => {
+      const option = orgEl("option", "", ORG_ROLE_LABEL[r]);
+      option.value = r;
+      select.appendChild(option);
+    });
+    select.value = member.role;
+    select.addEventListener("change", () => save({ role: select.value }));
+    row.appendChild(select);
+  } else {
+    row.appendChild(orgRoleChip(member.role));
+  }
+
+  /* 내보내기 */
+  if (!isSelf && orgCanKick(myRole, member)) {
+    const kick = mcActionButton("close", member.status === "pending" ? "초대 취소" : "내보내기", true);
+    kick.classList.add("mc-row-danger");
+    kick.addEventListener("click", () => withBusy(kick, "", async () => {
+      const label = member.name || member.email;
+      if (!confirm(member.status === "pending" ? label + " 님 초대를 취소할까요?" : label + " 님을 조직에서 내보낼까요?")) return;
+      try {
+        await fb.removeOrgMembership(orgState.selectedOrgId, member.email);
+        showToast(member.status === "pending" ? "초대를 취소했습니다." : "내보냈습니다.");
+        await shellOrgLoadMembers();
+      } catch (error) {
+        orgShowError(error, "처리하지 못했습니다.");
+      }
+    }));
+    row.appendChild(kick);
+  } else {
+    row.appendChild(orgEl("span", "mc-org-action-gap"));
+  }
+
+  return row;
+}
+
+/* 소유권 넘기기: 수락한 조직원 중에서 고른다. 나는 관리자가 된다. */
+function shellOrgToggleTransfer(main) {
+  const box = main.querySelector("#mcOrgTransfer");
+  if (!box) return;
+  if (!box.classList.contains("hidden")) { box.classList.add("hidden"); return; }
+
+  box.innerHTML = "";
+  const candidates = orgState.members.filter((m) => m.status === "accepted" && m.email !== orgMyEmail());
+  box.appendChild(orgEl("div", "mc-org-section-title", "소유권 넘기기"));
+  if (!candidates.length) {
+    box.appendChild(orgEl("p", "mc-org-hint", "넘겨받을 수 있는 조직원(수락한 사람)이 없습니다."));
+  } else {
+    box.appendChild(orgEl("p", "mc-org-hint", "넘기면 그 사람이 소유자가 되고, 나는 관리자가 됩니다."));
+    const row = orgEl("div", "mc-org-invite-row");
+    const select = orgEl("select");
+    select.setAttribute("aria-label", "새 소유자");
+    candidates.forEach((m) => {
+      const option = orgEl("option", "", (m.name || m.email) + " (" + m.email + ")");
+      option.value = m.email;
+      select.appendChild(option);
+    });
+    const go = orgEl("button", "mc-btn mc-btn-primary", "넘기기");
+    go.type = "button";
+    go.addEventListener("click", () => withBusy(go, "처리 중…", async () => {
+      if (!confirm(select.value + " 님에게 소유권을 넘길까요? 되돌리려면 그 사람이 다시 넘겨줘야 합니다.")) return;
+      try {
+        await fb.transferOrgOwnership(orgState.selectedOrgId, orgMyEmail(), select.value);
+        showToast("소유권을 넘겼습니다.");
+        await shellOrgLoad();
+      } catch (error) {
+        orgShowError(error, "넘기지 못했습니다.");
+      }
+    }));
+    row.appendChild(select);
+    row.appendChild(go);
+    box.appendChild(row);
+  }
+  box.classList.remove("hidden");
+}
+/* ▲▲▲ 조직 관리 (1단계) 끝 ▲▲▲ */
+
+
 function shellInitSidebarToggle() {
   const toggleBtn = document.getElementById("mcSidebarToggle");
   const addBtn = document.getElementById("mcSidebarAddBtn");
@@ -6445,6 +7021,19 @@ function shellInitSidebarToggle() {
     addBtn.addEventListener("click", () => {
       const mainAddBtn = document.getElementById("mcAddBtn");
       if (mainAddBtn) mainAddBtn.click();
+    });
+  }
+
+  /* (조직 관리 1단계) 사이드바 "조직원 관리" */
+  const orgBtn = document.getElementById("mcSidebarOrgBtn");
+  if (orgBtn) orgBtn.addEventListener("click", shellOpenOrgModal);
+
+  const orgNewBtn = document.getElementById("mcOrgNewBtn");
+  if (orgNewBtn) {
+    orgNewBtn.addEventListener("click", () => {
+      orgState.creating = true;
+      shellOrgRenderSide();
+      shellOrgRenderMain();
     });
   }
 

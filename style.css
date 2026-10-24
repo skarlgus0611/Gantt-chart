@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v8";
+  --css-version: "2026-10-24-design-v9";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -6371,3 +6371,571 @@ body.is-bar-moving * {
 }
 
 /* ▲▲▲ 사이드바: 차트별 카테고리 · 작업 목록 (추가분) 끝 ▲▲▲ */
+
+/* =========================================================
+ * ▼▼▼ 조직 관리 (1단계, 추가분) ▼▼▼
+ * ========================================================= */
+
+/* 사이드바 버튼 안 배지(받은 조직 초대 수) */
+.mc-badge.mc-badge-inline {
+  position: static;
+  margin-left: auto;
+  box-shadow: none;
+}
+
+#shellView.mc-sidebar-collapsed .mc-badge.mc-badge-inline {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  margin: 0;
+}
+
+.mc-org-modal {
+  max-width: 980px;
+  width: 100%;
+  height: min(720px, 90vh);
+}
+
+.mc-org-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 0;
+  margin: 0 -24px;
+  border-top: 1px solid #f0f0f2;
+}
+
+/* 왼쪽: 받은 초대 · 내 조직 · 새 조직 */
+.mc-org-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 12px 16px 16px;
+  border-right: 1px solid #f0f0f2;
+  background: #fafafb;
+  overflow-y: auto;
+}
+
+.mc-org-side-title {
+  padding: 6px 6px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #a1a1aa;
+  letter-spacing: .04em;
+}
+
+.mc-org-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mc-org-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-org-item:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #ececef;
+}
+
+.mc-org-item.active {
+  background: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+.mc-org-item .mc-manage-tile {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+}
+
+.mc-org-item-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 700;
+  color: #18181b;
+}
+
+.mc-org-item .mc-role-chip {
+  padding: 2px 8px;
+  font-size: 10.5px;
+}
+
+.mc-org-empty-side {
+  padding: 6px;
+  font-size: 12.5px;
+  color: #a1a1aa;
+}
+
+.mc-org-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 9px 10px;
+  border: 1.5px dashed #d4d4d8;
+  border-radius: 10px;
+  background: transparent;
+  color: #52525b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mc-org-new:hover:not(:disabled) {
+  border-color: #0f766e;
+  color: #0f766e;
+  background: #f0fdfa;
+}
+
+/* 받은 초대 카드 */
+.mc-org-invites {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mc-org-invites:empty {
+  display: none;
+}
+
+.mc-org-invite {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  background: #fffbeb;
+}
+
+.mc-org-invite-name {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #18181b;
+}
+
+.mc-org-invite-from {
+  font-size: 11.5px;
+  color: #71717a;
+  word-break: break-all;
+}
+
+.mc-org-invite-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #71717a;
+}
+
+.mc-org-invite-meta .mc-role-chip {
+  padding: 2px 8px;
+  font-size: 10.5px;
+}
+
+.mc-org-invite-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.mc-org-invite-actions .mc-btn {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
+/* 오른쪽: 고른 조직 */
+.mc-org-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 24px 22px;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.mc-org-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mc-org-title-wrap {
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.mc-org-name {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  color: #18181b;
+}
+
+.mc-org-name-input {
+  width: 100%;
+  height: 38px;
+  margin-left: -8px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  font-size: 19px;
+  font-weight: 800;
+  color: #18181b;
+}
+
+.mc-org-name-input:hover {
+  background: #fafafb;
+}
+
+.mc-org-name-input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+.mc-org-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #71717a;
+}
+
+.mc-org-count {
+  color: #a1a1aa;
+}
+
+.mc-org-head-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.mc-org-head-actions .mc-btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
+.mc-org-danger {
+  color: #be123c;
+}
+
+.mc-org-danger:hover:not(:disabled) {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.mc-org-section-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #71717a;
+}
+
+.mc-org-hint {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: #a1a1aa;
+}
+
+/* 초대 · 소유권 넘기기 줄 */
+.mc-org-invite-form,
+.mc-org-transfer {
+  padding: 14px;
+  border: 1px solid #ececef;
+  border-radius: 12px;
+  background: #fafafb;
+}
+
+.mc-org-invite-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mc-org-invite-row input,
+.mc-org-invite-row select {
+  height: 36px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid #e4e4e7;
+  border-radius: 9px;
+  background: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  color: #18181b;
+}
+
+.mc-org-invite-row input[type="email"] {
+  flex: 2 1 200px;
+}
+
+.mc-org-invite-row input[type="text"] {
+  flex: 1 1 100px;
+}
+
+.mc-org-invite-row select {
+  flex: 0 0 auto;
+  padding-right: 28px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center / 12px;
+  cursor: pointer;
+}
+
+.mc-org-transfer select {
+  flex: 1 1 auto;
+}
+
+.mc-org-invite-row .mc-btn {
+  height: 36px;
+}
+
+.mc-org-invite-row input:focus,
+.mc-org-invite-row select:focus {
+  outline: none;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+/* 조직원 줄 */
+.mc-org-members {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mc-org-member {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1.6fr) minmax(0, 1fr) auto auto 30px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid #ececef;
+  border-radius: 12px;
+}
+
+.mc-org-member.is-pending {
+  background: #fafafb;
+}
+
+.mc-org-member.is-pending .mc-row-avatar {
+  opacity: .55;
+}
+
+.mc-org-member-who {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mc-org-member-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #18181b;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-org-member-email {
+  font-size: 11.5px;
+  color: #a1a1aa;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-org-member-title {
+  font-size: 12.5px;
+  color: #52525b;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-org-inline {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+}
+
+input.mc-org-member-name {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+input.mc-org-member-title {
+  font-size: 12.5px;
+}
+
+.mc-org-inline:hover {
+  background: #fafafb;
+  border-color: #ececef;
+}
+
+.mc-org-inline:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+.mc-org-inline::placeholder {
+  color: #c4c4cc;
+}
+
+.mc-org-pending {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b45309;
+  background: #fef3c7;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.mc-org-role-select {
+  height: 30px;
+  padding: 0 26px 0 10px;
+  border: 1px solid #e4e4e7;
+  border-radius: 999px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center / 11px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #3f3f46;
+  cursor: pointer;
+}
+
+.mc-org-member .mc-btn-icon {
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  background: transparent;
+  color: #a1a1aa;
+}
+
+.mc-org-action-gap {
+  width: 30px;
+}
+
+/* 새 조직 만들기 */
+.mc-org-create {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 520px;
+}
+
+.mc-org-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #71717a;
+}
+
+.mc-org-field input {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #e4e4e7;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #18181b;
+}
+
+.mc-org-field input:focus {
+  outline: none;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+.mc-org-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mc-org-create-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* 좁은 화면: 위아래로 */
+@media (max-width: 760px) {
+  .mc-org-modal {
+    height: 92vh;
+  }
+
+  .mc-org-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    margin: 0 -18px;
+  }
+
+  .mc-org-side {
+    max-height: 34vh;
+    border-right: 0;
+    border-bottom: 1px solid #f0f0f2;
+  }
+
+  .mc-org-main {
+    padding: 16px 18px;
+  }
+
+  .mc-org-member {
+    grid-template-columns: 32px minmax(0, 1fr) auto 30px;
+  }
+
+  .mc-org-member-title,
+  .mc-org-member .mc-org-pending {
+    grid-column: 2 / 3;
+  }
+
+  .mc-org-field-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ▲▲▲ 조직 관리 (1단계, 추가분) 끝 ▲▲▲ */
