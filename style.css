@@ -416,7 +416,7 @@ main {
   /* (디자인 추가분) 카테고리마다 고른 색(JS가 --cat-color로 넘겨줌)을
      옅게 섞어 줄 전체를 물들이고, 왼쪽에 그 색 띠를 세운다. 색을
      아직 못 받은 줄(기타 등)은 --cat-color가 없어 기존 중립색 그대로. */
-  background: color-mix(in srgb, var(--cat-color, #c8cfcd) 20%, #ffffff);
+  background: var(--cat-bg, #f4f6f5);
 
   border-left: 6px solid var(--cat-color, transparent);
 
@@ -2969,10 +2969,11 @@ button:hover:not(:disabled) {
 }
 
 /* 본문 */
+/* (요청사항) 차트 박스를 화면 폭만큼 넓게 — 최대 폭 제한을 없앴다 */
 .mc-page {
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 28px 32px 96px;
+  max-width: none;
+  margin: 0;
+  padding: 24px 24px 96px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -3395,11 +3396,11 @@ main {
 .category-label {
   gap: 8px;
   padding: 0 8px 0 10px;
-  background: color-mix(in srgb, var(--cat-color, #a1a1aa) 10%, #ffffff);
+  background: var(--cat-bg, #fafafa);
   border-left: 4px solid var(--cat-color, #d4d4d8);
   border-bottom: 1px solid #ffffff;
   box-shadow: none;
-  color: color-mix(in srgb, var(--cat-color, #3f3f46) 55%, #18181b);
+  color: var(--cat-text, #3f3f46);
 }
 
 .cat-dot {
@@ -3413,8 +3414,8 @@ main {
   line-height: 1;
   padding: 3px 7px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--cat-color, #a1a1aa) 18%, #ffffff);
-  color: color-mix(in srgb, var(--cat-color, #3f3f46) 80%, #18181b);
+  background: var(--cat-badge-bg, #f4f4f5);
+  color: var(--cat-badge-text, #3f3f46);
 }
 
 .category-empty {
@@ -3431,7 +3432,7 @@ main {
 }
 
 .timeline-category {
-  background: color-mix(in srgb, var(--cat-color, #a1a1aa) 10%, #ffffff);
+  background: var(--cat-bg, #fafafa);
   border-bottom: 1px solid #ffffff;
   box-shadow: none;
 }
@@ -3481,8 +3482,8 @@ main {
   justify-content: center;
   font-size: 8.5px;
   font-weight: 700;
-  background: color-mix(in srgb, var(--cat-color, #a1a1aa) 30%, #ffffff);
-  color: color-mix(in srgb, var(--cat-color, #3f3f46) 60%, #18181b);
+  background: var(--cat-soft-bg, #e4e4e7);
+  color: var(--cat-soft-text, #3f3f46);
 }
 
 /* 머리글: 월 / 주 */
