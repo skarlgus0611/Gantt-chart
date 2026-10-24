@@ -160,13 +160,23 @@ body {
 
   white-space: nowrap;
 
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
   border: 0;
   background: transparent;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
   padding: 7px 12px;
+  color: #3f3f46;
   transition: background .12s;
+}
+
+.top-actions button .mc-icon {
+  flex-shrink: 0;
+  color: #71717a;
 }
 
 .top-actions button:hover:not(:disabled) {
@@ -175,6 +185,10 @@ body {
 }
 
 .top-actions button#todayBtn {
+  color: #0f766e;
+}
+
+.top-actions button#todayBtn .mc-icon {
   color: #0f766e;
 }
 
@@ -402,9 +416,9 @@ main {
   /* (디자인 추가분) 카테고리마다 고른 색(JS가 --cat-color로 넘겨줌)을
      옅게 섞어 줄 전체를 물들이고, 왼쪽에 그 색 띠를 세운다. 색을
      아직 못 받은 줄(기타 등)은 --cat-color가 없어 기존 중립색 그대로. */
-  background: color-mix(in srgb, var(--cat-color, #c8cfcd) 12%, #ffffff);
+  background: color-mix(in srgb, var(--cat-color, #c8cfcd) 20%, #ffffff);
 
-  border-left: 4px solid var(--cat-color, transparent);
+  border-left: 6px solid var(--cat-color, transparent);
 
   border-bottom: 1px solid #DCE3E0;
 
@@ -1977,6 +1991,16 @@ body.is-dragging * {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+
+  /* (디자인 추가분) 아이콘 + 글자를 한 줄에 나란히 */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-btn .mc-icon {
+  flex-shrink: 0;
+  color: #0F766E;
 }
 
 .mc-btn:hover { background: #f0f2f7; }
