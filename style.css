@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v13";
+  --css-version: "2026-10-24-design-v15";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -7814,4 +7814,265 @@ button.has-auto-ico {
 
 .mc-menu-item-danger .mc-auto-ico {
   color: currentColor;
+}
+
+
+/* =========================================================
+   (조직 관리 3단계, 추가분) 담당자 고르기 · 담당자별 보기
+   ========================================================= */
+.assignee-menu,
+.owner-filter-menu {
+  position: fixed;
+  z-index: 1200;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  background: #ffffff;
+  border: 1px solid #ececef;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(24, 24, 27, .16);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.owner-filter-menu {
+  min-width: 240px;
+  max-width: calc(100vw - 16px);
+  max-height: 340px;
+}
+
+.assignee-item,
+.owner-filter-item {
+  width: 100%;
+  min-height: 0;
+  height: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #27272a;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.assignee-item:hover,
+.assignee-item.active,
+.owner-filter-item:hover {
+  background: #f4f4f5;
+}
+
+.assignee-item.selected,
+.owner-filter-item.selected {
+  background: #f0fdfa;
+}
+
+.assignee-avatar {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.owner-filter-all {
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.owner-filter-none {
+  background: #f4f4f5;
+  color: #a1a1aa;
+}
+
+.assignee-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.assignee-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #18181b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignee-sub {
+  font-size: 11.5px;
+  color: #a1a1aa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignee-me {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #f0fdfa;
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.assignee-free,
+.assignee-empty {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px;
+  font-size: 12px;
+  color: #71717a;
+}
+
+.assignee-free {
+  border-top: 1px solid #f0f0f2;
+  margin-top: 2px;
+}
+
+.assignee-free svg,
+.assignee-empty svg {
+  flex-shrink: 0;
+  color: #a1a1aa;
+}
+
+.owner-filter-count {
+  flex-shrink: 0;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #f4f4f5;
+  color: #71717a;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.owner-filter-check {
+  flex-shrink: 0;
+  color: #0f766e;
+}
+
+.owner-filter-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: #f0f0f2;
+}
+
+/* "작업 추가" 줄 오른쪽 버튼 */
+.add-actions .owner-filter-btn {
+  margin: 0 0 0 auto;
+  width: auto;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px 0 13px;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #52525b;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.add-actions .owner-filter-btn:hover {
+  background: #fafafa;
+  color: #27272a;
+}
+
+.add-actions .owner-filter-btn.active {
+  background: #f0fdfa;
+  border-color: #99f6e4;
+  color: #0f766e;
+}
+
+.owner-filter-label {
+  max-width: 16em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-filter-caret {
+  color: #a1a1aa;
+}
+
+.owner-filter-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: -4px;
+  border-radius: 999px;
+}
+
+.owner-filter-clear:hover {
+  background: #ccfbf1;
+}
+
+/* 담당자별로 보는 중에는 끌기 손잡이를 흐리게 */
+body:has(.owner-filter-btn.active) .drag-handle {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+.assignee-free:first-child {
+  border-top: 0;
+  margin-top: 0;
+}
+
+
+/* =========================================================
+   (디자인 추가분) 사이드바 왼쪽 위 칸: 테마 초록 + 간트 막대 무늬
+   버튼은 흰색 그대로.
+   ========================================================= */
+.mc-sidebar-head {
+  position: relative;
+  overflow: hidden;
+  background-color: #0f766e;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='68' viewBox='0 0 200 68'%3E%3Cg stroke='%23ffffff' stroke-opacity='.09'%3E%3Cpath d='M20 0v68M60 0v68M100 0v68M140 0v68M180 0v68'/%3E%3C/g%3E%3Cg fill='%23ffffff'%3E%3Crect x='14' y='11' width='74' height='9' rx='4.5' fill-opacity='.16'/%3E%3Crect x='14' y='11' width='44' height='9' rx='4.5' fill-opacity='.28'/%3E%3Crect x='62' y='29' width='96' height='9' rx='4.5' fill-opacity='.16'/%3E%3Crect x='62' y='29' width='38' height='9' rx='4.5' fill-opacity='.28'/%3E%3Crect x='118' y='47' width='70' height='9' rx='4.5' fill-opacity='.16'/%3E%3C/g%3E%3Crect x='118' y='47' width='22' height='9' rx='4.5' fill='%235eead4' fill-opacity='.55'/%3E%3C/svg%3E"),
+    linear-gradient(135deg, #0f766e 0%, #0d6b64 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-position: right -6px center, 0 0;
+  border-bottom-color: #0d6b64;
+}
+
+.mc-sidebar-head .mc-sidebar-toggle {
+  position: relative;
+  z-index: 1;
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0f766e;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .14);
+}
+
+.mc-sidebar-head .mc-sidebar-toggle:hover {
+  background: #f0fdfa;
+}
+
+/* 접힌 사이드바(64px)에서는 무늬를 가운데 버튼 뒤로 은은하게 */
+#shellView.mc-sidebar-collapsed .mc-sidebar-head {
+  background-position: left -30px center, 0 0;
 }
