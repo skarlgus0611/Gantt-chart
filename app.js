@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v11";
+const APP_VERSION = "2026-10-24-design-v12";
 
 
 /* =========================================================
@@ -8597,23 +8597,27 @@ async function shellShareOrgRefresh() {
 }
 
 /* ---- 조직원 선택 탭 ---- */
+/* "N명 추가" 버튼: 아이콘은 두고 글자만 바꾼다 */
+function shellShareSyncPickButton() {
+  const button = document.getElementById("mcSharePickBtn");
+  const count = document.getElementById("mcSharePickCount");
+  const n = shareOrgState.picked.size;
+  button.disabled = !n;
+  const label = button.querySelector("span");
+  if (label) label.textContent = n ? n + "명 추가" : "추가";
+  count.textContent = n ? n + "명 선택" : "";
+}
+
 async function shellShareRenderPick() {
   const pane = document.querySelector('#mcShareModal [data-share-pane="pick"]');
   const select = document.getElementById("mcSharePickOrg");
   const list = document.getElementById("mcSharePickList");
-  const button = document.getElementById("mcSharePickBtn");
-  const count = document.getElementById("mcSharePickCount");
   const orgs = shareOrgSelectable();
 
   pane.classList.toggle("mc-share-pane-empty", !orgs.length);
   list.innerHTML = "";
   shareOrgState.picked = new Set();
-  const syncButton = () => {
-    const n = shareOrgState.picked.size;
-    button.disabled = !n;
-    button.textContent = n ? n + "명 추가" : "추가";
-    count.textContent = n ? n + "명 선택" : "";
-  };
+  const syncButton = shellShareSyncPickButton;
   syncButton();
 
   if (!orgs.length) {
@@ -8921,7 +8925,8 @@ function initShareOrgUi() {
   const pickOrg = document.getElementById("mcSharePickOrg");
   if (pickOrg) pickOrg.addEventListener("change", shellShareRenderPick);
   const pickBtn = document.getElementById("mcSharePickBtn");
-  if (pickBtn) pickBtn.addEventListener("click", () => withBusy(pickBtn, "공유 중…", shellShareAddPicked));
+  /* withBusy 가 끝나며 예전 글자·활성 상태로 되돌리므로, 끝난 뒤 다시 맞춘다 */
+  if (pickBtn) pickBtn.addEventListener("click", () => withBusy(pickBtn, "공유 중…", shellShareAddPicked).then(shellShareSyncPickButton));
   const allBtn = document.getElementById("mcShareAllBtn");
   if (allBtn) allBtn.addEventListener("click", () => withBusy(allBtn, "공유 중…", shellShareAddWholeOrg));
 }
