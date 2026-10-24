@@ -1,0 +1,155 @@
+// =========================================================
+// 조직 관리 (1단계) — Firestore 보안 규칙 추가분
+//
+// 붙여 넣는 곳: Firebase 콘솔 → Firestore Database → 규칙(Rules)
+//   기존 규칙의
+//     match /databases/{database}/documents {
+//       ... (기존 charts 규칙은 그대로 둔다) ...
+//       ▼ 여기에 아래 내용 전체를 붙여 넣는다
+//     }
+//   그 다음 [게시(Publish)].
+//
+// 기존 charts 규칙은 바꾸지 않는다. 새 컬렉션 2개(organizations,
+// orgMemberships)에 대한 규칙만 추가한다.
+//
+// 권한 (높은 순): owner(소유자) > admin(관리자) > member(참여자) > guest(게스트)
+//   - 게스트: 조직원 정보 보기만
+//   - 참여자: + 초대(참여자 이하로), 게스트 권한 수정(참여자 이하로)
+//   - 관리자: + 내보내기, 이름·직급 수정 (자기보다 낮은 사람, 관리자 이하로)
+//   - 소유자: 전부 + 조직 이름 변경·삭제·소유권 넘기기
+//   - 초대받은 사람은 자기 초대 문서만 읽을 수 있다(조직 이름·초대한 사람).
+//     수락한 뒤에야 조직원 목록을 읽을 수 있다.
+// =========================================================
+
+function orgSignedIn() {
+  return request.auth != null && request.auth.token.email != null;
+}
+
+function orgMyEmail() {
+  return request.auth.token.email.lower();
+}
+
+function orgMembershipPath(orgId, email) {
+  return /databases/$(database)/documents/orgMemberships/$(orgId + '__' + email);
+}
+
+function orgIsMember(orgId) {
+  return exists(orgMembershipPath(orgId, orgMyEmail()))
+    && get(orgMembershipPath(orgId, orgMyEmail())).data.status == 'accepted';
+}
+
+function orgMyRole(orgId) {
+  return get(orgMembershipPath(orgId, orgMyEmail())).data.role;
+}
+
+function orgRank(role) {
+  return role == 'owner' ? 3 : (role == 'admin' ? 2 : (role == 'member' ? 1 : 0));
+}
+
+function orgInvitableRole(role) {
+  return role in ['admin', 'member', 'guest'];
+}
+
+match /organizations/{orgId} {
+  allow read: if orgSignedIn() && orgIsMember(orgId);
+
+  allow create: if orgSignedIn()
+    && request.resource.data.createdBy == request.auth.uid
+    && request.resource.data.ownerEmail == orgMyEmail();
+
+  allow update, delete: if orgSignedIn()
+    && orgIsMember(orgId)
+    && orgMyRole(orgId) == 'owner';
+}
+
+match /orgMemberships/{membershipId} {
+
+  // 본인 문서(초대 포함) 또는 같은 조직의 수락한 조직원
+  allow read: if orgSignedIn()
+    && (resource.data.email == orgMyEmail() || orgIsMember(resource.data.orgId));
+
+  allow create: if orgSignedIn()
+    && membershipId == request.resource.data.orgId + '__' + request.resource.data.email
+    && (
+      // 조직을 만든 사람 자신의 소유자 문서 (조직 만들기와 같은 묶음 쓰기)
+      (
+        request.resource.data.email == orgMyEmail()
+        && request.resource.data.role == 'owner'
+        && request.resource.data.status == 'accepted'
+        && !exists(/databases/$(database)/documents/organizations/$(request.resource.data.orgId))
+        && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.createdBy == request.auth.uid
+      )
+      ||
+      // 초대: 참여자 이상만, 내 권한 이하로만, 대기 상태로
+      (
+        orgIsMember(request.resource.data.orgId)
+        && orgRank(orgMyRole(request.resource.data.orgId)) >= 1
+        && orgInvitableRole(request.resource.data.role)
+        && orgRank(request.resource.data.role) <= orgRank(orgMyRole(request.resource.data.orgId))
+        && request.resource.data.status == 'pending'
+      )
+    );
+
+  allow update: if orgSignedIn()
+    && request.resource.data.orgId == resource.data.orgId
+    && request.resource.data.email == resource.data.email
+    && (
+      // 초대받은 본인이 수락 (상태만 바꿀 수 있다)
+      (
+        resource.data.email == orgMyEmail()
+        && resource.data.status == 'pending'
+        && request.resource.data.status == 'accepted'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt'])
+      )
+      ||
+      // 소유자: 무엇이든 (이름 변경 시 orgName, 소유권 넘기기 포함)
+      (
+        orgIsMember(resource.data.orgId)
+        && orgMyRole(resource.data.orgId) == 'owner'
+      )
+      ||
+      // 관리자·참여자: 나보다 낮은 사람만, 내 권한 이하로
+      (
+        orgIsMember(resource.data.orgId)
+        && orgRank(orgMyRole(resource.data.orgId)) >= 1
+        && orgRank(resource.data.role) < orgRank(orgMyRole(resource.data.orgId))
+        && orgInvitableRole(request.resource.data.role)
+        && orgRank(request.resource.data.role) <= orgRank(orgMyRole(resource.data.orgId))
+        && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
+          || (
+            orgMyRole(resource.data.orgId) == 'admin'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'name', 'title', 'updatedAt'])
+          )
+        )
+      )
+      ||
+      // 관리자: 본인 이름·직급
+      (
+        resource.data.email == orgMyEmail()
+        && orgIsMember(resource.data.orgId)
+        && orgMyRole(resource.data.orgId) == 'admin'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'title', 'updatedAt'])
+      )
+    );
+
+  allow delete: if orgSignedIn()
+    && (
+      // 본인: 초대 거절 · 조직 나가기 (소유자는 먼저 소유권을 넘겨야 한다)
+      (resource.data.email == orgMyEmail() && resource.data.role != 'owner')
+      ||
+      // 관리자 이상: 나보다 낮은 사람 내보내기
+      (
+        orgIsMember(resource.data.orgId)
+        && orgRank(orgMyRole(resource.data.orgId)) >= 2
+        && orgRank(resource.data.role) < orgRank(orgMyRole(resource.data.orgId))
+      )
+      ||
+      // 소유자가 조직을 삭제할 때 자기 소유자 문서까지 함께 지움
+      (
+        resource.data.email == orgMyEmail()
+        && resource.data.role == 'owner'
+        && !existsAfter(/databases/$(database)/documents/organizations/$(resource.data.orgId))
+      )
+    );
+}

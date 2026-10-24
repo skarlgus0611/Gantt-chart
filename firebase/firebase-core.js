@@ -361,3 +361,124 @@ export async function getChartsOnce(uid, email) {
   sharedSnap.docs.forEach((d) => { byId[d.id] = { id: d.id, ...d.data() }; });
   return Object.values(byId);
 }
+
+/* =========================================================
+ * ▼▼▼ 조직 관리 (1단계, 추가분) ▼▼▼
+ * 기존 charts 데이터는 건드리지 않는 별도 컬렉션 2개.
+ *
+ *   organizations/{orgId}
+ *     name, createdBy(uid), ownerEmail, createdAt
+ *
+ *   orgMemberships/{orgId}__{email}      ← 한 사람 · 한 조직당 문서 1개
+ *     orgId, orgName, email(소문자), name, title(직급),
+ *     role: "owner" | "admin" | "member" | "guest"   (소유자/관리자/참여자/게스트)
+ *     status: "pending" | "accepted",
+ *     invitedByEmail, invitedByName, createdAt, acceptedAt, updatedAt
+ *
+ * 초대받은 사람은 자기 문서만 읽을 수 있어서(보안 규칙) 수락 전에는
+ * 조직 이름과 초대한 사람만 보이고, 수락한 뒤에야 조직원 목록을 본다.
+ * 권한 검사는 app.js 화면 쪽과 firebase/organizations.rules 양쪽에서 한다.
+ * ========================================================= */
+
+export function orgMembershipId(orgId, email) {
+  return orgId + "__" + String(email || "").trim().toLowerCase();
+}
+
+/* 조직 만들기: 조직 문서 + 만든 사람의 소유자 문서를 한 번에 */
+export async function createOrganization(name, owner) {
+  const orgRef = doc(collection(db, "organizations"));
+  const email = String(owner.email || "").trim().toLowerCase();
+  const batch = writeBatch(db);
+  batch.set(orgRef, {
+    name, createdBy: owner.uid, ownerEmail: email, createdAt: serverTimestamp()
+  });
+  batch.set(doc(db, "orgMemberships", orgMembershipId(orgRef.id, email)), {
+    orgId: orgRef.id, orgName: name, email,
+    name: owner.name || "", title: owner.title || "",
+    role: "owner", status: "accepted",
+    invitedByEmail: email, invitedByName: owner.name || "",
+    createdAt: serverTimestamp(), acceptedAt: serverTimestamp()
+  });
+  await batch.commit();
+  return orgRef.id;
+}
+
+/* 내가 속한(수락) + 초대받은(대기) 조직 문서들 */
+export async function getMyOrgMemberships(email) {
+  const snap = await getDocs(query(collection(db, "orgMemberships"),
+    where("email", "==", String(email || "").trim().toLowerCase())));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/* 조직원 목록 (수락한 조직원만 읽을 수 있음) */
+export async function getOrgMembers(orgId) {
+  const snap = await getDocs(query(collection(db, "orgMemberships"), where("orgId", "==", orgId)));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function getOrgMembershipOnce(orgId, email) {
+  const snap = await getDoc(doc(db, "orgMemberships", orgMembershipId(orgId, email)));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+export function inviteOrgMember(orgId, orgName, member, inviter) {
+  const email = String(member.email || "").trim().toLowerCase();
+  return setDoc(doc(db, "orgMemberships", orgMembershipId(orgId, email)), {
+    orgId, orgName, email,
+    name: member.name || "", title: member.title || "",
+    role: member.role, status: "pending",
+    invitedByEmail: String(inviter.email || "").toLowerCase(),
+    invitedByName: inviter.name || "",
+    createdAt: serverTimestamp()
+  });
+}
+
+export function acceptOrgInvite(orgId, email) {
+  return updateDoc(doc(db, "orgMemberships", orgMembershipId(orgId, email)), {
+    status: "accepted", acceptedAt: serverTimestamp()
+  });
+}
+
+/* 초대 거절 · 조직 나가기 · 내보내기(추방) 모두 문서 삭제 */
+export function removeOrgMembership(orgId, email) {
+  return deleteDoc(doc(db, "orgMemberships", orgMembershipId(orgId, email)));
+}
+
+export function updateOrgMember(orgId, email, fields) {
+  return updateDoc(doc(db, "orgMemberships", orgMembershipId(orgId, email)), {
+    ...fields, updatedAt: serverTimestamp()
+  });
+}
+
+export async function getOrganizationOnce(orgId) {
+  const snap = await getDoc(doc(db, "organizations", orgId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+/* 이름 바꾸기: 조직 문서 + 조직원 문서들의 orgName(초대받은 사람이 보는 이름) */
+export async function renameOrganization(orgId, name, memberEmails) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, "organizations", orgId), { name });
+  memberEmails.forEach((email) => {
+    batch.update(doc(db, "orgMemberships", orgMembershipId(orgId, email)), { orgName: name });
+  });
+  return batch.commit();
+}
+
+/* 소유권 넘기기: 받는 사람 → 소유자, 나 → 관리자 */
+export function transferOrgOwnership(orgId, fromEmail, toEmail) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, "orgMemberships", orgMembershipId(orgId, toEmail)), { role: "owner", updatedAt: serverTimestamp() });
+  batch.update(doc(db, "orgMemberships", orgMembershipId(orgId, fromEmail)), { role: "admin", updatedAt: serverTimestamp() });
+  batch.update(doc(db, "organizations", orgId), { ownerEmail: String(toEmail).toLowerCase() });
+  return batch.commit();
+}
+
+/* 조직 삭제: 조직원 문서 전부 + 조직 문서 */
+export async function deleteOrganization(orgId, memberEmails) {
+  const batch = writeBatch(db);
+  memberEmails.forEach((email) => batch.delete(doc(db, "orgMemberships", orgMembershipId(orgId, email))));
+  batch.delete(doc(db, "organizations", orgId));
+  return batch.commit();
+}
+/* ▲▲▲ 조직 관리 (1단계, 추가분) 끝 ▲▲▲ */
