@@ -5546,4 +5546,22 @@ body.shared-viewer-readonly .detail-swatches {
   }
 }
 
+/* 공유받은 차트 줄 (차트 관리) */
+.mc-manage-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #18181b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-manage-badge-shared {
+  background: #d1fae5;
+  color: #047857;
+}
+
 /* ▲▲▲ 창(모달) 디자인 통일 (추가분) 끝 ▲▲▲ */
