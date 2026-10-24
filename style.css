@@ -7163,4 +7163,179 @@ input.mc-org-member-title {
   }
 }
 
+/* ---------- 아이콘 (글자 옆 작은 선 아이콘) ---------- */
+.mc-org-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mc-org-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-org-label > .mc-org-ico {
+  color: #a1a1aa;
+}
+
+.mc-org-modal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.mc-org-modal-title svg {
+  color: #0f766e;
+}
+
+.mc-org-side-title .mc-org-label > .mc-org-ico,
+.mc-org-invites .mc-org-side-title .mc-org-ico {
+  color: inherit;
+}
+
+.mc-role-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mc-org-item-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mc-org-invite-from,
+.mc-org-invite-role {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mc-org-invite-from .mc-org-ico {
+  color: #b45309;
+}
+
+.mc-org-invite-role {
+  margin-top: 5px;
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.mc-org-invite-role .mc-role-chip {
+  padding: 1px 7px;
+  font-size: 10.5px;
+}
+
+.mc-org-invite-actions .mc-btn {
+  gap: 5px;
+}
+
+.mc-org-stat.mc-org-label > .mc-org-ico {
+  color: #a1a1aa;
+}
+
+.mc-org-stat.warn > .mc-org-ico {
+  color: #d97706;
+}
+
+.mc-org-section-title > .mc-org-ico {
+  color: #0f766e;
+}
+
+.mc-org-section-empty .mc-org-label {
+  justify-content: center;
+}
+
+.mc-org-panel-title > .mc-org-ico {
+  color: #0f766e;
+}
+
+.mc-org-panel-warn .mc-org-panel-title > .mc-org-ico {
+  color: #d97706;
+}
+
+.mc-org-field > .mc-org-label {
+  gap: 5px;
+}
+
+.mc-org-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-org-role-help {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-org-role-help .mc-org-ico {
+  color: #0f766e;
+}
+
+.mc-org-member-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mc-org-member-title .mc-org-ico {
+  color: #c4c4cc;
+}
+
+.mc-org-invited-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #b45309;
+}
+
+/* 권한 선택 상자 + 왼쪽 아이콘 */
+.mc-org-role-pick {
+  position: relative;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+}
+
+.mc-org-role-pick > .mc-org-ico {
+  position: absolute;
+  left: 9px;
+  pointer-events: none;
+  color: currentColor;
+  z-index: 1;
+}
+
+.mc-org-role-pick .mc-org-role-select {
+  padding-left: 25px;
+}
+
+.mc-org-role-pick:has(.mc-role-owner) { color: #6d28d9; }
+.mc-org-role-pick:has(.mc-role-admin) { color: #0f766e; }
+.mc-org-role-pick:has(.mc-role-editor) { color: #1d4ed8; }
+.mc-org-role-pick:has(.mc-role-viewer) { color: #52525b; }
+
+/* 메뉴 항목 아이콘 */
+.mc-menu-item-icon {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.mc-menu-item-icon .mc-org-ico {
+  color: #a1a1aa;
+}
+
+.mc-menu-item-danger .mc-org-ico {
+  color: currentColor;
+}
+
 /* ▲▲▲ 조직 관리 (1단계, 추가분) 끝 ▲▲▲ */

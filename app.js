@@ -6490,8 +6490,51 @@ function orgEl(tag, className, text) {
   return node;
 }
 
+/* (디자인 추가분) 조직 창에서 글자 옆에 붙이는 작은 선 아이콘 */
+const ORG_ICONS = {
+  users: '<circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M16 4.5a3 3 0 0 1 0 6M21 20a5 5 0 0 0-3.5-4.8"></path>',
+  userPlus: '<circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M19 8v6M16 11h6"></path>',
+  user: '<circle cx="12" cy="8" r="3.5"></circle><path d="M5 20a7 7 0 0 1 14 0"></path>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="m4 7 8 6 8-6"></path>',
+  building: '<rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1M10 21v-3h4v3"></path>',
+  briefcase: '<rect x="3" y="7" width="18" height="13" rx="2.5"></rect><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12.5h18"></path>',
+  clock: '<circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path>',
+  crown: '<path d="M4 18h16l-1.5-10-4.5 4-2-6-2 6-4.5-4z"></path>',
+  shield: '<path d="M12 3 5 6v5.5c0 4.2 2.9 7.8 7 9.5 4.1-1.7 7-5.3 7-9.5V6z"></path>',
+  pencil: '<path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"></path><path d="m14 7 3 3"></path>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle>',
+  check: '<path d="m5 12 5 5 9-10"></path>',
+  x: '<path d="M6 6l12 12M18 6 6 18"></path>',
+  info: '<circle cx="12" cy="12" r="8.5"></circle><path d="M12 11v5M12 8h.01"></path>',
+  send: '<path d="M21 3 10 14"></path><path d="M21 3 14 21l-4-7-7-4z"></path>',
+  swap: '<path d="M7 7h12l-3-3M17 17H5l3 3"></path>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path>',
+  leave: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"></path><path d="M10 17l-5-5 5-5M5 12h11"></path>',
+  plus: '<path d="M12 5v14M5 12h14"></path>'
+};
+
+const ORG_ROLE_ICON = { owner: "crown", admin: "shield", member: "pencil", guest: "eye" };
+
+function orgIcon(name, size = 14) {
+  const span = orgEl("span", "mc-org-ico");
+  span.setAttribute("aria-hidden", "true");
+  span.innerHTML = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + (ORG_ICONS[name] || "") + "</svg>";
+  return span;
+}
+
+/* 아이콘 + 글자 */
+function orgLabel(icon, text, className) {
+  const span = orgEl("span", "mc-org-label" + (className ? " " + className : ""));
+  span.appendChild(orgIcon(icon));
+  span.appendChild(orgEl("span", "", text));
+  return span;
+}
+
 function orgRoleChip(role) {
-  return orgEl("span", "mc-role-chip mc-role-" + (role === "member" ? "editor" : role === "guest" ? "viewer" : role), ORG_ROLE_LABEL[role] || role);
+  const chip = orgEl("span", "mc-role-chip mc-role-" + (role === "member" ? "editor" : role === "guest" ? "viewer" : role));
+  chip.appendChild(orgIcon(ORG_ROLE_ICON[role] || "user", 12));
+  chip.appendChild(orgEl("span", "", ORG_ROLE_LABEL[role] || role));
+  return chip;
 }
 
 function orgShowError(error, fallback) {
@@ -6589,21 +6632,31 @@ function shellOrgRenderSide() {
   invites.innerHTML = "";
   const pending = orgState.memberships.filter((m) => m.status === "pending");
   if (pending.length) {
-    invites.appendChild(orgEl("div", "mc-org-side-title", "받은 초대 " + pending.length));
+    const inviteTitle = orgEl("div", "mc-org-side-title");
+    inviteTitle.appendChild(orgLabel("mail", "받은 초대 " + pending.length));
+    invites.appendChild(inviteTitle);
     pending.forEach((m) => {
       const card = orgEl("div", "mc-org-invite");
       const top = orgEl("div", "mc-org-invite-top");
       top.appendChild(orgAvatarEl(m.orgId, m.orgName));
       const text = orgEl("div", "mc-org-invite-text");
       text.appendChild(orgEl("div", "mc-org-invite-name", m.orgName || "(이름 없는 조직)"));
-      text.appendChild(orgEl("div", "mc-org-invite-from",
-        (m.invitedByName || m.invitedByEmail || "누군가") + "님이 " + (ORG_ROLE_LABEL[m.role] || "") + "(으)로 초대했어요"));
+      const from = orgEl("div", "mc-org-invite-from");
+      from.appendChild(orgIcon("send", 12));
+      from.appendChild(orgEl("span", "", (m.invitedByName || m.invitedByEmail || "누군가") + "님이 초대했어요"));
+      text.appendChild(from);
+      const roleLine = orgEl("div", "mc-org-invite-role");
+      roleLine.appendChild(orgEl("span", "", "받을 권한"));
+      roleLine.appendChild(orgRoleChip(m.role));
+      text.appendChild(roleLine);
       top.appendChild(text);
       card.appendChild(top);
 
       const actions = orgEl("div", "mc-org-invite-actions");
-      const accept = orgEl("button", "mc-btn mc-btn-primary", "수락");
+      const accept = orgEl("button", "mc-btn mc-btn-primary");
       accept.type = "button";
+      accept.appendChild(orgIcon("check"));
+      accept.appendChild(orgEl("span", "", "수락"));
       accept.addEventListener("click", () => withBusy(accept, "처리 중…", async () => {
         try {
           await fb.acceptOrgInvite(m.orgId, orgMyEmail());
@@ -6615,8 +6668,10 @@ function shellOrgRenderSide() {
           orgShowError(error, "수락하지 못했습니다.");
         }
       }));
-      const decline = orgEl("button", "mc-btn mc-btn-ghost", "거절");
+      const decline = orgEl("button", "mc-btn mc-btn-ghost");
       decline.type = "button";
+      decline.appendChild(orgIcon("x"));
+      decline.appendChild(orgEl("span", "", "거절"));
       decline.addEventListener("click", () => withBusy(decline, "처리 중…", async () => {
         if (!confirm("'" + (m.orgName || "조직") + "' 초대를 거절할까요?")) return;
         try {
@@ -6638,7 +6693,9 @@ function shellOrgRenderSide() {
   list.innerHTML = "";
   const accepted = orgState.memberships.filter((m) => m.status === "accepted");
   if (!accepted.length) {
-    list.appendChild(orgEl("div", "mc-org-empty-side", "아직 속한 조직이 없어요."));
+    const empty = orgEl("div", "mc-org-empty-side");
+    empty.appendChild(orgLabel("building", "아직 속한 조직이 없어요."));
+    list.appendChild(empty);
   }
   accepted.forEach((m) => {
     const item = orgEl("button", "mc-org-item");
@@ -6647,7 +6704,10 @@ function shellOrgRenderSide() {
     item.appendChild(orgAvatarEl(m.orgId, m.orgName));
     const text = orgEl("span", "mc-org-item-text");
     text.appendChild(orgEl("span", "mc-org-item-name", m.orgName || "(이름 없는 조직)"));
-    text.appendChild(orgEl("span", "mc-org-item-role", ORG_ROLE_LABEL[m.role] || m.role));
+    const roleText = orgEl("span", "mc-org-item-role");
+    roleText.appendChild(orgIcon(ORG_ROLE_ICON[m.role] || "user", 11));
+    roleText.appendChild(orgEl("span", "", ORG_ROLE_LABEL[m.role] || m.role));
+    text.appendChild(roleText);
     item.appendChild(text);
     item.addEventListener("click", async () => {
       orgState.selectedOrgId = m.orgId;
@@ -6713,8 +6773,8 @@ function shellOrgRenderMain() {
   roleStat.appendChild(orgEl("span", "", "내 권한"));
   roleStat.appendChild(orgRoleChip(myRole));
   meta.appendChild(roleStat);
-  meta.appendChild(orgEl("span", "mc-org-stat", "조직원 " + acceptedMembers.length + "명"));
-  if (pendingMembers.length) meta.appendChild(orgEl("span", "mc-org-stat warn", "초대 대기 " + pendingMembers.length + "명"));
+  meta.appendChild(orgLabel("users", "조직원 " + acceptedMembers.length + "명", "mc-org-stat"));
+  if (pendingMembers.length) meta.appendChild(orgLabel("clock", "초대 대기 " + pendingMembers.length + "명", "mc-org-stat warn"));
   titleWrap.appendChild(meta);
   head.appendChild(titleWrap);
 
@@ -6723,7 +6783,8 @@ function shellOrgRenderMain() {
   if (orgCanInvite(myRole)) {
     const inviteBtn = orgEl("button", "mc-btn mc-btn-primary");
     inviteBtn.type = "button";
-    inviteBtn.innerHTML = mcIconSvg("users") + "<span>조직원 초대</span>";
+    inviteBtn.appendChild(orgIcon("userPlus", 15));
+    inviteBtn.appendChild(orgEl("span", "", "조직원 초대"));
     inviteBtn.addEventListener("click", () => {
       if (!invitePanel) return;
       invitePanel.classList.toggle("hidden");
@@ -6756,15 +6817,17 @@ function shellOrgRenderMain() {
   }
 
   /* --- 조직원 / 초대 대기 --- */
-  const section = (title, count, members, emptyText) => {
+  const section = (title, count, members, emptyText, icon) => {
     const wrap = orgEl("div", "mc-org-section");
     const heading = orgEl("div", "mc-org-section-head");
-    heading.appendChild(orgEl("span", "mc-org-section-title", title));
+    heading.appendChild(orgLabel(icon, title, "mc-org-section-title"));
     heading.appendChild(orgEl("span", "mc-org-section-count", String(count)));
     wrap.appendChild(heading);
 
     if (!members.length) {
-      wrap.appendChild(orgEl("div", "mc-org-section-empty", emptyText));
+      const empty = orgEl("div", "mc-org-section-empty");
+      empty.appendChild(orgLabel(icon, emptyText));
+      wrap.appendChild(empty);
       return wrap;
     }
 
@@ -6777,9 +6840,9 @@ function shellOrgRenderMain() {
     return wrap;
   };
 
-  main.appendChild(section("조직원", acceptedMembers.length, acceptedMembers, "아직 조직원이 없어요."));
+  main.appendChild(section("조직원", acceptedMembers.length, acceptedMembers, "아직 조직원이 없어요.", "users"));
   if (pendingMembers.length) {
-    main.appendChild(section("초대 대기", pendingMembers.length, pendingMembers, ""));
+    main.appendChild(section("초대 대기", pendingMembers.length, pendingMembers, "", "clock"));
   }
 }
 
@@ -6793,8 +6856,10 @@ function shellOrgOpenMenu(anchor, myRole, orgName, main) {
   menu.dataset.for = "org-menu";
   menu.setAttribute("role", "menu");
 
-  const add = (label, onClick, danger) => {
-    const item = orgEl("button", "mc-menu-item" + (danger ? " mc-menu-item-danger" : ""), label);
+  const add = (label, onClick, danger, icon) => {
+    const item = orgEl("button", "mc-menu-item mc-menu-item-icon" + (danger ? " mc-menu-item-danger" : ""));
+    item.appendChild(orgIcon(icon || "info"));
+    item.appendChild(orgEl("span", "", label));
     item.type = "button";
     item.setAttribute("role", "menuitem");
     item.addEventListener("click", () => { shellClosePopover(); onClick(); });
@@ -6802,7 +6867,7 @@ function shellOrgOpenMenu(anchor, myRole, orgName, main) {
   };
 
   if (myRole === "owner") {
-    add("소유권 넘기기", () => shellOrgToggleTransfer(main));
+    add("소유권 넘기기", () => shellOrgToggleTransfer(main), false, "crown");
     add("조직 삭제", async () => {
       if (!confirm("'" + orgName + "' 조직을 삭제할까요? 조직원 목록과 초대가 모두 사라지며 되돌릴 수 없습니다.")) return;
       try {
@@ -6813,7 +6878,7 @@ function shellOrgOpenMenu(anchor, myRole, orgName, main) {
       } catch (error) {
         orgShowError(error, "삭제하지 못했습니다.");
       }
-    }, true);
+    }, true, "trash");
   } else {
     add("조직 나가기", async () => {
       if (!confirm("'" + orgName + "' 조직에서 나갈까요?")) return;
@@ -6825,7 +6890,7 @@ function shellOrgOpenMenu(anchor, myRole, orgName, main) {
       } catch (error) {
         orgShowError(error, "나가지 못했습니다.");
       }
-    }, true);
+    }, true, "leave");
   }
 
   shellPlacePopover(menu, anchor, true);
@@ -6834,14 +6899,14 @@ function shellOrgOpenMenu(anchor, myRole, orgName, main) {
 function shellOrgCreateForm() {
   const box = orgEl("form", "mc-org-create");
   const icon = orgEl("div", "mc-org-create-icon");
-  icon.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + MC_ICONS.users + "</svg>";
+  icon.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ORG_ICONS.building + "</svg>";
   box.appendChild(icon);
   box.appendChild(orgEl("h3", "mc-org-name", "새 조직 만들기"));
   box.appendChild(orgEl("p", "mc-org-create-sub", "조직을 만들면 내가 소유자가 됩니다. 한 사람이 조직을 여러 개 만들 수 있어요."));
 
-  const field = (label, input) => {
+  const field = (label, input, icon) => {
     const wrap = orgEl("label", "mc-org-field");
-    wrap.appendChild(orgEl("span", "", label));
+    wrap.appendChild(orgLabel(icon, label));
     wrap.appendChild(input);
     return wrap;
   };
@@ -6856,10 +6921,10 @@ function shellOrgCreateForm() {
   myTitle.type = "text"; myTitle.maxLength = 50;
   myTitle.placeholder = "예: 팀장 (선택)";
 
-  box.appendChild(field("조직 이름", nameInput));
+  box.appendChild(field("조직 이름", nameInput, "building"));
   const row = orgEl("div", "mc-org-field-row");
-  row.appendChild(field("내 이름", myName));
-  row.appendChild(field("내 직급", myTitle));
+  row.appendChild(field("내 이름", myName, "user"));
+  row.appendChild(field("내 직급", myTitle, "briefcase"));
   box.appendChild(row);
 
   const actions = orgEl("div", "mc-org-create-actions");
@@ -6904,12 +6969,12 @@ function shellOrgCreateForm() {
 /* 초대 카드: 이메일 · 이름 · 직급 + 권한(버튼으로 고르고 설명 한 줄) */
 function shellOrgInviteForm(myRole, orgName) {
   const form = orgEl("form", "mc-org-panel mc-org-invite-form");
-  form.appendChild(orgEl("div", "mc-org-panel-title", "조직원 초대"));
+  form.appendChild(orgLabel("userPlus", "조직원 초대", "mc-org-panel-title"));
 
   const grid = orgEl("div", "mc-org-invite-grid");
-  const field = (label, input, wide) => {
+  const field = (label, input, wide, icon) => {
     const wrap = orgEl("label", "mc-org-field" + (wide ? " wide" : ""));
-    wrap.appendChild(orgEl("span", "", label));
+    wrap.appendChild(orgLabel(icon, label));
     wrap.appendChild(input);
     return wrap;
   };
@@ -6919,14 +6984,14 @@ function shellOrgInviteForm(myRole, orgName) {
   name.type = "text"; name.maxLength = 50; name.placeholder = "예: 김지수";
   const title = orgEl("input");
   title.type = "text"; title.maxLength = 50; title.placeholder = "예: 디자이너";
-  grid.appendChild(field("구글 계정 이메일", email, true));
-  grid.appendChild(field("이름", name));
-  grid.appendChild(field("직급", title));
+  grid.appendChild(field("구글 계정 이메일", email, true, "mail"));
+  grid.appendChild(field("이름", name, false, "user"));
+  grid.appendChild(field("직급", title, false, "briefcase"));
   form.appendChild(grid);
 
   /* 권한: 버튼 묶음 */
   const roleWrap = orgEl("div", "mc-org-field wide");
-  roleWrap.appendChild(orgEl("span", "", "조직 권한"));
+  roleWrap.appendChild(orgLabel("shield", "조직 권한"));
   const seg = orgEl("div", "mc-org-seg");
   seg.setAttribute("role", "radiogroup");
   seg.setAttribute("aria-label", "조직 권한");
@@ -6938,10 +7003,14 @@ function shellOrgInviteForm(myRole, orgName) {
       btn.classList.toggle("on", on);
       btn.setAttribute("aria-checked", String(on));
     });
-    help.textContent = ORG_ROLE_HELP[selectedRole] || "";
+    help.innerHTML = "";
+    help.appendChild(orgIcon("info", 13));
+    help.appendChild(orgEl("span", "", ORG_ROLE_HELP[selectedRole] || ""));
   };
   orgAssignableRoles(myRole).forEach((role) => {
-    const btn = orgEl("button", "", ORG_ROLE_LABEL[role]);
+    const btn = orgEl("button");
+    btn.appendChild(orgIcon(ORG_ROLE_ICON[role], 13));
+    btn.appendChild(orgEl("span", "", ORG_ROLE_LABEL[role]));
     btn.type = "button";
     btn.dataset.role = role;
     btn.setAttribute("role", "radio");
@@ -6958,7 +7027,9 @@ function shellOrgInviteForm(myRole, orgName) {
   const cancel = orgEl("button", "mc-btn mc-btn-ghost", "취소");
   cancel.type = "button";
   cancel.addEventListener("click", () => form.classList.add("hidden"));
-  const submit = orgEl("button", "mc-btn mc-btn-primary", "초대 보내기");
+  const submit = orgEl("button", "mc-btn mc-btn-primary");
+  submit.appendChild(orgIcon("send"));
+  submit.appendChild(orgEl("span", "", "초대 보내기"));
   submit.type = "submit";
   foot.appendChild(cancel);
   foot.appendChild(submit);
@@ -7022,8 +7093,13 @@ function shellOrgMemberRow(member, myRole, myEmail) {
   }
   text.appendChild(nameLine);
   const emailLine = orgEl("div", "mc-org-who-line");
-  emailLine.appendChild(orgEl("span", "mc-org-member-email",
-    pending && member.invitedByName ? member.email + " · " + member.invitedByName + "님이 초대" : member.email));
+  emailLine.appendChild(orgEl("span", "mc-org-member-email", member.email));
+  if (pending && member.invitedByName) {
+    const by = orgEl("span", "mc-org-invited-by");
+    by.appendChild(orgIcon("send", 11));
+    by.appendChild(orgEl("span", "", member.invitedByName + "님이 초대"));
+    emailLine.appendChild(by);
+  }
   if (isSelf) emailLine.appendChild(orgEl("span", "mc-org-me", "나"));
   text.appendChild(emailLine);
   who.appendChild(text);
@@ -7033,7 +7109,10 @@ function shellOrgMemberRow(member, myRole, myEmail) {
   if (editableInfo) {
     row.appendChild(infoInput(member.title, "title", "직급 입력", "mc-org-member-title"));
   } else {
-    row.appendChild(orgEl("span", "mc-org-member-title" + (member.title ? "" : " empty"), member.title || "직급 없음"));
+    const titleCell = orgEl("span", "mc-org-member-title" + (member.title ? "" : " empty"));
+    titleCell.appendChild(orgIcon("briefcase", 12));
+    titleCell.appendChild(orgEl("span", "", member.title || "직급 없음"));
+    row.appendChild(titleCell);
   }
 
   /* 권한: 바꿀 수 있으면 칩 모양 선택 상자, 아니면 칩 */
@@ -7047,7 +7126,11 @@ function shellOrgMemberRow(member, myRole, myEmail) {
     });
     select.value = member.role;
     select.addEventListener("change", () => save({ role: select.value }));
-    row.appendChild(select);
+    /* 선택 상자 안에는 그림을 못 넣으므로 칩 모양 틀 안 왼쪽에 아이콘을 겹쳐 둔다 */
+    const pick = orgEl("span", "mc-org-role-pick");
+    pick.appendChild(orgIcon(ORG_ROLE_ICON[member.role], 12));
+    pick.appendChild(select);
+    row.appendChild(pick);
   } else {
     const chipCell = orgEl("span", "mc-org-role-cell");
     chipCell.appendChild(orgRoleChip(member.role));
@@ -7086,7 +7169,7 @@ function shellOrgToggleTransfer(main) {
   box.innerHTML = "";
   box.classList.add("mc-org-panel-warn");
   const candidates = orgState.members.filter((m) => m.status === "accepted" && m.email !== orgMyEmail());
-  box.appendChild(orgEl("div", "mc-org-panel-title", "소유권 넘기기"));
+  box.appendChild(orgLabel("crown", "소유권 넘기기", "mc-org-panel-title"));
   if (!candidates.length) {
     box.appendChild(orgEl("p", "mc-org-hint", "넘겨받을 수 있는 조직원(수락한 사람)이 없습니다."));
   } else {
