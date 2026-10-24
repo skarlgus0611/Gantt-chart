@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v16";
+const APP_VERSION = "2026-10-24-design-v17";
 
 
 /* =========================================================
@@ -6155,6 +6155,7 @@ async function shellLoadCharts() {
       role: c.role,
       viaOrgOnly: !!c.viaOrgOnly,
       orgNames: c.orgNames || [],
+      orgIds: c.orgIds || [],
       ownerEmail: c.ownerEmail,
       members: Array.isArray(c.members) ? c.members : []
     }));
@@ -6909,8 +6910,9 @@ function shellOpenTaskFromSidebar(chartId, taskId) {
 function shellUpdatePageSub() {
   const sub = document.getElementById("mcChartCount");
   if (!sub) return;
-  const count = shellChartsCache.filter((c) => !c.hidden).length;
-  let text = "총 " + count + "개";
+  /* (조직 관리 4단계) 조직으로 볼 때는 그 조직에 공유된 차트 수 */
+  const count = shellChartsCache.filter((c) => !c.hidden && shellChartInScope(c)).length;
+  let text = (shellScopeOrgId ? "공유된 차트 " : "총 ") + count + "개";
   try {
     const savedAt = Number(localStorage.getItem(LAST_SAVED_KEY));
     if (savedAt) {
@@ -7045,6 +7047,7 @@ function shellRenderList() {
   shellUpdatePageSub();
 
   shellApplySearch();
+  shellApplyScope(); /* (조직 관리 4단계) 개인 ↔ 조직 전환 */
 }
 
 /* (디자인 추가분) 차트 검색: 이름에 검색어가 들어간 차트 박스/사이드바 항목만 보인다.
@@ -7936,6 +7939,476 @@ function shellOrgToggleTransfer(main) {
 /* ▲▲▲ 조직 관리 (1단계) 끝 ▲▲▲ */
 
 
+/* =========================================================
+ * (조직 관리 4단계) 사이드바 개인 ↔ 조직 전환
+ *  - 사이드바 맨 위 버튼에서 "개인(모든 차트)" 또는 조직 하나를 고른다.
+ *  - 조직을 고르면 그 조직에 공유된 차트만 목록·사이드바에 보이고,
+ *    머리에 조직 이름과 [조직 현황] 버튼이 나온다.
+ *  - 차트 박스(iframe)는 지우지 않고 숨기기만 해서 전환이 바로 된다.
+ *  - 고른 보기는 이 브라우저에 기억한다.
+ * ========================================================= */
+const SHELL_SCOPE_KEY = "mcScopeOrgId";
+let shellScopeOrgId = "";
+try { shellScopeOrgId = localStorage.getItem(SHELL_SCOPE_KEY) || ""; } catch (error) { /* 무시 */ }
+
+function shellScopeOrgs() {
+  const list = myOrgMembershipsCache || orgState.memberships || [];
+  return list.filter((m) => m.status === "accepted");
+}
+
+function shellScopeOrg() {
+  return shellScopeOrgId ? shellScopeOrgs().find((m) => m.orgId === shellScopeOrgId) || null : null;
+}
+
+function shellChartInScope(chart) {
+  return !shellScopeOrgId || (chart.orgIds || []).includes(shellScopeOrgId);
+}
+
+function shellSetScope(orgId) {
+  shellScopeOrgId = orgId || "";
+  try {
+    if (shellScopeOrgId) localStorage.setItem(SHELL_SCOPE_KEY, shellScopeOrgId);
+    else localStorage.removeItem(SHELL_SCOPE_KEY);
+  } catch (error) { /* 무시 */ }
+  shellClosePopover();
+  shellApplyScope();
+  window.scrollTo({ top: 0 });
+}
+
+const WS_ICON_USER = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20a7 7 0 0 1 14 0"></path></svg>';
+const WS_ICON_CARET = '<svg class="mc-ws-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"></path></svg>';
+
+function shellScopeChartCount(orgId) {
+  return shellChartsCache.filter((c) => !c.hidden && (!orgId || (c.orgIds || []).includes(orgId))).length;
+}
+
+function shellApplyScope() {
+  /* 고른 조직에서 나갔거나 조직이 지워졌으면 개인으로 */
+  if (shellScopeOrgId && (myOrgMembershipsCache || orgState.memberships.length) && !shellScopeOrg()) {
+    shellScopeOrgId = "";
+    try { localStorage.removeItem(SHELL_SCOPE_KEY); } catch (error) { /* 무시 */ }
+  }
+  const org = shellScopeOrg();
+
+  shellChartsCache.forEach((chart) => {
+    const inScope = shellChartInScope(chart);
+    const box = document.getElementById("mc-chart-anchor-" + chart.id);
+    if (box) box.classList.toggle("mc-scope-miss", !inScope);
+    const item = document.querySelector('.mc-sidebar-item[data-chart-id="' + CSS.escape(chart.id) + '"]');
+    if (item) (item.closest(".mc-sidebar-entry") || item).classList.toggle("mc-scope-miss", !inScope);
+  });
+
+  /* 사이드바 칸에 보이는 차트가 하나도 없으면 칸째로 숨긴다(조직 보기일 때만) */
+  ["mcSidebarMySection", "mcSidebarSharedSection"].forEach((id) => {
+    const section = document.getElementById(id);
+    if (!section) return;
+    const visible = Array.from(section.querySelectorAll(".mc-sidebar-item[data-chart-id]"))
+      .some((item) => !(item.closest(".mc-sidebar-entry") || item).classList.contains("mc-scope-miss"));
+    section.classList.toggle("mc-scope-section-empty", !!org && !visible);
+  });
+
+  /* 페이지 머리 */
+  const title = document.getElementById("mcPageTitle");
+  if (title) {
+    title.innerHTML = "";
+    if (org) {
+      title.appendChild(orgAvatarEl(org.orgId, org.orgName));
+      title.appendChild(document.createTextNode(org.orgName || "(이름 없는 조직)"));
+    } else {
+      title.textContent = "내 차트";
+    }
+    title.classList.toggle("mc-page-title-org", !!org);
+  }
+  const overviewBtn = document.getElementById("mcOrgOverviewBtn");
+  if (overviewBtn) overviewBtn.classList.toggle("hidden", !org);
+
+  const count = shellScopeChartCount(shellScopeOrgId);
+  const empty = document.getElementById("mcScopeEmpty");
+  if (empty) {
+    empty.classList.toggle("hidden", !org || count > 0);
+    if (org && !count) {
+      empty.innerHTML = "";
+      empty.appendChild(orgIcon("building", 22));
+      empty.appendChild(orgEl("strong", "", "이 조직에 공유된 차트가 아직 없어요"));
+      empty.appendChild(orgEl("span", "", "차트 머리의 [공유] → [조직 전체] 또는 [조직원 선택]으로 공유하면 여기에 모여요."));
+    }
+  }
+  const mcEmpty = document.getElementById("mcEmpty");
+  if (mcEmpty && org) mcEmpty.classList.add("hidden");
+
+  shellUpdatePageSub();
+  shellRenderScopeSwitch();
+}
+
+function shellRenderScopeSwitch() {
+  const button = document.getElementById("mcWsSwitch");
+  if (!button) return;
+  const org = shellScopeOrg();
+  button.innerHTML = "";
+
+  if (org) {
+    button.appendChild(orgAvatarEl(org.orgId, org.orgName));
+  } else {
+    const me = orgEl("span", "mc-ws-avatar mc-ws-avatar-me");
+    me.innerHTML = WS_ICON_USER;
+    button.appendChild(me);
+  }
+  const text = orgEl("span", "mc-ws-text");
+  text.appendChild(orgEl("span", "mc-ws-label", org ? "조직" : "개인"));
+  text.appendChild(orgEl("span", "mc-ws-name", org ? (org.orgName || "(이름 없는 조직)") : "모든 차트"));
+  button.appendChild(text);
+  button.insertAdjacentHTML("beforeend", WS_ICON_CARET);
+  button.classList.toggle("mc-ws-org", !!org);
+  button.title = org ? (org.orgName + " 조직의 차트만 보는 중") : "개인: 모든 차트";
+}
+
+function shellOpenScopeMenu(anchor) {
+  const wasOpen = shellOpenPopover && shellOpenPopover.dataset.for === "scope-menu";
+  shellClosePopover();
+  if (wasOpen) return;
+
+  const menu = orgEl("div", "mc-popover mc-menu mc-ws-menu");
+  menu.dataset.for = "scope-menu";
+  menu.setAttribute("role", "menu");
+
+  const addItem = (avatar, name, sub, active, onClick) => {
+    const item = orgEl("button", "mc-ws-item" + (active ? " active" : ""));
+    item.type = "button";
+    item.setAttribute("role", "menuitemradio");
+    item.setAttribute("aria-checked", String(active));
+    item.appendChild(avatar);
+    const text = orgEl("span", "mc-ws-text");
+    text.appendChild(orgEl("span", "mc-ws-name", name));
+    text.appendChild(orgEl("span", "mc-ws-sub", sub));
+    item.appendChild(text);
+    if (active) item.appendChild(orgIcon("check", 15));
+    item.addEventListener("click", onClick);
+    menu.appendChild(item);
+  };
+
+  const me = orgEl("span", "mc-ws-avatar mc-ws-avatar-me");
+  me.innerHTML = WS_ICON_USER;
+  addItem(me, "개인", "모든 차트 " + shellScopeChartCount("") + "개", !shellScopeOrgId, () => shellSetScope(""));
+
+  const orgs = shellScopeOrgs();
+  menu.appendChild(orgEl("div", "mc-ws-menu-title", "조직"));
+  if (!orgs.length) {
+    menu.appendChild(orgEl("div", "mc-ws-menu-empty", "아직 속한 조직이 없어요."));
+  }
+  orgs.forEach((m) => {
+    addItem(orgAvatarEl(m.orgId, m.orgName), m.orgName || "(이름 없는 조직)",
+      (ORG_ROLE_LABEL[m.role] || "") + " · 공유된 차트 " + shellScopeChartCount(m.orgId) + "개",
+      shellScopeOrgId === m.orgId, () => shellSetScope(m.orgId));
+  });
+
+  const manage = orgEl("button", "mc-menu-item mc-menu-item-icon mc-ws-manage");
+  manage.type = "button";
+  manage.appendChild(orgIcon("users"));
+  manage.appendChild(orgEl("span", "", "조직원 관리"));
+  manage.addEventListener("click", () => { shellClosePopover(); shellOpenOrgModal(); });
+  menu.appendChild(manage);
+
+  shellPlacePopover(menu, anchor, false);
+}
+
+
+/* =========================================================
+ * (조직 관리 4단계) 조직 현황
+ *  - 이 조직에 공유된(내가 볼 수 있는) 차트의 작업을 모아서
+ *    전체 진행률 · 차트별 진행 · 조직원별 맡은 작업을 보여 준다.
+ *  - 엑셀(CSV)로 한 번에 내보낼 수 있다.
+ * ========================================================= */
+let orgOverviewData = null;
+
+function ovTaskStatus(task, today) {
+  if ((Number(task.progress) || 0) >= 100) return "done";
+  if (task.end && task.end < today) return "late";
+  if (task.start && task.start > today) return "todo";
+  return "doing";
+}
+
+const OV_STATUS_LABEL = { done: "완료", late: "지연", doing: "진행 중", todo: "예정" };
+
+function ovAverage(tasks) {
+  if (!tasks.length) return null;
+  return Math.round(tasks.reduce((sum, t) => sum + Math.max(0, Math.min(100, Number(t.progress) || 0)), 0) / tasks.length);
+}
+
+async function shellLoadOrgOverview(orgId) {
+  const org = shellScopeOrgs().find((m) => m.orgId === orgId);
+  const charts = shellChartsCache.filter((c) => (c.orgIds || []).includes(orgId));
+  const [roster, chartData] = await Promise.all([
+    fb.getOrgMembers(orgId).then((list) => list.filter((m) => m.status === "accepted")).catch(() => []),
+    Promise.all(charts.map(async (chart) => {
+      try {
+        const [tasks, categories] = await Promise.all([fb.getTasksOnce(chart.id), fb.getCategoriesOnce(chart.id)]);
+        return { chart, ...resolveTasksAndCats({ tasks, categories }) };
+      } catch (error) {
+        console.warn(error);
+        return { chart, tasks: [], categories: [], failed: true };
+      }
+    }))
+  ]);
+
+  const today = dateKey(new Date());
+  const allTasks = [];
+  chartData.forEach((entry) => {
+    entry.tasks.forEach((task) => {
+      allTasks.push({ ...task, chartId: entry.chart.id, chartName: entry.chart.name, status: ovTaskStatus(task, today) });
+    });
+  });
+
+  /* 담당자 → 조직원 연결: 고른 이메일이 우선, 없으면 이름이 같은 조직원 */
+  const memberOf = (task) => {
+    if (task.ownerEmail) return roster.find((m) => m.email === task.ownerEmail) || null;
+    const name = String(task.owner || "").trim();
+    if (!name) return null;
+    const hits = roster.filter((m) => (m.name || "") === name);
+    return hits.length === 1 ? hits[0] : null;
+  };
+
+  const people = roster.map((member) => ({ member, tasks: [] }));
+  const outside = [];
+  const unassigned = [];
+  allTasks.forEach((task) => {
+    const member = memberOf(task);
+    if (member) people.find((p) => p.member.email === member.email).tasks.push(task);
+    else if (String(task.owner || "").trim()) outside.push(task);
+    else unassigned.push(task);
+    task.isMember = !!member;
+  });
+
+  people.sort((a, b) => b.tasks.length - a.tasks.length || (a.member.name || a.member.email).localeCompare(b.member.name || b.member.email, "ko"));
+
+  return { org, orgId, charts: chartData, allTasks, people, outside, unassigned, today };
+}
+
+function ovStatCard(icon, label, value, sub, tone) {
+  const card = orgEl("div", "mc-ov-stat" + (tone ? " mc-ov-stat-" + tone : ""));
+  const head = orgEl("div", "mc-ov-stat-head");
+  head.appendChild(orgIcon(icon, 15));
+  head.appendChild(orgEl("span", "", label));
+  card.appendChild(head);
+  card.appendChild(orgEl("div", "mc-ov-stat-value", value));
+  if (sub) card.appendChild(orgEl("div", "mc-ov-stat-sub", sub));
+  return card;
+}
+
+function ovProgressBar(pct, color) {
+  const bar = orgEl("span", "mc-ov-bar");
+  const fill = orgEl("span", "mc-ov-bar-fill");
+  fill.style.width = (pct || 0) + "%";
+  if (color) fill.style.background = color;
+  bar.appendChild(fill);
+  return bar;
+}
+
+function ovStatusChips(tasks) {
+  const wrap = orgEl("span", "mc-ov-chips");
+  ["late", "doing", "done"].forEach((status) => {
+    const n = tasks.filter((t) => t.status === status).length;
+    if (!n) return;
+    wrap.appendChild(orgEl("span", "mc-ov-chip mc-ov-chip-" + status, OV_STATUS_LABEL[status] + " " + n));
+  });
+  return wrap;
+}
+
+function ovTaskList(tasks) {
+  const list = orgEl("div", "mc-ov-tasks");
+  tasks
+    .slice()
+    .sort((a, b) => (a.status === "late" ? -1 : 0) - (b.status === "late" ? -1 : 0) || String(a.end).localeCompare(String(b.end)))
+    .forEach((task) => {
+      const row = orgEl("div", "mc-ov-task");
+      const dot = orgEl("span", "mc-ov-task-dot");
+      dot.style.background = task.color || "#a1a1aa";
+      row.appendChild(dot);
+      const text = orgEl("span", "mc-ov-task-text");
+      text.appendChild(orgEl("span", "mc-ov-task-name", task.name));
+      text.appendChild(orgEl("span", "mc-ov-task-sub", task.chartName + " · " + task.start + " ~ " + task.end + (task.owner && !task.isMember ? " · " + task.owner : "")));
+      row.appendChild(text);
+      row.appendChild(orgEl("span", "mc-ov-chip mc-ov-chip-" + task.status, OV_STATUS_LABEL[task.status]));
+      row.appendChild(orgEl("span", "mc-ov-task-pct", (Number(task.progress) || 0) + "%"));
+      list.appendChild(row);
+    });
+  return list;
+}
+
+/* 조직원 한 줄: 누르면 그 사람 작업 목록이 펼쳐진다 */
+function ovPersonRow(avatar, name, sub, tasks, extraChip) {
+  const wrap = orgEl("div", "mc-ov-person");
+  const row = orgEl("button", "mc-ov-person-row");
+  row.type = "button";
+  row.setAttribute("aria-expanded", "false");
+  row.disabled = !tasks.length;
+  row.appendChild(avatar);
+  const text = orgEl("span", "mc-ov-person-text");
+  const nameLine = orgEl("span", "mc-ov-person-name", name);
+  if (extraChip) nameLine.appendChild(extraChip);
+  text.appendChild(nameLine);
+  text.appendChild(orgEl("span", "mc-ov-person-sub", sub));
+  row.appendChild(text);
+
+  const right = orgEl("span", "mc-ov-person-right");
+  right.appendChild(ovStatusChips(tasks));
+  const avg = ovAverage(tasks);
+  const pctWrap = orgEl("span", "mc-ov-person-pct");
+  pctWrap.appendChild(ovProgressBar(avg));
+  pctWrap.appendChild(orgEl("span", "mc-ov-pct-num", tasks.length ? avg + "%" : "–"));
+  right.appendChild(pctWrap);
+  right.appendChild(orgEl("span", "mc-ov-count", tasks.length + "개"));
+  row.appendChild(right);
+  wrap.appendChild(row);
+
+  if (tasks.length) {
+    let list = null;
+    row.addEventListener("click", () => {
+      const open = row.getAttribute("aria-expanded") !== "true";
+      row.setAttribute("aria-expanded", String(open));
+      if (open && !list) {
+        list = ovTaskList(tasks);
+        wrap.appendChild(list);
+      }
+      if (list) list.classList.toggle("hidden", !open);
+    });
+  }
+  return wrap;
+}
+
+function shellRenderOrgOverview(data) {
+  const body = document.getElementById("mcOvBody");
+  const title = document.getElementById("mcOvTitle");
+  body.innerHTML = "";
+  title.innerHTML = "";
+  title.appendChild(orgAvatarEl(data.orgId, data.org ? data.org.orgName : "조직"));
+  const titleText = orgEl("span", "mc-ov-title-text");
+  titleText.appendChild(orgEl("span", "", (data.org ? data.org.orgName : "조직") + " 현황"));
+  titleText.appendChild(orgEl("span", "mc-ov-title-sub", "조직원 " + data.people.length + "명 · 오늘 " + data.today));
+  title.appendChild(titleText);
+
+  /* 1) 요약 숫자 */
+  const all = data.allTasks;
+  const avg = ovAverage(all);
+  const done = all.filter((t) => t.status === "done").length;
+  const late = all.filter((t) => t.status === "late").length;
+  const stats = orgEl("div", "mc-ov-stats");
+  stats.appendChild(ovStatCard("building", "공유된 차트", data.charts.length + "개", null));
+  stats.appendChild(ovStatCard("check", "전체 작업", all.length + "개", "완료 " + done + "개", null));
+  const avgCard = ovStatCard("users", "평균 진행률", avg === null ? "–" : avg + "%", null, "accent");
+  avgCard.appendChild(ovProgressBar(avg));
+  stats.appendChild(avgCard);
+  stats.appendChild(ovStatCard("clock", "지연된 작업", late + "개", "끝날 날짜가 지났는데 100%가 아닌 작업", late ? "danger" : null));
+  body.appendChild(stats);
+
+  if (!data.charts.length) {
+    const empty = orgEl("div", "mc-share-empty");
+    empty.appendChild(orgIcon("info", 15));
+    empty.appendChild(orgEl("span", "", "이 조직에 공유된 차트가 아직 없어요. 차트의 [공유] → [조직 전체]로 공유하면 여기에 모여요."));
+    body.appendChild(empty);
+  }
+
+  const grid = orgEl("div", "mc-ov-grid");
+
+  /* 2) 차트별 진행 */
+  const chartsCol = orgEl("section", "mc-ov-section");
+  chartsCol.appendChild(orgLabel("building", "차트별 진행", "mc-ov-section-title"));
+  data.charts.forEach((entry) => {
+    const tasks = data.allTasks.filter((t) => t.chartId === entry.chart.id);
+    const row = orgEl("button", "mc-ov-chart-row");
+    row.type = "button";
+    row.title = "이 차트로 이동";
+    const name = orgEl("span", "mc-ov-chart-name", entry.chart.name);
+    row.appendChild(name);
+    const right = orgEl("span", "mc-ov-person-right");
+    right.appendChild(ovStatusChips(tasks));
+    const avgChart = ovAverage(tasks);
+    const pctWrap = orgEl("span", "mc-ov-person-pct");
+    pctWrap.appendChild(ovProgressBar(avgChart));
+    pctWrap.appendChild(orgEl("span", "mc-ov-pct-num", tasks.length ? avgChart + "%" : "–"));
+    right.appendChild(pctWrap);
+    right.appendChild(orgEl("span", "mc-ov-count", tasks.length + "개"));
+    row.appendChild(right);
+    row.addEventListener("click", () => {
+      shellCloseModal("mcOrgOverviewModal");
+      const box = document.getElementById("mc-chart-anchor-" + entry.chart.id);
+      if (box) box.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    chartsCol.appendChild(row);
+  });
+  grid.appendChild(chartsCol);
+
+  /* 3) 조직원별 작업 */
+  const peopleCol = orgEl("section", "mc-ov-section");
+  peopleCol.appendChild(orgLabel("users", "조직원별 작업", "mc-ov-section-title"));
+  const myEmail = orgMyEmail();
+  data.people.forEach(({ member, tasks }) => {
+    const avatar = mcAvatarEl(member.name || member.email);
+    peopleCol.appendChild(ovPersonRow(avatar, member.name || member.email,
+      [member.title, member.email].filter(Boolean).join(" · "), tasks,
+      member.email === myEmail ? orgEl("span", "assignee-me", "나") : orgRoleChip(member.role)));
+  });
+  if (data.outside.length) {
+    const avatar = orgEl("span", "mc-row-avatar mc-ov-avatar-muted");
+    avatar.appendChild(orgIcon("briefcase", 15));
+    peopleCol.appendChild(ovPersonRow(avatar, "외부 인원", "조직원이 아닌 담당자(직접 적은 이름)", data.outside));
+  }
+  if (data.unassigned.length) {
+    const avatar = orgEl("span", "mc-row-avatar mc-ov-avatar-muted", "–");
+    peopleCol.appendChild(ovPersonRow(avatar, "담당자 없음", "아직 담당자를 정하지 않은 작업", data.unassigned));
+  }
+  grid.appendChild(peopleCol);
+  body.appendChild(grid);
+
+  /* 4) 내보내기 */
+  const foot = orgEl("div", "mc-ov-foot");
+  foot.appendChild(orgEl("span", "mc-ov-foot-note", "내가 볼 수 있는 차트만 모았어요."));
+  const exportBtn = orgEl("button", "mc-btn mc-btn-primary");
+  exportBtn.type = "button";
+  exportBtn.innerHTML = mcIconSvg("download") + "<span>엑셀로 내보내기</span>";
+  exportBtn.disabled = !all.length;
+  exportBtn.addEventListener("click", () => shellExportOrgOverview(data));
+  foot.appendChild(exportBtn);
+  body.appendChild(foot);
+}
+
+function shellExportOrgOverview(data) {
+  const headers = ["차트", "카테고리", "작업명", "담당자", "담당자 이메일", "구분", "시작일", "종료일", "진행률(%)", "상태", "메모", "대상처"];
+  const rows = [headers.map(csvEscape).join(",")];
+  data.allTasks.forEach((t) => {
+    rows.push([
+      t.chartName, t.catName, t.name, t.owner, t.ownerEmail,
+      t.isMember ? "조직원" : (String(t.owner || "").trim() ? "외부" : "담당자 없음"),
+      t.start, t.end, t.progress, OV_STATUS_LABEL[t.status], t.memo, t.target
+    ].map(csvEscape).join(","));
+  });
+  const name = String((data.org && data.org.orgName) || "조직").replace(/[\\/:*?"<>|]/g, "_");
+  downloadTextFile("조직현황_" + name + "_" + data.today + ".csv", "﻿" + rows.join("\r\n"), "text/csv;charset=utf-8");
+}
+
+async function shellOpenOrgOverview(orgId) {
+  if (!orgId) return;
+  const body = document.getElementById("mcOvBody");
+  body.innerHTML = "";
+  body.appendChild(orgEl("div", "mc-share-loading", "현황을 모으는 중…"));
+  document.getElementById("mcOvTitle").textContent = "조직 현황";
+  shellOpenModal("mcOrgOverviewModal");
+  try {
+    orgOverviewData = await shellLoadOrgOverview(orgId);
+    shellRenderOrgOverview(orgOverviewData);
+  } catch (error) {
+    body.innerHTML = "";
+    orgShowError(error, "조직 현황을 불러오지 못했습니다.");
+  }
+}
+
+function initShellScope() {
+  const switchBtn = document.getElementById("mcWsSwitch");
+  if (switchBtn) switchBtn.addEventListener("click", () => shellOpenScopeMenu(switchBtn));
+  const overviewBtn = document.getElementById("mcOrgOverviewBtn");
+  if (overviewBtn) overviewBtn.addEventListener("click", () => shellOpenOrgOverview(shellScopeOrgId));
+  shellRenderScopeSwitch();
+}
+
 function shellInitSidebarToggle() {
   const toggleBtn = document.getElementById("mcSidebarToggle");
   const addBtn = document.getElementById("mcSidebarAddBtn");
@@ -8260,6 +8733,7 @@ function initShell() {
   });
 
   shellInitSidebarToggle(); /* (사이드바 추가분) */
+  initShellScope(); /* (조직 관리 4단계) 개인 ↔ 조직 전환 */
 
   document.getElementById("mcAddBtn").addEventListener("click", () => {
     /* (공유 기능 추가분) 바로 "새 차트" 입력창을 띄우던 것을, 먼저
@@ -8774,6 +9248,7 @@ async function fbListMySharedCharts() {
       /* (조직 관리 2단계) 조직을 통해서만 들어온 차트는 "나가기" 대신 조직에서 나가야 한다 */
       viaOrgOnly: c.ownerId !== fbUser.uid && !chartManualRole(c) && !!chartOrgRole(c, memberships),
       orgNames: (c.orgIds || []).map((orgId) => ((c.orgShares || {})[orgId] || {}).orgName || "").filter(Boolean),
+      orgIds: (c.orgIds || []).slice(),
       ownerEmail: c.ownerEmail || "",
       /* (버그 수정) 내가 소유한 공유 차트는 "숨기기"가 먹도록 숨김 값을 넘긴다. */
       hidden: c.ownerId === fbUser.uid && !!c.hidden,
@@ -9624,6 +10099,7 @@ function shellApplySharedChartsList(sharedList) {
     role: c.role,
     viaOrgOnly: !!c.viaOrgOnly,
     orgNames: c.orgNames || [],
+    orgIds: c.orgIds || [],
     ownerEmail: c.ownerEmail,
     members: Array.isArray(c.members) ? c.members : []
   }));
