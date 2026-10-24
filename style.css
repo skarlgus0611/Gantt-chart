@@ -1022,7 +1022,7 @@ body.is-dragging * {
 .yp-year {
   position: relative;
 
-  padding: 10px 0;
+  padding: 10px 0 14px;
 
   border: 1px solid transparent;
 
@@ -1035,6 +1035,8 @@ body.is-dragging * {
   font-size: 14px;
 
   font-weight: 600;
+
+  line-height: 1.2;
 }
 
 .yp-year:hover {
@@ -2368,4 +2370,3 @@ body.shared-viewer-readonly #chartNameLabel {
   align-self: center;
 }
 /* ▲▲▲ 로그인 계정 프로필 사진 (요청사항) 끝 ▲▲▲ */
-
