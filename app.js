@@ -5016,16 +5016,49 @@ document.addEventListener("keydown", event => {
  * 타임라인 폭이 화면 폭에 따라 달라지므로 다시 그린다.
  * ========================================================= */
 
-let resizeTimer = null;
+/* (버그 수정) 화면이 혼자 계속 왔다갔다 하던 문제:
+   - 예전엔 창 크기가 바뀌면 0.15초 뒤에야 다시 그려서, 그 사이 타임라인이
+     잠깐 넘쳐 가로 스크롤바가 생겼다 사라졌다. 그 높이 변화가 바깥 페이지
+     스크롤바를 켰다 껐다 하며 폭을 또 바꾸는 반복이 생겼다.
+   - iframe 높이만 바뀌어도(폭은 그대로) resize 가 와서 쓸데없이 다시 그렸다.
+   이제 타임라인 "폭"이 실제로 바뀔 때만, 다음 그리기 프레임에 바로 다시 그린다. */
+let lastTimelineWidth = 0;
+let timelineResizeFrame = 0;
 
-window.addEventListener("resize", () => {
+function rerenderIfTimelineWidthChanged() {
 
-  clearTimeout(resizeTimer);
+  const timeline = document.getElementById("timeline");
 
-  resizeTimer = setTimeout(() => {
+  if (!timeline) {
+    return;
+  }
+
+  const width = timeline.clientWidth;
+
+  if (width === lastTimelineWidth) {
+    return;
+  }
+
+  lastTimelineWidth = width;
+
+  cancelAnimationFrame(timelineResizeFrame);
+
+  timelineResizeFrame = requestAnimationFrame(() => {
     renderTimeline();
-  }, 150);
-});
+    if (hSlider) hSlider.layout();
+  });
+}
+
+if (!IS_SHELL_MODE) {
+
+  const timelineEl = document.getElementById("timeline");
+
+  if (timelineEl && "ResizeObserver" in window) {
+    new ResizeObserver(rerenderIfTimelineWidthChanged).observe(timelineEl);
+  } else {
+    window.addEventListener("resize", rerenderIfTimelineWidthChanged);
+  }
+}
 
 
 /* =========================================================
