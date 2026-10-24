@@ -2796,91 +2796,202 @@ function showTaskDetail(id) {
   ].join("");
 
 
+  const taskColor = validHex(task.color) || DEFAULT_COLOR;
+  const progress = Math.max(0, Math.min(100, Number(task.progress) || 0));
+
+  const icon = path =>
+    `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+
+  /* 막대 색 견본: 카테고리 기본색 + 자주 쓰는 색 */
+  const category = state.categories.find(item => item.id === task.categoryId);
+  const swatches = Array.from(new Set([
+    (category && validHex(category.color)) || "",
+    "#0F766E", "#3B82F6", "#8B5CF6", "#F43F5E", "#F59E0B", "#10B981", "#64748B"
+  ].filter(Boolean).map(c => c.toUpperCase()))).slice(0, 8);
+
+  /* (디자인 변경) 글자 위주 대신: 큰 제목, 아이콘 속성 줄, 진행률 원형 그래프, 색 견본 */
   panel.innerHTML = `
 
-    <div class="detail-title">
+    <div class="detail-layout">
 
-      <h2>${escapeHtml(task.name)}</h2>
+      <div class="detail-main">
 
-      <button
-        id="closeDetail"
-        type="button"
-        aria-label="닫기"
-      >×</button>
+        <div class="detail-title">
+          <span class="detail-swatch" id="detailHeadSwatch" style="background:${escapeAttr(taskColor)}"></span>
+          <input id="detailName" class="detail-name-input" value="${escapeAttr(task.name)}" aria-label="작업명" placeholder="작업명">
+          <button id="closeDetail" type="button" class="detail-close" aria-label="닫기">${icon('<path d="M6 6l12 12M18 6 6 18"></path>')}</button>
+        </div>
 
-    </div>
+        <div class="detail-props">
 
+          <label class="detail-prop">
+            <span class="detail-prop-key">${icon('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>')}카테고리</span>
+            <span class="detail-prop-val">
+              <select id="detailCategory" class="detail-chip-select">${categoryOptions}</select>
+            </span>
+          </label>
 
-    <div class="detail-grid">
+          <div class="detail-prop">
+            <span class="detail-prop-key">${icon('<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M9 2.5v3M15 2.5v3"></path>')}기간</span>
+            <span class="detail-prop-val detail-dates">
+              <input id="detailStart" type="date" value="${escapeAttr(task.start)}" aria-label="시작일">
+              <span class="detail-dates-arrow" aria-hidden="true">→</span>
+              <input id="detailEnd" type="date" value="${escapeAttr(task.end)}" aria-label="종료일">
+              <span class="detail-days" id="detailHeadRange"></span>
+            </span>
+          </div>
 
-      <div class="detail-item">
-        <span>작업명</span>
-        <input id="detailName" value="${escapeAttr(task.name)}">
+          <label class="detail-prop">
+            <span class="detail-prop-key">${icon('<circle cx="12" cy="8" r="3.5"></circle><path d="M5 20a7 7 0 0 1 14 0"></path>')}담당자</span>
+            <span class="detail-prop-val detail-owner">
+              <span class="detail-owner-avatar" id="detailOwnerAvatar" aria-hidden="true"></span>
+              <input id="detailOwner" value="${escapeAttr(task.owner)}" placeholder="비어 있음">
+            </span>
+          </label>
+
+          <label class="detail-prop">
+            <span class="detail-prop-key">${icon('<path d="M4 20V8l8-4 8 4v12"></path><path d="M9 20v-6h6v6"></path>')}대상처</span>
+            <span class="detail-prop-val">
+              <input id="detailTarget" value="${escapeAttr(task.target)}" placeholder="비어 있음">
+            </span>
+          </label>
+
+        </div>
+
+        <textarea id="detailMemo" class="detail-memo-box" placeholder="메모 추가…" aria-label="메모">${escapeHtml(task.memo)}</textarea>
+
       </div>
 
-      <div class="detail-item">
-        <span>카테고리</span>
-        <select id="detailCategory">${categoryOptions}</select>
-      </div>
+      <aside class="detail-side">
 
-      <div class="detail-item">
-        <span>시작일</span>
-        <input id="detailStart" type="date" value="${escapeAttr(task.start)}">
-      </div>
+        <div class="detail-ring" id="detailRing" style="--progress-color:${escapeAttr(taskColor)}">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="detail-ring-track" cx="60" cy="60" r="50"></circle>
+            <circle class="detail-ring-fill" id="detailRingFill" cx="60" cy="60" r="50"></circle>
+          </svg>
+          <div class="detail-ring-label">
+            <span class="detail-ring-num" id="detailRingNum">${progress}</span><span class="detail-ring-pct">%</span>
+            <span class="detail-ring-caption">진행률</span>
+          </div>
+        </div>
 
-      <div class="detail-item">
-        <span>종료일</span>
-        <input id="detailEnd" type="date" value="${escapeAttr(task.end)}">
-      </div>
+        <div class="detail-progress">
+          <input id="detailProgressRange" type="range" min="0" max="100" step="5" value="${progress}" aria-label="진행률 슬라이더" style="--progress-color:${escapeAttr(taskColor)};--progress:${progress}%">
+          <input id="detailProgress" type="number" min="0" max="100" value="${progress}" aria-label="진행률(%)">
+        </div>
 
-      <div class="detail-item">
-        <span>진행률</span>
-        <input
-          id="detailProgress"
-          type="number"
-          min="0"
-          max="100"
-          value="${Number(task.progress) || 0}"
-        >
-      </div>
+        <div class="detail-colors">
+          <span class="detail-side-key">막대 색상</span>
+          <div class="detail-swatches">
+            ${swatches.map(c => `<button type="button" class="detail-swatch-btn" data-color="${c}" style="background:${c}" aria-label="색 ${c}" title="${c}"></button>`).join("")}
+            <label class="detail-swatch-custom" title="직접 고르기">
+              <input id="detailColor" type="color" value="${escapeAttr(taskColor)}" aria-label="막대 색상 직접 고르기">
+              ${icon('<path d="M12 5v14M5 12h14"></path>')}
+            </label>
+          </div>
+        </div>
 
-      <div class="detail-item">
-        <span>막대 색상</span>
-        <input
-          id="detailColor"
-          type="color"
-          value="${escapeAttr(validHex(task.color) || DEFAULT_COLOR)}"
-        >
-      </div>
+      </aside>
 
-      <div class="detail-item">
-        <span>대상처</span>
-        <input id="detailTarget" value="${escapeAttr(task.target)}">
-      </div>
-
-      <div class="detail-item">
-        <span>담당자</span>
-        <input id="detailOwner" value="${escapeAttr(task.owner)}">
-      </div>
-
-    </div>
-
-
-    <div class="detail-memo">
-      <span>메모</span>
-      <textarea id="detailMemo">${escapeHtml(task.memo)}</textarea>
     </div>
 
 
     <div class="detail-actions">
 
-      <button id="deleteTaskBtn" type="button">삭제</button>
+      <button id="deleteTaskBtn" type="button" class="detail-delete">
+        ${icon('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path>')}
+        삭제
+      </button>
+
+      <span class="detail-actions-spacer"></span>
+
+      <button id="cancelDetailBtn" type="button">취소</button>
 
       <button id="saveDetailBtn" class="primary" type="button">저장</button>
 
     </div>
 
   `;
+
+
+  const RING_LENGTH = 2 * Math.PI * 50;
+
+  /* 입력을 바꾸면 색 점·카테고리 칩·기간 일수·담당자 동그라미·진행률 그래프가 바로 따라 바뀐다. */
+  const refreshDetailHead = () => {
+
+    const categoryId = document.getElementById("detailCategory").value;
+    const start = document.getElementById("detailStart").value;
+    const end = document.getElementById("detailEnd").value;
+    const color = document.getElementById("detailColor").value;
+    const owner = document.getElementById("detailOwner").value.trim();
+
+    const selected = state.categories.find(item => item.id === categoryId);
+    applyCategoryTint(document.getElementById("detailCategory"), selected ? selected.color : "#a1a1aa");
+
+    const startDate = dateObj(start);
+    const endDate = dateObj(end);
+    const days = document.getElementById("detailHeadRange");
+    days.textContent =
+      startDate && endDate && endDate >= startDate
+        ? (Math.round((endDate - startDate) / 86400000) + 1) + "일"
+        : "";
+
+    const avatar = document.getElementById("detailOwnerAvatar");
+    avatar.textContent = owner ? Array.from(owner)[0] : "";
+    avatar.classList.toggle("empty", !owner);
+
+    document.getElementById("detailHeadSwatch").style.background = color;
+    document.getElementById("detailRing").style.setProperty("--progress-color", color);
+    document.getElementById("detailProgressRange").style.setProperty("--progress-color", color);
+
+    panel.querySelectorAll(".detail-swatch-btn").forEach(btn => {
+      btn.classList.toggle("selected", btn.dataset.color.toLowerCase() === color.toLowerCase());
+    });
+  };
+
+  ["detailName", "detailCategory", "detailStart", "detailEnd", "detailColor", "detailOwner"].forEach(fieldId => {
+    const field = document.getElementById(fieldId);
+    field.addEventListener("input", refreshDetailHead);
+    field.addEventListener("change", refreshDetailHead);
+  });
+
+  panel.querySelectorAll(".detail-swatch-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.getElementById("detailColor").value = btn.dataset.color.toLowerCase();
+      refreshDetailHead();
+    });
+  });
+
+  const progressRange = document.getElementById("detailProgressRange");
+  const progressNumber = document.getElementById("detailProgress");
+
+  const syncProgress = value => {
+    const clamped = Math.max(0, Math.min(100, Number(value) || 0));
+    progressRange.value = String(clamped);
+    progressRange.style.setProperty("--progress", clamped + "%");
+    document.getElementById("detailRingNum").textContent = String(clamped);
+    document.getElementById("detailRingFill").style.strokeDasharray =
+      (RING_LENGTH * clamped / 100) + " " + RING_LENGTH;
+    return clamped;
+  };
+
+  progressRange.addEventListener("input", () => {
+    progressNumber.value = String(syncProgress(progressRange.value));
+  });
+
+  progressNumber.addEventListener("input", () => syncProgress(progressNumber.value));
+
+  syncProgress(progress);
+  refreshDetailHead();
+
+  const cancelButton = document.getElementById("cancelDetailBtn");
+
+  if (cancelButton) {
+    cancelButton.onclick = () => {
+      panel.classList.add("hidden");
+      state.selectedTask = null;
+    };
+  }
 
 
   const closeButton = document.getElementById("closeDetail");
