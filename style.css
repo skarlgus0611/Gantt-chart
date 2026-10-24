@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v7";
+  --css-version: "2026-10-24-design-v8";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -6235,3 +6235,139 @@ body.is-bar-moving * {
 }
 
 /* ▲▲▲ 하루 그리드 · 캡처 제목 · 막대 꾹 눌러 옮기기 (추가분) 끝 ▲▲▲ */
+
+/* =========================================================
+ * ▼▼▼ 사이드바: 차트별 카테고리 · 작업 목록 (추가분) ▼▼▼
+ * ========================================================= */
+
+.mc-side-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 6px 14px;
+}
+
+.mc-side-tree:empty {
+  display: none;
+}
+
+.mc-side-cat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #3f3f46;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-side-cat:hover:not(:disabled) {
+  background: #f4f4f5;
+}
+
+.mc-side-caret {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a1a1aa;
+  transition: transform .15s ease;
+}
+
+.mc-side-cat[aria-expanded="true"] .mc-side-caret {
+  transform: rotate(90deg);
+  color: #52525b;
+}
+
+.mc-side-cat-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.mc-side-cat-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-side-cat-count {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #a1a1aa;
+}
+
+.mc-side-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 1px 0 4px 21px;
+  padding-left: 8px;
+  border-left: 1px solid #ececef;
+}
+
+.mc-side-task {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  min-height: 26px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #52525b;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-side-task:hover:not(:disabled) {
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.mc-side-task-num {
+  flex-shrink: 0;
+  min-width: 16px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #a1a1aa;
+}
+
+.mc-side-task-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-side-task-empty {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+/* 사이드바를 아이콘만 보이게 접으면 카테고리 목록은 숨긴다 */
+#shellView.mc-sidebar-collapsed .mc-side-tree {
+  display: none;
+}
+
+/* ▲▲▲ 사이드바: 차트별 카테고리 · 작업 목록 (추가분) 끝 ▲▲▲ */
