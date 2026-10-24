@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v12";
+  --css-version: "2026-10-24-design-v13";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -7785,4 +7785,33 @@ html:not(.is-embedded) body {
   .mc-share-org-member .mc-role-chip {
     display: none;
   }
+}
+
+
+/* =========================================================
+   (디자인 추가분) 글자 버튼 앞 작은 선 아이콘 (app.js decorateTextButtons)
+   ========================================================= */
+button.has-auto-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.mc-menu-item.has-auto-ico {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.mc-auto-ico {
+  flex-shrink: 0;
+}
+
+.mc-menu-item .mc-auto-ico {
+  color: #a1a1aa;
+}
+
+.mc-menu-item-danger .mc-auto-ico {
+  color: currentColor;
 }

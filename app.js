@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v12";
+const APP_VERSION = "2026-10-24-design-v13";
 
 
 /* =========================================================
@@ -5755,6 +5755,81 @@ const MC_ICONS = {
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path>',
   close: '<path d="M6 6l12 12M18 6 6 18"></path>'
 };
+
+/* =========================================================
+ * (디자인 추가분) 글자만 있는 버튼에 작은 선 아이콘을 앞에 붙인다.
+ *  - 버튼 글자(정확히 같은 것)만 보고 고르므로, 모르는 글자는 그대로 둔다.
+ *  - 이미 아이콘(svg)이 있는 버튼, 처리 중(…) 글자는 건드리지 않는다.
+ *  - 나중에 생기는 버튼(창·메뉴)도 화면이 바뀔 때마다 한 번에 훑는다.
+ * ========================================================= */
+const AUTO_BTN_ICON_PATHS = {
+  x: '<path d="M6 6l12 12M18 6 6 18"></path>',
+  check: '<path d="m5 12 5 5 9-10"></path>',
+  plus: '<path d="M12 5v14M5 12h14"></path>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path>',
+  pencil: '<path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"></path><path d="m14 7 3 3"></path>',
+  calendar: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M8 3v3M16 3v3"></path>',
+  today: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M8 3v3M16 3v3"></path><circle cx="12" cy="15" r="1.6" fill="currentColor" stroke="none"></circle>',
+  users: '<circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M16 4.5a3 3 0 0 1 0 6M21 20a5 5 0 0 0-3.5-4.8"></path>',
+  leave: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"></path><path d="M10 17l-5-5 5-5M5 12h11"></path>',
+  swap: '<path d="M7 7h12l-3-3M17 17H5l3 3"></path>',
+  inbox: '<path d="M3 13h5l1.5 3h5L16 13h5"></path><path d="M5.5 5h13L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z"></path>',
+  login: '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"></path><path d="M9 17l5-5-5-5M14 12H3"></path>'
+};
+
+const AUTO_BTN_ICON_BY_LABEL = {
+  "취소": "x", "거절": "x",
+  "저장": "check", "확인": "check", "닫기": "check", "수락": "check",
+  "추가": "plus", "조직 만들기": "plus", "새로운 차트 만들기": "plus",
+  "삭제": "trash",
+  "이름 바꾸기": "pencil",
+  "표시 기간 설정": "calendar", "연도 보기로": "calendar",
+  "올해로 이동": "today",
+  "공유 권한/사용자 설정": "users", "공유 구성원 보기": "users",
+  "공유 차트 나가기": "leave", "로그아웃": "leave",
+  "넘기기": "swap",
+  "차트 공유받기": "inbox",
+  "Google 로그인": "login"
+};
+
+function autoButtonLabel(button) {
+  /* 버튼 바로 안의 글자만 (배지 숫자 등 안쪽 요소는 뺀다) */
+  return Array.from(button.childNodes)
+    .filter((node) => node.nodeType === 3)
+    .map((node) => node.textContent)
+    .join("")
+    .trim();
+}
+
+function decorateTextButtons(root) {
+  (root || document).querySelectorAll("button").forEach((button) => {
+    if (button.querySelector("svg")) return;
+    const icon = AUTO_BTN_ICON_BY_LABEL[autoButtonLabel(button)];
+    if (!icon) return;
+    const svg = '<svg class="mc-auto-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      AUTO_BTN_ICON_PATHS[icon] + "</svg>";
+    button.insertAdjacentHTML("afterbegin", svg);
+    button.classList.add("has-auto-ico");
+  });
+}
+
+let autoIconFrame = 0;
+function scheduleDecorateTextButtons() {
+  if (autoIconFrame) return;
+  autoIconFrame = requestAnimationFrame(() => {
+    autoIconFrame = 0;
+    decorateTextButtons(document);
+  });
+}
+
+if (typeof MutationObserver === "function") {
+  const startAutoIcons = () => {
+    decorateTextButtons(document);
+    new MutationObserver(scheduleDecorateTextButtons).observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.body) startAutoIcons();
+  else document.addEventListener("DOMContentLoaded", startAutoIcons);
+}
 
 /* (디자인 추가분) 사람 동그라미 색: 이메일마다 늘 같은 색 */
 const MC_PERSON_COLORS = ["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#2dd4bf", "#fb7185"];
