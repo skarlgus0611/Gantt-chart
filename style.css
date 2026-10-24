@@ -3563,10 +3563,13 @@ main {
   justify-content: flex-start;
 }
 
+/* 오늘 날짜 세로 빨간 선 */
 .today-line {
   width: 2px;
-  background: #f43f5e;
-  opacity: .75;
+  margin-left: -1px;
+  background: #ef4444;
+  opacity: 1;
+  z-index: 12;
 }
 
 .gantt-resize span {

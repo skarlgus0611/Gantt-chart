@@ -1132,9 +1132,29 @@ async function apiPostForChart(action, chartId, data = {}) {
 let toastTimer = null;
 
 
+/* (버그 수정) 알림 상자 위치:
+   - 모음(셸) 페이지: #toast 는 숨겨진 단일 차트 화면 안에 있어서 안 보였다 → #mcToast 사용
+   - 카드 안 iframe: 키 큰 iframe의 맨 아래(화면 밖)에 떠서 안 보였다 → 부모(셸)에게 넘겨 띄운다 */
+function isEmbeddedChart() {
+  return !IS_SHELL_MODE && document.documentElement.classList.contains("is-embedded");
+}
+
+function postToastToParent(data) {
+  try {
+    window.parent.postMessage({ type: "gantt:toast", ...data }, window.location.origin);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 function showToast(message, isError = false, duration = 2500) {
 
-  const toast = document.getElementById("toast");
+  if (isEmbeddedChart() && postToastToParent({ message, isError, duration })) {
+    return;
+  }
+
+  const toast = document.getElementById(IS_SHELL_MODE ? "mcToast" : "toast");
 
   if (!toast) {
     return;
@@ -1156,7 +1176,11 @@ function showToast(message, isError = false, duration = 2500) {
 
 function hideToast() {
 
-  const toast = document.getElementById("toast");
+  if (isEmbeddedChart() && postToastToParent({ hide: true })) {
+    return;
+  }
+
+  const toast = document.getElementById(IS_SHELL_MODE ? "mcToast" : "toast");
 
   clearTimeout(toastTimer);
 
@@ -1356,6 +1380,16 @@ function dayOffsetFromYearStart(date) {
 }
 
 
+/* (버그 수정) 오늘이 지금 창(연도 또는 지정한 표시 기간)의 몇 번째 날인지.
+   창 밖이면 null. 예전엔 "그 해의 몇 번째 날"(dayOfYear)을 써서, 표시
+   기간을 지정하면 오늘 버튼·오늘 선이 엉뚱한 곳을 가리켰다. */
+function todayWindowDay() {
+  const now = new Date();
+  const day = dayOffsetFromYearStart(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+  return day >= 0 && day < windowTotalDays() ? day : null;
+}
+
+
 /* 선택 연도(또는 커스텀 기간)의 n번째 날(0부터) -> Date */
 function dateFromYearDay(day) {
   const date = getYearStart();
@@ -1534,15 +1568,9 @@ function scrollTimelineToToday() {
     return;
   }
 
-  const today = new Date();
+  const day = todayWindowDay();
 
-  if (today.getFullYear() !== state.year) {
-    return;
-  }
-
-  const day = dayOfYear(today);
-
-  if (day < state.rangeStart || day > state.rangeEnd) {
+  if (day === null || day < state.rangeStart || day > state.rangeEnd) {
     return;
   }
 
@@ -2700,16 +2728,11 @@ function renderTodayLine(
   width
 ) {
 
-  const today = new Date();
-
-  /* 현재 선택한 연도와 다르면 오늘 선을 그리지 않는다. */
-  if (today.getFullYear() !== state.year) {
-    return;
-  }
-
-  const todayDay = dayOfYear(today);
+  /* 오늘이 지금 창(연도 또는 지정한 표시 기간) 밖이면 그리지 않는다. */
+  const todayDay = todayWindowDay();
 
   if (
+    todayDay === null ||
     todayDay < state.rangeStart ||
     todayDay > state.rangeEnd
   ) {
@@ -4750,9 +4773,18 @@ if (todayBtn) {
 
     const today = new Date();
 
-    state.year = today.getFullYear();
+    /* 표시 기간을 지정했으면 그 기간은 그대로 두고, 연도 보기일 때만
+       올해로 옮긴다. */
+    if (!state.customStart) {
+      state.year = today.getFullYear();
+    }
 
-    const day = dayOfYear(today);
+    const day = todayWindowDay();
+
+    if (day === null) {
+      showToast("오늘(" + dateKey(today) + ")은 이 차트의 표시 기간 밖입니다. 기간을 바꾸거나 '연도 보기로'를 눌러 주세요.", true, 4000);
+      return;
+    }
 
     const totalDays = windowTotalDays();
 
@@ -6196,6 +6228,7 @@ function initShell() {
 /** 이 차트(CHART_ID)의 저장된 표시 기간을 서버에서 읽어 state에 반영하고,
  *  입력칸도 채워 둔다. 설정된 게 없으면 아무것도 안 바뀐다(기존 동작 그대로). */
 async function loadChartRangeMeta() {
+  let rangeChanged = false;
   try {
     /* (버그 수정) 예전엔 "listCharts"(개인 소유이면서 공유 안 된 차트만
        돌려줌)에서 이 차트를 찾았는데, 지금 보고 있는 차트가 공유
@@ -6205,11 +6238,21 @@ async function loadChartRangeMeta() {
        문서를 읽으면 개인/공유 상관없이 항상 맞게 찾는다. */
     const mine = await getChartMetaCached(CHART_ID);
 
+    const before = state.customStart ? dateKey(state.customStart) + "~" + dateKey(state.customEnd) : "";
+
     if (mine && mine.rangeStart && mine.rangeEnd) {
       state.customStart = dateObj(mine.rangeStart);
       state.customEnd = dateObj(mine.rangeEnd);
       state.year = state.customStart.getFullYear();
+    } else if (mine && state.customStart) {
+      /* (버그 수정) 다른 곳에서 표시 기간을 지웠으면 연도 보기로 돌아간다. */
+      state.customStart = null;
+      state.customEnd = null;
+      state.year = new Date().getFullYear();
     }
+
+    rangeChanged =
+      before !== (state.customStart ? dateKey(state.customStart) + "~" + dateKey(state.customEnd) : "");
 
     const startInput = document.getElementById("chartRangeStart");
     const endInput = document.getElementById("chartRangeEnd");
@@ -6226,6 +6269,7 @@ async function loadChartRangeMeta() {
     console.error(error);
     // 못 읽어와도 기존(연도 기준) 동작으로 계속 진행한다.
   }
+  return rangeChanged;
 }
 
 /* (버그 수정) 이 화면이 모음(셸) 페이지 안의 iframe으로 떠 있을 때,
@@ -6457,6 +6501,11 @@ if (IS_SHELL_MODE) {
     if (event.data && event.data.type === "gantt:chartMetaChanged") {
       shellLoadCharts();
     }
+    /* (버그 수정) 차트 iframe 안의 알림을 이 페이지 아래쪽에 대신 띄운다. */
+    if (event.data && event.data.type === "gantt:toast") {
+      if (event.data.hide) hideToast();
+      else showToast(String(event.data.message || ""), !!event.data.isError, Number(event.data.duration) || 0);
+    }
     /* (디자인 추가분) 차트 iframe이 보내는 요약값(평균 진행률·카테고리·기간) */
     if (event.data && event.data.type === "gantt:stats" && event.data.chartId) {
       shellStats[event.data.chartId] = event.data;
@@ -6491,7 +6540,14 @@ if (IS_SHELL_MODE) {
   window.addEventListener("message", (event) => {
     if (event.origin !== window.location.origin) return;
     if (event.data && event.data.type === "gantt:refreshMeta") {
-      loadChartRangeMeta();
+      /* (버그 수정) 표시 기간이 바뀌었으면 바로 다시 그린다(예전엔 값만 바꾸고 안 그렸다). */
+      loadChartRangeMeta().then(changed => {
+        if (changed) {
+          resetRange();
+          state.scrollToToday = true;
+          render();
+        }
+      });
     }
 
     /* (디자인 추가분) 카드 머리(셸)에 있는 버튼들이 보내는 명령.
