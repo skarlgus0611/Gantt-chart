@@ -5846,43 +5846,58 @@ body.shared-viewer-readonly .detail-swatches {
   box-shadow: 0 0 0 2px #ffffff, 0 0 0 6px rgba(15, 118, 110, .16);
 }
 
-/* ---------- 세로 표시 범위 (차트 오른쪽) ---------- */
+/* ---------- 세로 표시 범위 (차트 오른쪽): 행 높이와 같은 모양 ----------
+   테두리 띠 안에 얇은 선, 고른 구간은 초록 선, 양 끝은 작은 초록 점 */
 .row-range {
-  flex: 0 0 24px;
+  flex: 0 0 26px;
 }
 
-.row-range .range-track {
-  top: 6px;
-  bottom: 6px;
-  width: 14px;
+/* 테두리 띠는 길(.range-track) 뒤에 깔린 가짜 요소로 그린다 */
+.row-range::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 50%;
+  width: 18px;
+  margin-left: -9px;
   border: 1px solid #ececef;
-  border-radius: 7px;
+  border-radius: 9px;
   background: #fafafb;
   box-sizing: border-box;
 }
 
+.row-range .range-track {
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border: 0;
+  border-radius: 2px;
+  background: #e4e4e7;
+}
+
 .row-range .range-bar {
-  width: 14px;
-  border: 2px solid #0f766e;
-  border-radius: 7px;
-  background: rgba(15, 118, 110, .10);
-  box-sizing: border-box;
+  width: 2px;
+  border: 0;
+  border-radius: 2px;
+  background: #0f766e;
+  cursor: grab;
 }
 
 .row-range .range-handle {
-  width: 20px;
-  height: 7px;
+  width: 12px;
+  height: 12px;
   border: 0;
-  border-radius: 4px;
+  border-radius: 999px;
   background: #0f766e;
-  box-shadow: 0 0 0 2px #ffffff, 0 1px 3px rgba(24, 24, 27, .25);
+  box-shadow: 0 0 0 3px #ffffff, 0 1px 4px rgba(24, 24, 27, .3);
   cursor: ns-resize;
 }
 
 .row-range .range-handle:hover,
 .row-range .range-handle:focus-visible {
-  transform: translate(-50%, -50%) scaleX(1.15);
-  box-shadow: 0 0 0 2px #ffffff, 0 0 0 6px rgba(15, 118, 110, .16);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 7px rgba(15, 118, 110, .16);
 }
 
 /* ---------- 행 높이: 같은 띠 안에 얇은 선 + 작은 점 ---------- */
