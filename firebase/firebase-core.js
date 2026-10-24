@@ -26,7 +26,7 @@ import {
   onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js";
 import {
-  getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
+  initializeFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
   getDoc, getDocs, onSnapshot, query, where, serverTimestamp, arrayUnion, arrayRemove,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js";
@@ -43,7 +43,16 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+/* (성능) 학교/기숙사 네트워크, 방화벽, 일부 브라우저 확장이 Firestore의
+   기본 실시간 연결 방식(WebChannel/gRPC-Web 스트리밍)을 막으면, SDK가
+   훨씬 느린 방식으로 매 요청마다 우회하면서 "모든 동작이 몇 초씩 느려지는"
+   증상이 생긴다. getFirestore() 대신 initializeFirestore()에
+   experimentalAutoDetectLongPolling을 켜서, 그런 환경을 자동으로
+   감지하고 처음부터 안정적인 연결 방식으로 붙게 한다. */
+const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,
+  useFetchStreams: false
+});
 
 /* ----- 로그인 -----
  * (설계 변경, 문제 3 재해결) 앱 로그인(Firestore 접근)과 캘린더 API
@@ -298,5 +307,3 @@ export async function getChartsOnce(uid, email) {
   sharedSnap.docs.forEach((d) => { byId[d.id] = { id: d.id, ...d.data() }; });
   return Object.values(byId);
 }
-
-
