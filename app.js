@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v22";
+const APP_VERSION = "2026-10-24-design-v23";
 
 
 /* =========================================================
@@ -6194,6 +6194,7 @@ function shellBroadcastRefreshToIframes() {
    이 함수를 다시 호출해 버튼 영역만 교체한다(iframe은 그대로 둔다). */
 /* (디자인 추가분) 차트 박스 머리 버튼에 쓰는 선 아이콘들 */
 const MC_ICONS = {
+  sheet: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"></rect><path d="M3.5 9h17M3.5 14.5h17M9.5 9v11.5"></path>',
   download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4"></path><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>',
   calAdd: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M9 2.5v3M15 2.5v3"></path><path d="M12 13v5M9.5 15.5h5"></path>',
   calRemove: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M9 2.5v3M15 2.5v3"></path><path d="M9.8 13.5l4.4 4.4M14.2 13.5l-4.4 4.4"></path>',
@@ -6692,13 +6693,15 @@ function shellBuildActionsEl(chart, box) {
   toolGroup.classList.add("mc-chart-tools");
   actions.appendChild(toolGroup);
 
-  const csvBtn = mcActionButton("download", "엑셀로 내보내기", false);
-  csvBtn.classList.add("mc-chart-tools");
-  csvBtn.title = "이 차트의 작업을 CSV 파일로 내보냅니다";
+  /* (요청사항) 엑셀 내보내기는 캘린더 버튼과 같은 모양으로, 캘린더 뒤로 옮기고 "다운로드" 글자 */
+  const csvBtn = mcActionButton("sheet", "다운로드", false);
+  csvBtn.title = "엑셀로 내보내기 — 이 차트의 작업을 CSV 파일로 받습니다";
+  csvBtn.setAttribute("aria-label", "엑셀로 내보내기");
   csvBtn.addEventListener("click", () => chart.shared
     ? shellHandleSharedExportCsv(chart.chartId, box)
     : shellHandleExportCsv(chart.id, box));
-  actions.appendChild(csvBtn);
+  const csvGroup = mcButtonGroup([csvBtn]);
+  csvGroup.classList.add("mc-chart-tools", "mc-btn-group-text");
 
   /* (공유 기능 추가분) 캘린더/CSV는 뷰어 포함 모든 권한에서 가능. */
   const calAddBtn = mcActionButton("calAdd", "캘린더에 추가", true);
@@ -6716,6 +6719,7 @@ function shellBuildActionsEl(chart, box) {
   const calGroup = mcButtonGroup([calAddBtn, calRemoveBtn]);
   calGroup.classList.add("mc-chart-tools");
   actions.appendChild(calGroup);
+  actions.appendChild(csvGroup);
 
   const shareBtn = document.createElement("button");
   shareBtn.type = "button";

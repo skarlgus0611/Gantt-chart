@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v22";
+  --css-version: "2026-10-24-design-v23";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -8959,4 +8959,93 @@ button.primary {
 .mc-chart-box .mc-chart-name-edit {
   color: #18181b;
   background: #ffffff;
+}
+
+
+/* =========================================================
+   (요청사항) 차트 카드 머리 다시: 무거운 진초록 → 테마 초록을 아주 밝힌 파스텔
+   - 머리 바탕: 밝은 파스텔 초록 + 옅은 초록 막대 무늬
+   - 왼쪽 아이콘 묶음(새로고침·전체·오늘·캡처 / 캘린더 / 다운로드):
+     테마색 바탕 + 흰 아이콘(조금 굵게)
+   - 공유 · ⋯ 는 흰 알약 그대로
+   ========================================================= */
+.mc-chart-box .mc-chart-box-head {
+  background-color: #e8f3f0;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='68' viewBox='0 0 200 68'%3E%3Cg stroke='%230f766e' stroke-opacity='.06'%3E%3Cpath d='M20 0v68M60 0v68M100 0v68M140 0v68M180 0v68'/%3E%3C/g%3E%3Cg fill='%230f766e'%3E%3Crect x='14' y='11' width='74' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='14' y='11' width='40' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='62' y='29' width='96' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='62' y='29' width='34' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='118' y='47' width='70' height='9' rx='4.5' fill-opacity='.07'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(135deg, #edf7f4 0%, #e1f0ec 100%);
+  border-bottom-color: #d5e9e4;
+}
+
+.mc-chart-box .mc-chart-box-name {
+  color: #18181b;
+}
+
+.mc-chart-box .mc-chart-box-name:hover {
+  background: rgba(15, 118, 110, .08);
+}
+
+.mc-chart-box .mc-chart-toggle {
+  color: #0f766e;
+}
+
+.mc-chart-box .mc-chart-toggle:hover {
+  background: rgba(15, 118, 110, .1);
+}
+
+.mc-chart-box .mc-chart-box-range {
+  background: #ffffff;
+  color: #3f3f46;
+}
+
+.mc-chart-box .mc-chart-box-range:hover {
+  background: #ffffff;
+  color: #0f766e;
+}
+
+/* 흰 알약(공유 · ⋯)은 파스텔 위에서 테두리로 구분 */
+.mc-chart-box .mc-chart-box-actions > .mc-btn {
+  background: #ffffff;
+  border-color: #d5e9e4;
+}
+
+.mc-chart-box .mc-chart-box-actions > .mc-btn:hover:not(:disabled) {
+  background: #f0fdfa;
+  border-color: #99f6e4;
+}
+
+/* 테마색 아이콘 묶음 */
+.mc-chart-box .mc-chart-box-actions .mc-btn-group {
+  background: #0f766e;
+  box-shadow: 0 2px 6px -2px rgba(15, 118, 110, .5);
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn {
+  background: transparent;
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn svg {
+  stroke-width: 2.2;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .18);
+  box-shadow: none;
+}
+
+/* 켜진 것(오늘)은 흰 동그라미 + 초록 아이콘 */
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn.mc-btn-active {
+  background: #ffffff;
+  color: #0f766e;
+}
+
+/* 다운로드: 아이콘 + 글자 */
+.mc-chart-box .mc-chart-box-actions .mc-btn-group-text .mc-btn {
+  width: auto;
+  padding: 0 12px 0 9px;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
 }
