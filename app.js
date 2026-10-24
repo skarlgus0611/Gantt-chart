@@ -4852,7 +4852,17 @@ async function shellLoadCharts() {
         })
       : Promise.resolve([]);
 
-    const [result, list] = await Promise.all([personalPromise, sharedPromise]);
+    /* (요청사항) "＋ 새 차트" / "차트 공유받기" 버튼 배지에 쓸 "아직
+       수락 안 한 초대 개수"도 같이 받아온다(독립적인 조회라 병렬로). */
+    const invitesPromise = (fbUser && typeof shareFetch === "function")
+      ? shareFetch("listMyInvites", {}).catch((error) => {
+          console.error(error);
+          return [];
+        })
+      : Promise.resolve([]);
+
+    const [result, list, invites] = await Promise.all([personalPromise, sharedPromise, invitesPromise]);
+    updateInviteBadges((invites || []).length);
 
     const personal = (Array.isArray(result.result) ? result.result : []).map((c) => ({ ...c, shared: false }));
     /* (성능 수정) id에 "shared:" 접두사를 더 이상 붙이지 않는다. 접두사가
@@ -6050,7 +6060,22 @@ function shellOpenNewOrShareModal() {
    respondInvite 응답에 최신 초대 목록과 공유 차트 목록이 같이 오므로,
    그 자리에서 화면만 바로 갱신한다 (개인 차트 목록은 수락/거절로 바뀌는
    게 없으니 건드릴 필요도 없다). */
+/* (요청사항) "＋ 새 차트" 버튼, "차트 공유받기" 버튼 오른쪽 위에 아직
+   수락하지 않은 초대 개수를 빨간 배지로 띄운다. 초대 목록을 다시 그릴
+   때마다(최초 로딩, 수락/거절 직후) 항상 같이 호출해서 두 배지를
+   같은 숫자로 맞춘다. */
+function updateInviteBadges(count) {
+  const n = Number(count) || 0;
+  [document.getElementById("mcAddBtnBadge"), document.getElementById("mcReceiveBtnBadge")].forEach((badge) => {
+    if (!badge) return;
+    badge.textContent = n > 99 ? "99+" : String(n);
+    badge.classList.toggle("hidden", n <= 0);
+  });
+}
+
 function shellRenderInvitesList(invites) {
+  updateInviteBadges((invites || []).length);
+
   const box = document.getElementById("mcInvitesList");
   if (!box) return;
 
