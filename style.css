@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v4";
+  --css-version: "2026-10-24-design-v5";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -5950,9 +5950,11 @@ body.shared-viewer-readonly .detail-swatches {
  * ▼▼▼ 화면 흔들림 방지 (추가분) ▼▼▼
  * ========================================================= */
 
-/* 바깥 페이지: 스크롤바 자리를 늘 비워 둬서, 스크롤바가 생기고 없어질 때
-   폭이 17px씩 바뀌지 않게 한다(Windows 등 스크롤바가 폭을 차지하는 환경). */
+/* 바깥 페이지: 세로 스크롤바를 늘 표시해서(내용이 짧아도), 스크롤바가 생기고
+   없어질 때 폭이 17px씩 바뀌지 않게 한다(Windows 등 스크롤바가 폭을 차지하는 환경).
+   scrollbar-gutter 를 모르는 브라우저도 overflow-y: scroll 로 막힌다. */
 html:not(.is-embedded) {
+  overflow-y: scroll;
   scrollbar-gutter: stable;
 }
 
