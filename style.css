@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v6";
+  --css-version: "2026-10-24-design-v7";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -6082,3 +6082,156 @@ html.is-embedded body {
 }
 
 /* ▲▲▲ 색 견본 다듬기 (추가분) 끝 ▲▲▲ */
+
+/* =========================================================
+ * ▼▼▼ 하루 그리드 · 캡처 제목 · 막대 꾹 눌러 옮기기 (추가분) ▼▼▼
+ * ========================================================= */
+
+/* 예전 "구간 시작부터 7일마다" 배경 줄은 하루 그리드로 대신한다 */
+.timeline-task-row {
+  background-image: none;
+}
+
+/* ---------- 하루 단위 세로 그리드 ---------- */
+.day-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.day-grid-weekend {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(24, 24, 27, .025);
+}
+
+.day-grid-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #f1f1f3;
+}
+
+.day-grid-line.week {
+  background: #e9e9ec;
+}
+
+.day-grid-line.month {
+  background: #dedee3;
+}
+
+/* 머리글 날짜 눈금: 주말·오늘 */
+.week-cell.sat {
+  color: #3b82f6;
+}
+
+.week-cell.sun {
+  color: #ef4444;
+}
+
+.week-cell.today {
+  color: #ffffff;
+  font-weight: 800;
+  background: #ef4444;
+  border-radius: 6px;
+  margin: 3px 1px;
+}
+
+/* ---------- 캡처 이미지에서만: 알약 안 작업 제목 ----------
+   화면에서는 진행률(%)만, 캡처할 때는 왼쪽에 작업 이름 + 오른쪽에 진행률 */
+.task-bar-name {
+  display: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.task-bar-pct {
+  flex-shrink: 0;
+}
+
+.gantt.capturing .task-bar-text {
+  justify-content: space-between;
+  gap: 8px;
+  left: 10px;
+  right: 9px;
+}
+
+.gantt.capturing .task-bar-name {
+  display: block;
+}
+
+/* 캡처에서는 오늘 선이 막대 글자를 가리지 않게, 막대가 든 줄 묶음을 선보다 위로
+   (줄 묶음은 transform 이 있어 막대 하나만 z-index 를 올려서는 안 된다).
+   작업 줄은 투명해서 막대가 없는 곳에서는 오늘 선이 그대로 보인다. */
+.gantt.capturing .rows-inner {
+  z-index: 13;
+}
+
+/* ---------- 막대 꾹 눌러(1초) 옮기기 ---------- */
+.task-bar {
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 누르는 동안 1초에 걸쳐 막대가 밝게 차오른다 */
+.task-bar.pressing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, .38);
+  transform-origin: left center;
+  animation: bar-press-fill 1s linear forwards;
+  pointer-events: none;
+}
+
+@keyframes bar-press-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* 떠오른 상태: 그림자 + 살짝 위로, 끄는 만큼 옆으로 */
+.task-bar.floating {
+  z-index: 30;
+  cursor: grabbing;
+  filter: none;
+  transform: translateX(var(--drag-x, 0px)) translateY(-3px) scale(1.03);
+  box-shadow: 0 10px 22px rgba(24, 24, 27, .22), 0 0 0 2px #ffffff;
+  transition: transform .08s ease-out, box-shadow .12s;
+}
+
+.task-bar.floating:hover {
+  transform: translateX(var(--drag-x, 0px)) translateY(-3px) scale(1.03);
+}
+
+/* 떠오른 동안 막대 아래에 뜨는 새 시작~끝 날짜 */
+.task-bar-dates {
+  position: absolute;
+  z-index: 31;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #18181b;
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  transition: transform .08s ease-out;
+}
+
+body.is-bar-moving,
+body.is-bar-moving * {
+  cursor: grabbing !important;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ▲▲▲ 하루 그리드 · 캡처 제목 · 막대 꾹 눌러 옮기기 (추가분) 끝 ▲▲▲ */
