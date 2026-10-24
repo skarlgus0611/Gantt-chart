@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v21";
+  --css-version: "2026-10-24-design-v22";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -8874,4 +8874,89 @@ button.primary {
 .row-height-wrap {
   border-radius: 999px;
   padding: 0 14px;
+}
+
+
+/* =========================================================
+   (요청사항) 차트 카드 머리를 테마색으로 (A안)
+   - 진한 초록 바탕 + 사이드바 머리와 같은 간트 막대 무늬
+   - 글자는 흰색, 엑셀·공유·⋯ 버튼은 흰 알약, 아이콘 묶음은 반투명
+   ========================================================= */
+.mc-chart-box .mc-chart-box-head {
+  background-color: #0f766e;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='68' viewBox='0 0 200 68'%3E%3Cg stroke='%23ffffff' stroke-opacity='.06'%3E%3Cpath d='M20 0v68M60 0v68M100 0v68M140 0v68M180 0v68'/%3E%3C/g%3E%3Cg fill='%23ffffff'%3E%3Crect x='14' y='11' width='74' height='9' rx='4.5' fill-opacity='.10'/%3E%3Crect x='14' y='11' width='40' height='9' rx='4.5' fill-opacity='.10'/%3E%3Crect x='62' y='29' width='96' height='9' rx='4.5' fill-opacity='.10'/%3E%3Crect x='62' y='29' width='34' height='9' rx='4.5' fill-opacity='.10'/%3E%3Crect x='118' y='47' width='70' height='9' rx='4.5' fill-opacity='.10'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(135deg, #0f766e 0%, #0d6b64 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-position: 46% center, 0 0;
+  border-bottom-color: #0d6b64;
+}
+
+.mc-chart-box .mc-chart-box-name {
+  color: #ffffff;
+}
+
+.mc-chart-box .mc-chart-box-name:hover {
+  background: rgba(255, 255, 255, .12);
+}
+
+.mc-chart-box .mc-chart-toggle {
+  color: #ffffff;
+}
+
+.mc-chart-box .mc-chart-toggle:hover {
+  background: rgba(255, 255, 255, .14);
+}
+
+.mc-chart-box .mc-chart-box-range {
+  background: rgba(255, 255, 255, .16);
+  color: #ecfeff;
+}
+
+.mc-chart-box .mc-chart-box-range:hover {
+  background: rgba(255, 255, 255, .26);
+}
+
+/* 접혔을 때 보이는 평균 진행률: 흰 알약 */
+.mc-chart-box .mc-chart-box-avg {
+  background: #ffffff;
+  color: #0f766e;
+}
+
+/* 흰 알약 버튼: 엑셀로 내보내기 · 공유 · ⋯ */
+.mc-chart-box .mc-chart-box-actions .mc-btn {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn:hover:not(:disabled) {
+  background: #f0fdfa;
+  border-color: #f0fdfa;
+}
+
+/* 아이콘 묶음: 반투명 틀 + 흰 아이콘, 켜진 것(오늘)은 흰 동그라미 */
+.mc-chart-box .mc-chart-box-actions .mc-btn-group {
+  background: rgba(255, 255, 255, .16);
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn {
+  background: transparent;
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .22);
+  box-shadow: none;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn.mc-btn-active {
+  background: #ffffff;
+  color: #0f766e;
+}
+
+/* 이름 고치는 칸은 흰 바탕 그대로 */
+.mc-chart-box .mc-chart-name-edit {
+  color: #18181b;
+  background: #ffffff;
 }
