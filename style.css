@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v17";
+  --css-version: "2026-10-24-design-v18";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -8651,4 +8651,22 @@ body:has(.owner-filter-btn.active) .drag-handle {
   .mc-ov-chips {
     display: none;
   }
+}
+
+
+/* =========================================================
+   (디자인 추가분) 차트 박스와 바탕 구분 또렷하게
+   바탕을 한 단계 진한 회색으로, 박스엔 테두리를 조금 진하게 하고 옅은 그림자.
+   ========================================================= */
+#shellView {
+  background: #f0f1f4;
+}
+
+.mc-chart-box {
+  border-color: #dfe1e6;
+  box-shadow: 0 1px 2px rgba(24, 24, 27, .05), 0 8px 24px -12px rgba(24, 24, 27, .12);
+}
+
+.mc-chart-box:hover {
+  box-shadow: 0 1px 2px rgba(24, 24, 27, .06), 0 10px 28px -12px rgba(24, 24, 27, .16);
 }
