@@ -5761,3 +5761,172 @@ body.shared-viewer-readonly .detail-swatches {
 }
 
 /* ▲▲▲ 차트 아래 조작 영역 정리 (추가분) 끝 ▲▲▲ */
+
+/* =========================================================
+ * ▼▼▼ 슬라이더 디자인: 미니 타임라인 (추가분) ▼▼▼
+ * 표시 기간 · 세로 범위: 테두리 띠 + 초록 테두리 상자(고른 구간) + 양 끝 손잡이
+ * 행 높이: 같은 테두리 띠 안에 얇은 선 + 작은 초록 점
+ * ========================================================= */
+
+/* ---------- 표시 기간 (가로) ---------- */
+.range-slider {
+  height: 36px;
+}
+
+/* 길 = 테두리 띠 */
+.range-slider .range-track {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 100%;
+  border: 1px solid #ececef;
+  border-radius: 9px;
+  background: #fafafb;
+  box-sizing: border-box;
+}
+
+/* 달 눈금 (app.js renderRangeMonths). 양 끝 10px 은 손잡이 여백(H_SLIDER_INSET)과 같다 */
+.range-months {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 1px;
+  bottom: 1px;
+  display: flex;
+  pointer-events: none;
+}
+
+.range-month {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #a1a1aa;
+  border-left: 1px solid #f0f0f2;
+}
+
+.range-month:first-child {
+  border-left: 0;
+}
+
+.range-month.current {
+  color: #0f766e;
+  font-weight: 800;
+}
+
+/* 고른 구간 = 초록 테두리 상자 (끌면 통째로 이동) */
+.range-slider .range-bar {
+  top: 0;
+  height: 100%;
+  border: 2px solid #0f766e;
+  border-radius: 8px;
+  background: rgba(15, 118, 110, .10);
+  box-sizing: border-box;
+}
+
+/* 손잡이 = 상자 양 끝의 세로 막대 */
+.range-slider .range-handle {
+  width: 8px;
+  height: 20px;
+  border: 0;
+  border-radius: 4px;
+  background: #0f766e;
+  box-shadow: 0 0 0 2px #ffffff, 0 1px 3px rgba(24, 24, 27, .25);
+  cursor: ew-resize;
+}
+
+.range-slider .range-handle:hover,
+.range-slider .range-handle:focus-visible {
+  transform: translate(-50%, -50%) scaleY(1.15);
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 6px rgba(15, 118, 110, .16);
+}
+
+/* ---------- 세로 표시 범위 (차트 오른쪽) ---------- */
+.row-range {
+  flex: 0 0 24px;
+}
+
+.row-range .range-track {
+  top: 6px;
+  bottom: 6px;
+  width: 14px;
+  border: 1px solid #ececef;
+  border-radius: 7px;
+  background: #fafafb;
+  box-sizing: border-box;
+}
+
+.row-range .range-bar {
+  width: 14px;
+  border: 2px solid #0f766e;
+  border-radius: 7px;
+  background: rgba(15, 118, 110, .10);
+  box-sizing: border-box;
+}
+
+.row-range .range-handle {
+  width: 20px;
+  height: 7px;
+  border: 0;
+  border-radius: 4px;
+  background: #0f766e;
+  box-shadow: 0 0 0 2px #ffffff, 0 1px 3px rgba(24, 24, 27, .25);
+  cursor: ns-resize;
+}
+
+.row-range .range-handle:hover,
+.row-range .range-handle:focus-visible {
+  transform: translate(-50%, -50%) scaleX(1.15);
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 6px rgba(15, 118, 110, .16);
+}
+
+/* ---------- 행 높이: 같은 띠 안에 얇은 선 + 작은 점 ---------- */
+.row-height-wrap {
+  height: 36px;
+  padding: 0 12px;
+  gap: 10px;
+  border: 1px solid #ececef;
+  border-radius: 9px;
+  background: #fafafb;
+  box-sizing: border-box;
+}
+
+.row-height-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(to right, #0f766e var(--progress, 40%), #e4e4e7 var(--progress, 40%));
+}
+
+.row-height-slider::-moz-range-track {
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(to right, #0f766e var(--progress, 40%), #e4e4e7 var(--progress, 40%));
+}
+
+.row-height-slider::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  border: 0;
+  background: #0f766e;
+  box-shadow: 0 0 0 3px #ffffff, 0 1px 4px rgba(24, 24, 27, .3);
+}
+
+.row-height-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  background: #0f766e;
+  box-shadow: 0 0 0 3px #ffffff, 0 1px 4px rgba(24, 24, 27, .3);
+}
+
+.row-height-slider:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 7px rgba(15, 118, 110, .16);
+}
+
+/* ▲▲▲ 슬라이더 디자인: 미니 타임라인 (추가분) 끝 ▲▲▲ */

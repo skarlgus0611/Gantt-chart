@@ -1479,6 +1479,7 @@ function render() {
   renderTaskColumn();
   renderTimeline();
   updateRangeLabel();
+  renderRangeMonths();
 
   if (hSlider) hSlider.layout();
   if (vSlider) vSlider.layout();
@@ -4841,9 +4842,12 @@ if (reloadBtn) {
 let hSlider = null;
 let vSlider = null;
 
+/* 표시 기간 슬라이더의 양 끝 여백(손잡이 계산과 달 눈금이 같은 값을 쓴다) */
+const H_SLIDER_INSET = 10;
+
 hSlider = buildRangeSlider(document.getElementById("hRangeSlider"), {
   orientation: "h",
-  inset: 10,
+  inset: H_SLIDER_INSET,
   getTotal: () => windowTotalDays(),
   getRange: () => [state.rangeStart, state.rangeEnd],
   setRange: (start, end) => {
@@ -4855,6 +4859,35 @@ hSlider = buildRangeSlider(document.getElementById("hRangeSlider"), {
     updateRangeLabel();
   }
 });
+
+/* (디자인 추가분) 표시 기간 슬라이더 = 미니 타임라인: 지금 창(연도 또는
+   지정 기간)의 달 눈금을 슬라이더 바탕에 깔아서, 고른 구간 상자가 몇 월을
+   덮고 있는지 바로 보이게 한다. */
+function renderRangeMonths() {
+
+  const container = document.getElementById("hRangeSlider");
+
+  if (!container) {
+    return;
+  }
+
+  let layer = container.querySelector(".range-months");
+
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.className = "range-months";
+    layer.setAttribute("aria-hidden", "true");
+    container.insertBefore(layer, container.firstChild.nextSibling);
+  }
+
+  const now = new Date();
+
+  layer.innerHTML = windowMonths().map(({ year, month, days }) => {
+    const current = year === now.getFullYear() && month === now.getMonth();
+    return `<span class="range-month${current ? " current" : ""}" style="flex-grow:${days}">${month + 1}월</span>`;
+  }).join("");
+}
+
 
 /* 차트 전체 높이 손잡이: .gantt 맨 아래를 끌면 세로로 늘고 준다. */
 const heightHandle = document.getElementById("chartHeightHandle");
