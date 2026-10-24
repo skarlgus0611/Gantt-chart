@@ -298,3 +298,5 @@ export async function getChartsOnce(uid, email) {
   sharedSnap.docs.forEach((d) => { byId[d.id] = { id: d.id, ...d.data() }; });
   return Object.values(byId);
 }
+
+
