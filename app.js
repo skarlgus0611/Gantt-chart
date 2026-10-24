@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v15";
+const APP_VERSION = "2026-10-24-design-v16";
 
 
 /* =========================================================
@@ -2399,9 +2399,7 @@ function ownerBadgeHtml(task, group) {
 /* =========================================================
  * (조직 관리 3단계) 담당자를 조직원 중에서 고르기
  *  - 담당자 칸을 누르면 아래에 사람 목록이 뜬다.
- *    · 이 차트를 조직에 공유했으면 그 조직의 조직원
- *    · 아직 조직에 공유하지 않은 차트면 내가 속한 모든 조직의 조직원
- *    · 그리고 나, 차트 소유자, 이메일로 공유받은 사람
+ *    · 이 차트가 공유된 조직의 공유 대상 조직원만 (아래 fetchAssigneeCandidates)
  *  - 고르면 이름이 들어가고 이메일(ownerEmail)도 함께 저장된다.
  *  - 목록에 없는 사람은 지금처럼 이름을 그대로 적으면 된다.
  * ========================================================= */
@@ -2414,43 +2412,39 @@ function assigneeChartId() {
 async function fetchAssigneeCandidates() {
   if (!fbUser) return [];
 
+  /* (요청사항) 이 차트를 공유한 조직의 "공유 대상" 조직원만 고를 수 있다.
+     - 조직 전체 공유: 그 조직의 조직원 모두
+     - 조직원 선택 공유: 고른 조직원만 (+ 그 조직에 속한 차트 소유자)
+     조직원이 아닌 사람(이메일로만 공유받은 사람·외부 업체 등)은 이름을 직접 적는다. */
   const chart = await getChartMetaCached(assigneeChartId()).catch(() => null);
+  if (!chart) return [];
   const memberships = (await fbMyOrgMemberships()).filter((m) => m.status === "accepted");
-  const chartOrgIds = (chart && chart.orgIds) || [];
-  const orgIds = chartOrgIds.length
-    ? chartOrgIds.filter((orgId) => memberships.some((m) => m.orgId === orgId))
-    : memberships.map((m) => m.orgId);
+  /* 조직원 목록은 그 조직원만 읽을 수 있다 */
+  const orgIds = (chart.orgIds || []).filter((orgId) => memberships.some((m) => m.orgId === orgId));
+  const ownerEmail = String(chart.ownerEmail || "").toLowerCase();
 
   const byEmail = new Map();
-  const add = (person) => {
-    const email = String(person.email || "").trim().toLowerCase();
-    if (!email) return;
-    const previous = byEmail.get(email) || {};
-    byEmail.set(email, {
-      ...previous,
-      ...Object.fromEntries(Object.entries(person).filter(([, value]) => value)),
-      email
-    });
-  };
-
-  add({ email: fbUser.email, name: fbUser.displayName || "", me: true });
-
   const rosters = await Promise.all(orgIds.map((orgId) =>
-    typeof fb.getOrgMembers === "function" ? fb.getOrgMembers(orgId).catch(() => []) : []
+    typeof fb.getOrgMembers === "function"
+      ? fb.getOrgMembers(orgId).then((list) => ({ orgId, list })).catch(() => ({ orgId, list: [] }))
+      : { orgId, list: [] }
   ));
-  rosters.flat()
-    .filter((member) => member.status === "accepted")
-    .forEach((member) => add({ email: member.email, name: member.name, title: member.title, orgName: member.orgName }));
-
-  if (chart) {
-    add({ email: chart.ownerEmail });
-    Object.keys(chart.members || {}).forEach((email) => {
-      const entry = chart.members[email];
-      if (entry && entry.status === "accepted") add({ email });
-    });
-  }
+  rosters.forEach(({ orgId, list }) => {
+    const share = (chart.orgShares || {})[orgId] || {};
+    list
+      .filter((member) => member.status === "accepted")
+      .filter((member) => share.all || (share.picked || {})[member.email] || member.email === ownerEmail)
+      .forEach((member) => {
+        const email = String(member.email || "").toLowerCase();
+        if (!byEmail.has(email)) {
+          byEmail.set(email, { email, name: member.name || "", title: member.title || "", orgName: member.orgName || "" });
+        }
+      });
+  });
 
   const myEmail = String(fbUser.email || "").toLowerCase();
+  if (byEmail.has(myEmail)) byEmail.get(myEmail).me = true;
+
   return Array.from(byEmail.values()).sort((a, b) => {
     if (a.email === myEmail) return -1;
     if (b.email === myEmail) return 1;
@@ -2527,10 +2521,10 @@ async function openAssigneeMenu(input, typed) {
   assigneeMenuActive = Math.max(0, list.findIndex((person) => person.email === chosen));
   assigneeMenu.innerHTML = "";
 
-  if (!candidates.length || (candidates.length === 1 && !query)) {
+  if (!candidates.length) {
     const empty = document.createElement("div");
     empty.className = "assignee-empty";
-    empty.innerHTML = ASSIGNEE_ICON_USER + "<span>조직에 공유하면 조직원 중에서 고를 수 있어요. 이름을 그대로 적어도 돼요.</span>";
+    empty.innerHTML = ASSIGNEE_ICON_USER + "<span>이 차트를 조직에 공유하면 그 조직원 중에서 고를 수 있어요. 외부 인원은 이름을 그대로 적어 주세요.</span>";
     assigneeMenu.appendChild(empty);
   }
 
