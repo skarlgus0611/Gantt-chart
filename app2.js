@@ -4880,10 +4880,27 @@ async function shellLoadCharts() {
 
     shellChartsCache = personal.concat(shared);
     shellRenderList();
+    shellBroadcastRefreshToIframes();
   } catch (error) {
     console.error(error);
     showToast(error.message || "차트 목록을 불러오지 못했습니다.", true, 0);
   }
+}
+
+/* (버그 수정) "관리" 모달 등 부모(셸) 쪽에서 차트 메타(이름/표시기간)가
+   바뀌었을 수 있을 때, 지금 떠 있는 모든 차트 박스의 iframe에게 자기
+   메타를 다시 읽으라고 알려준다 — 안 그러면 iframe 안의 이름/표시기간
+   표시가 새로고침 전까지 예전 값에 머물러 있는다("위아래 연동 안 됨"). */
+function shellBroadcastRefreshToIframes() {
+  document.querySelectorAll("#mcChartList iframe").forEach((iframe) => {
+    try {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: "gantt:refreshMeta" }, window.location.origin);
+      }
+    } catch (error) {
+      // 교차 출처 등 예외적인 경우만 조용히 무시.
+    }
+  });
 }
 
 /* (성능 수정) 박스 헤더의 액션 버튼 영역(공유/캘린더/CSV/나가기 등)을
@@ -5231,6 +5248,7 @@ function shellApplyPersonalChartsList(charts) {
   const shared = shellChartsCache.filter((c) => c.shared);
   shellChartsCache = personal.concat(shared);
   shellRenderList();
+  shellBroadcastRefreshToIframes();
 }
 
 function shellRenderManageRows() {
@@ -5412,9 +5430,13 @@ function initShell() {
  *  입력칸도 채워 둔다. 설정된 게 없으면 아무것도 안 바뀐다(기존 동작 그대로). */
 async function loadChartRangeMeta() {
   try {
-    const result = await apiPost("listCharts");
-    const list = Array.isArray(result.result) ? result.result : [];
-    const mine = list.find(c => c.id === CHART_ID);
+    /* (버그 수정) 예전엔 "listCharts"(개인 소유이면서 공유 안 된 차트만
+       돌려줌)에서 이 차트를 찾았는데, 지금 보고 있는 차트가 공유
+       중이면 그 목록에 아예 없어서 이름/표시기간을 못 찾았다 — 그래서
+       공유 차트를 열면 이름이 "Gantt Chart"로 보이고, 표시기간도
+       새로고침하면 사라지는 것처럼 보였다. 차트 자신의 ID로 직접
+       문서를 읽으면 개인/공유 상관없이 항상 맞게 찾는다. */
+    const mine = await getChartMetaCached(CHART_ID);
 
     if (mine && mine.rangeStart && mine.rangeEnd) {
       state.customStart = dateObj(mine.rangeStart);
@@ -5436,6 +5458,23 @@ async function loadChartRangeMeta() {
   } catch (error) {
     console.error(error);
     // 못 읽어와도 기존(연도 기준) 동작으로 계속 진행한다.
+  }
+}
+
+/* (버그 수정) 이 화면이 모음(셸) 페이지 안의 iframe으로 떠 있을 때,
+   이름/표시기간을 바꾸면 부모 페이지의 박스 머리글도 같이 바뀌어야
+   한다("위아래 연동"). 예전엔 window.parent.shellLoadCharts()를 직접
+   불렀는데, app2.js가 <script type="module">로 열려서 최상위 함수가
+   window에 안 걸리기 때문에(모듈 스코프는 전역이 아님) 이 호출은 항상
+   조용히 실패하고 있었다(같은 출처인데도). postMessage는 모듈 스코프와
+   무관하게 항상 동작하므로 이걸로 바꾼다. */
+function notifyParentMetaChanged() {
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "gantt:chartMetaChanged", chartId: CHART_ID }, window.location.origin);
+    }
+  } catch (error) {
+    // 교차 출처 등 예외적인 경우만 조용히 무시.
   }
 }
 
@@ -5496,23 +5535,7 @@ function initChartNameUI() {
           await apiPost("updateChart", { data: { id: CHART_ID, name: value } });
           state.chartName = value;
           showToast("차트 이름을 저장했습니다.");
-
-          /* (수정) 이 화면이 모음 페이지 안의 iframe으로 떠 있는 경우,
-             부모(모음) 페이지의 박스 머리글("기본 차트" 줄)은 자기만의
-             캐시(shellChartsCache)를 보고 있어서 여기서 이름을 바꿔도
-             저절로 안 바뀐다. 같은 출처(동일 index.html)라 부모 쪽
-             함수를 직접 불러 목록을 다시 불러오게 한다. */
-          try {
-            if (
-              window.parent &&
-              window.parent !== window &&
-              typeof window.parent.shellLoadCharts === "function"
-            ) {
-              window.parent.shellLoadCharts();
-            }
-          } catch (bridgeError) {
-            // 교차 출처 등으로 못 건드리면 조용히 무시한다 (새로고침하면 어차피 맞는다).
-          }
+          notifyParentMetaChanged();
 
         } catch (error) {
           label.textContent = original;
@@ -5584,6 +5607,7 @@ function initChartRangeUI() {
         resetRange();
         render();
         showToast("표시 기간을 저장했습니다.");
+        notifyParentMetaChanged();
       } catch (error) {
         showToast(error.message || "저장하지 못했습니다.", true, 0);
       }
@@ -5604,6 +5628,7 @@ function initChartRangeUI() {
         resetRange();
         render();
         showToast("연도 보기로 전환했습니다.");
+        notifyParentMetaChanged();
       } catch (error) {
         showToast(error.message || "전환하지 못했습니다.", true, 0);
       }
@@ -5631,6 +5656,15 @@ if (IS_SHELL_MODE) {
   if (shellView) shellView.style.display = "";
 
   initShell();
+  /* (버그 수정) 차트 박스 안의 iframe(개별 차트 화면)에서 이름/표시기간을
+     바꾸면, 거기서 postMessage로 알려준다(notifyParentMetaChanged 참고).
+     받으면 목록을 다시 불러와서 박스 머리글에 바로 반영한다. */
+  window.addEventListener("message", (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (event.data && event.data.type === "gantt:chartMetaChanged") {
+      shellLoadCharts();
+    }
+  });
   /* (공유 기능 추가분) */
   if (typeof initShareUi === "function") initShareUi();
   /* (Firebase 전환) 예전 refreshUserAvatar()는 삭제됐다 — 로그인
@@ -5648,6 +5682,16 @@ if (IS_SHELL_MODE) {
 
   initChartRangeUI();
   initChartNameUI();
+  /* (버그 수정) 반대 방향: 모음(셸) 페이지의 "관리" 모달에서 이름을
+     바꾸는 등, 부모 쪽에서 메타가 바뀌었을 때 이 iframe이 알림을
+     받으면(shellLoadCharts 쪽에서 쏴줌) 자기 이름/표시기간을 다시
+     읽어온다. */
+  window.addEventListener("message", (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (event.data && event.data.type === "gantt:refreshMeta") {
+      loadChartRangeMeta();
+    }
+  });
   /* (공유 기능 추가분) 공유 차트인데 내 권한이 "뷰어"면, 수정 관련
      버튼/핸들을 숨긴다 (서버는 이미 막아주지만, 화면도 맞춰줌). */
   if (typeof initSharedViewerReadonly === "function") initSharedViewerReadonly();
@@ -6100,6 +6144,7 @@ function shellApplySharedChartsList(sharedList) {
   const personal = shellChartsCache.filter((c) => !c.shared);
   shellChartsCache = personal.concat(shared);
   shellRenderList();
+  shellBroadcastRefreshToIframes();
 }
 
 function initShareUi() {
