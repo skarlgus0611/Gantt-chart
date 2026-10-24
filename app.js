@@ -2709,9 +2709,9 @@ function renderTaskBar(
    화면과 캡처가 같은 규칙을 쓴다. */
 function applyBarGeometry(bar, rowHeight) {
 
-  /* (요청사항) 막대를 아주 살짝 두껍게: 기본 줄(48px)에서 22px → 25px */
+  /* (요청사항) 막대를 살짝 두껍게: 기본 줄(48px)에서 27px */
   const barHeight =
-    Math.max(14, Math.min(30, Math.round(rowHeight * 0.52)));
+    Math.max(14, Math.min(32, Math.round(rowHeight * 0.56)));
 
   bar.style.top = Math.round((rowHeight - barHeight) / 2) + "px";
   bar.style.height = barHeight + "px";
