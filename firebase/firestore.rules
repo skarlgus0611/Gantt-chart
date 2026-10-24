@@ -1,0 +1,263 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    function myEmail() { return request.auth.token.email; }
+    function chartDoc(chartId) {
+      return get(/databases/$(database)/documents/charts/$(chartId)).data;
+    }
+    function isOwner(c) { return isSignedIn() && request.auth.uid == c.ownerId; }
+    function isAcceptedMember(c) {
+      return isSignedIn() && ("memberEmails" in c) && (myEmail() in c.memberEmails);
+    }
+    /* (버그 수정) 아직 "수락"하지 않은 초대 상태(pendingEmails)인 사람도
+       최소한 이 차트 문서를 "읽을" 수는 있어야 한다 — 안 그러면
+       "내 초대함"이 하는 조회(pendingEmails array-contains 내 이메일)
+       자체가 Firestore 입장에서 "결과가 전부 규칙을 통과한다고 보장 못
+       함"으로 판단돼서, 실제로 초대받은 게 있든 없든 그 조회 자체가
+       누구에게나(초대한 사람, 초대 안 받은 사람 전부) 거부돼 버린다.
+       (읽기만 허용하는 것이고, 수정 권한(canEdit)은 여전히 수락 후
+       역할에만 주어지므로 보안에는 영향 없다.) */
+    function isPendingMember(c) {
+      return isSignedIn() && ("pendingEmails" in c) && (myEmail() in c.pendingEmails);
+    }
+    function myRole(c) {
+      return isOwner(c) ? "owner" :
+        (isAcceptedMember(c) ? c.members[myEmail()].role : null);
+    }
+    function canRead(c) { return isOwner(c) || isAcceptedMember(c) || isPendingMember(c); }
+    function canEdit(c) { return isOwner(c) || myRole(c) in ["admin", "editor"]; }
+
+    /* (버그 수정) "수락"/"거절"/"공유 나가기"는 소유자도 관리자도 아닌
+       바로 그 사람 자신이 차트 문서를 수정하는 동작이다(자기 멤버십
+       상태를 바꾸는 것). 그런데 쓰기 규칙이 소유자/관리자만 허용하고
+       있어서, 초대받은 사람이 "수락"을 눌러도 Firestore가 그냥
+       거부하고 아무 일도 안 일어났다("수락해도 안 들어가고, 거절도
+       먹통"). 아래는 "자기 자신의 멤버십 항목만" 바꾸는 걸로 범위를
+       엄격히 제한한 예외를 추가한다 — members 맵에서 자기 이메일
+       키만 바뀌었는지, 그리고 전체적으로 members/memberEmails/
+       pendingEmails 외의 다른 필드(이름, 소유자 등)는 전혀 안
+       건드렸는지까지 확인해서, 그 사람이 다른 멤버나 차트 자체를
+       조작할 길은 열어주지 않는다. */
+    function isModifyingOwnMembership(before, after) {
+      return isSignedIn()
+        && after.diff(before).affectedKeys().hasOnly(["members", "memberEmails", "pendingEmails"])
+        && after.members.diff(before.members).affectedKeys().hasOnly([myEmail()])
+        && (
+          (("pendingEmails" in before) && (myEmail() in before.pendingEmails)) ||
+          (("memberEmails" in before) && (myEmail() in before.memberEmails))
+        );
+    }
+
+    match /charts/{chartId} {
+      allow read: if canRead(resource.data);
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.ownerId;
+      allow update: if isOwner(resource.data) || myRole(resource.data) == "admin"
+        || isModifyingOwnMembership(resource.data, request.resource.data);
+      allow delete: if isOwner(resource.data) || myRole(resource.data) == "admin";
+
+      // ---------------------------------------------------------------
+      // 성능 수정: tasks/categories는 더 이상 읽을 때 get()으로 부모
+      // 차트 문서를 또 조회하지 않는다. 각 문서 자체에 저장해둔
+      // ownerId / memberEmails 복사값만 보고 바로 판단한다.
+      //
+      // (버그 수정, 2차) 마이그레이션 전 옛 문서는 이 복사값 필드 자체가
+      // 없다. Firestore Rules는 없는 필드를 .ownerId 처럼 바로 읽으면
+      // 에러가 나서 그대로 거부돼 버리므로, 항상 .get(field, 기본값)
+      // 형태로 "없으면 안전한 기본값"을 쓰도록 바꿨다. 그리고 복사값이
+      // 아직 없는(=마이그레이션 전) 문서는 예전처럼 부모 차트를 get()으로
+      // 직접 확인하는 경로를 "한시적으로" 같이 열어둔다 — 그래야 앱이
+      // 처음 열릴 때 돌아가는 자동 마이그레이션(app2.js의 loadChart 쪽
+      // needsAclStamp 로직)이 그 문서를 "읽을 수 있어야" 복사값을 채워
+      // 넣을 수 있다. 한 번 채워지고 나면 그 문서는 계속 빠른 경로만
+      // 타게 된다.
+      //
+      // 쓰기(create/update/delete)는 문서 1개짜리 작업이라 get() 비용이
+      // 작업 개수만큼 불어나지 않으므로 그대로 get()을 써서 실제 권한을
+      // 확인하고, 동시에 제출된 ownerId/memberEmails 복사값이 진짜
+      // 차트 값과 일치하는지(또는 기존 값 그대로인지) 검증해서 위조를
+      // 막는다. 옛 문서(복사값이 아직 없는 문서)를 평소처럼 수정하는
+      // 경우도 막히지 않도록, "양쪽 다 비어있으면 통과"하는 경로도
+      // 같이 둔다(진짜 권한은 canEdit(chartDoc)이 이미 확인하므로 안전).
+      // ---------------------------------------------------------------
+      match /tasks/{taskId} {
+        allow read: if isSignedIn() && (
+          (request.auth.uid == resource.data.get('ownerId', null)) ||
+          (myEmail() in resource.data.get('memberEmails', [])) ||
+          (!('ownerId' in resource.data) && canRead(chartDoc(chartId)))
+        );
+
+        allow create: if isSignedIn() && canEdit(chartDoc(chartId))
+          && request.resource.data.ownerId == chartDoc(chartId).ownerId
+          && request.resource.data.memberEmails == chartDoc(chartId).memberEmails;
+
+        allow update: if isSignedIn() && canEdit(chartDoc(chartId)) && (
+          (request.resource.data.get('ownerId', null) == resource.data.get('ownerId', null)
+            && request.resource.data.get('memberEmails', []) == resource.data.get('memberEmails', [])) ||
+          (request.resource.data.get('ownerId', null) == chartDoc(chartId).ownerId
+            && request.resource.data.get('memberEmails', []) == chartDoc(chartId).memberEmails)
+        );
+
+        allow delete: if isSignedIn() && canEdit(chartDoc(chartId));
+      }
+
+      match /categories/{categoryId} {
+        allow read: if isSignedIn() && (
+          (request.auth.uid == resource.data.get('ownerId', null)) ||
+          (myEmail() in resource.data.get('memberEmails', [])) ||
+          (!('ownerId' in resource.data) && canRead(chartDoc(chartId)))
+        );
+
+        allow create: if isSignedIn() && canEdit(chartDoc(chartId))
+          && request.resource.data.ownerId == chartDoc(chartId).ownerId
+          && request.resource.data.memberEmails == chartDoc(chartId).memberEmails;
+
+        allow update: if isSignedIn() && canEdit(chartDoc(chartId)) && (
+          (request.resource.data.get('ownerId', null) == resource.data.get('ownerId', null)
+            && request.resource.data.get('memberEmails', []) == resource.data.get('memberEmails', [])) ||
+          (request.resource.data.get('ownerId', null) == chartDoc(chartId).ownerId
+            && request.resource.data.get('memberEmails', []) == chartDoc(chartId).memberEmails)
+        );
+
+        allow delete: if isSignedIn() && canEdit(chartDoc(chartId));
+      }
+    }
+
+    // =========================================================
+    // 조직 관리 (1단계) — 새로 추가된 규칙
+    // 권한 (높은 순): owner(소유자) > admin(관리자) > member(참여자) > guest(게스트)
+    // =========================================================
+    function orgSignedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    function orgMyEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function orgMembershipPath(orgId, email) {
+      return /databases/$(database)/documents/orgMemberships/$(orgId + '__' + email);
+    }
+
+    function orgIsMember(orgId) {
+      return exists(orgMembershipPath(orgId, orgMyEmail()))
+        && get(orgMembershipPath(orgId, orgMyEmail())).data.status == 'accepted';
+    }
+
+    function orgMyRole(orgId) {
+      return get(orgMembershipPath(orgId, orgMyEmail())).data.role;
+    }
+
+    function orgRank(role) {
+      return role == 'owner' ? 3 : (role == 'admin' ? 2 : (role == 'member' ? 1 : 0));
+    }
+
+    function orgInvitableRole(role) {
+      return role in ['admin', 'member', 'guest'];
+    }
+
+    match /organizations/{orgId} {
+      allow read: if orgSignedIn() && orgIsMember(orgId);
+
+      allow create: if orgSignedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.ownerEmail == orgMyEmail();
+
+      allow update, delete: if orgSignedIn()
+        && orgIsMember(orgId)
+        && orgMyRole(orgId) == 'owner';
+    }
+
+    match /orgMemberships/{membershipId} {
+
+      // 본인 문서(초대 포함) 또는 같은 조직의 수락한 조직원
+      allow read: if orgSignedIn()
+        && (resource.data.email == orgMyEmail() || orgIsMember(resource.data.orgId));
+
+      allow create: if orgSignedIn()
+        && membershipId == request.resource.data.orgId + '__' + request.resource.data.email
+        && (
+          // 조직을 만든 사람 자신의 소유자 문서 (조직 만들기와 같은 묶음 쓰기)
+          (
+            request.resource.data.email == orgMyEmail()
+            && request.resource.data.role == 'owner'
+            && request.resource.data.status == 'accepted'
+            && !exists(/databases/$(database)/documents/organizations/$(request.resource.data.orgId))
+            && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.createdBy == request.auth.uid
+          )
+          ||
+          // 초대: 참여자 이상만, 내 권한 이하로만, 대기 상태로
+          (
+            orgIsMember(request.resource.data.orgId)
+            && orgRank(orgMyRole(request.resource.data.orgId)) >= 1
+            && orgInvitableRole(request.resource.data.role)
+            && orgRank(request.resource.data.role) <= orgRank(orgMyRole(request.resource.data.orgId))
+            && request.resource.data.status == 'pending'
+          )
+        );
+
+      allow update: if orgSignedIn()
+        && request.resource.data.orgId == resource.data.orgId
+        && request.resource.data.email == resource.data.email
+        && (
+          // 초대받은 본인이 수락 (상태만 바꿀 수 있다)
+          (
+            resource.data.email == orgMyEmail()
+            && resource.data.status == 'pending'
+            && request.resource.data.status == 'accepted'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt'])
+          )
+          ||
+          // 소유자: 무엇이든 (이름 변경 시 orgName, 소유권 넘기기 포함)
+          (
+            orgIsMember(resource.data.orgId)
+            && orgMyRole(resource.data.orgId) == 'owner'
+          )
+          ||
+          // 관리자·참여자: 나보다 낮은 사람만, 내 권한 이하로
+          (
+            orgIsMember(resource.data.orgId)
+            && orgRank(orgMyRole(resource.data.orgId)) >= 1
+            && orgRank(resource.data.role) < orgRank(orgMyRole(resource.data.orgId))
+            && orgInvitableRole(request.resource.data.role)
+            && orgRank(request.resource.data.role) <= orgRank(orgMyRole(resource.data.orgId))
+            && (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'updatedAt'])
+              || (
+                orgMyRole(resource.data.orgId) == 'admin'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'name', 'title', 'updatedAt'])
+              )
+            )
+          )
+          ||
+          // 관리자: 본인 이름·직급
+          (
+            resource.data.email == orgMyEmail()
+            && orgIsMember(resource.data.orgId)
+            && orgMyRole(resource.data.orgId) == 'admin'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'title', 'updatedAt'])
+          )
+        );
+
+      allow delete: if orgSignedIn()
+        && (
+          // 본인: 초대 거절 · 조직 나가기 (소유자는 먼저 소유권을 넘겨야 한다)
+          (resource.data.email == orgMyEmail() && resource.data.role != 'owner')
+          ||
+          // 관리자 이상: 나보다 낮은 사람 내보내기
+          (
+            orgIsMember(resource.data.orgId)
+            && orgRank(orgMyRole(resource.data.orgId)) >= 2
+            && orgRank(resource.data.role) < orgRank(orgMyRole(resource.data.orgId))
+          )
+          ||
+          // 소유자가 조직을 삭제할 때 자기 소유자 문서까지 함께 지움
+          (
+            resource.data.email == orgMyEmail()
+            && resource.data.role == 'owner'
+            && !existsAfter(/databases/$(database)/documents/organizations/$(resource.data.orgId))
+          )
+        );
+    }
+  }
+}

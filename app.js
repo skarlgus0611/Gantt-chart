@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v9";
+const APP_VERSION = "2026-10-24-design-v10";
 
 
 /* =========================================================
@@ -1521,11 +1521,31 @@ function postStatsToParent() {
       windowEnd: dateKey(getYearEnd()),
       windowDays: windowTotalDays(),
       custom: !!state.customStart,
+      year: state.year,
+      taskYears: taskYearsList(),
       readonly: document.body.classList.contains("shared-viewer-readonly")
     }, window.location.origin);
   } catch (error) {
     // 교차 출처 등 예외적인 경우만 조용히 무시.
   }
+}
+
+
+/* (요청사항) 큰 연도 버튼을 카드 머리의 기간 알약으로 옮기면서, 연도 선택창의
+   "일정 있음" 점을 그리기 위해 일정이 걸쳐 있는 연도 목록도 함께 보낸다. */
+function taskYearsList() {
+
+  const years = new Set();
+
+  (state.tasks || []).forEach(task => {
+    if (!task.start || !task.end) return;
+    const from = Number(String(task.start).slice(0, 4));
+    const to = Number(String(task.end).slice(0, 4));
+    if (!from || !to || to < from || to - from > 50) return;
+    for (let year = from; year <= to; year++) years.add(year);
+  });
+
+  return Array.from(years).sort((x, y) => x - y);
 }
 
 
@@ -5839,60 +5859,132 @@ function shellOpenRangePopover(chart, box, anchor) {
   if (!anchor) return;
   const wasOpen = shellOpenPopover && shellOpenPopover.dataset.for === "range:" + chart.id;
   shellClosePopover();
-  if (wasOpen || !shellCanEdit(chart)) return;
+  if (wasOpen) return;
 
   const stats = shellStats[chart.id] || {};
   const custom = stats.custom !== undefined ? stats.custom : !!(chart.rangeStart && chart.rangeEnd);
+  const canEdit = shellCanEdit(chart);
+  /* 기간 보기에서 연도로 돌아가는 건 저장이 필요해서 편집 권한이 있어야 한다 */
+  const showYears = !custom || canEdit;
+  if (!showYears) return;
 
   const pop = document.createElement("div");
   pop.className = "mc-popover mc-range-pop";
   pop.dataset.for = "range:" + chart.id;
-  pop.innerHTML =
-    '<div class="mc-range-pop-title">표시 기간(이 차트만)</div>' +
-    '<div class="mc-range-pop-row">' +
-      '<label class="mc-visually-hidden" for="mcRangePopStart">표시 시작일</label>' +
-      '<input id="mcRangePopStart" type="date">' +
-      '<span class="mc-range-pop-sep">~</span>' +
-      '<label class="mc-visually-hidden" for="mcRangePopEnd">표시 종료일</label>' +
-      '<input id="mcRangePopEnd" type="date">' +
-    "</div>" +
-    '<p class="mc-range-pop-hint">이 차트만 이 기간으로 보입니다. "연도 보기로"를 누르면 연도 단위로 돌아갑니다.</p>' +
-    '<div class="mc-range-pop-actions">' +
-      (custom ? '<button type="button" class="mc-btn mc-btn-ghost" data-act="clear">연도 보기로</button>' : "") +
-      '<button type="button" class="mc-btn mc-btn-ghost" data-act="cancel">취소</button>' +
-      '<button type="button" class="mc-btn mc-btn-primary" data-act="save">저장</button>' +
-    "</div>";
 
-  const startInput = pop.querySelector("#mcRangePopStart");
-  const endInput = pop.querySelector("#mcRangePopEnd");
-  startInput.value = chart.rangeStart || stats.windowStart || "";
-  endInput.value = chart.rangeEnd || stats.windowEnd || "";
+  /* (요청사항) 차트 가운데 있던 큰 연도 버튼·연도 선택창을 이 창 위쪽으로 옮겼다 */
+  const thisYear = new Date().getFullYear();
+  const currentYear = Number(stats.year) || thisYear;
+  const taskYears = new Set(stats.taskYears || []);
+  let pageStart = currentYear - 5;
 
-  pop.querySelector('[data-act="cancel"]').addEventListener("click", shellClosePopover);
+  const yearSection = document.createElement("div");
+  yearSection.className = "mc-yp";
 
-  pop.querySelector('[data-act="save"]').addEventListener("click", () => {
-    if (!startInput.value || !endInput.value) {
-      showToast("시작일과 종료일을 모두 입력하세요.", true);
-      return;
-    }
-    if (endInput.value < startInput.value) {
-      showToast("종료일은 시작일보다 빠를 수 없습니다.", true);
-      return;
-    }
-    shellSendCommand(box, { cmd: "setRange", start: startInput.value, end: endInput.value });
+  const renderYears = () => {
+    const years = Array.from({ length: 12 }, (_, i) => pageStart + i);
+    yearSection.innerHTML =
+      '<div class="mc-range-pop-title">연도 보기</div>' +
+      '<div class="mc-yp-head">' +
+        '<button type="button" class="mc-yp-nav" data-page="-1" aria-label="이전 연도 목록">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>' +
+        '<span class="mc-yp-range">' + years[0] + " – " + years[11] + "</span>" +
+        '<button type="button" class="mc-yp-nav" data-page="1" aria-label="다음 연도 목록">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>' +
+      "</div>" +
+      '<div class="mc-yp-grid" role="listbox" aria-label="연도">' +
+        years.map((year) => {
+          const selected = !custom && year === currentYear;
+          return '<button type="button" role="option" class="mc-yp-year' +
+            (selected ? " selected" : "") +
+            (year === thisYear ? " this-year" : "") +
+            (taskYears.has(year) ? " has-tasks" : "") +
+            '" data-year="' + year + '" aria-selected="' + selected + '">' + year + "</button>";
+        }).join("") +
+      "</div>" +
+      '<div class="mc-yp-foot">' +
+        '<button type="button" class="mc-btn mc-btn-ghost mc-yp-today">올해로 이동</button>' +
+        '<span class="mc-yp-legend"><i></i>일정 있음</span>' +
+      "</div>";
+  };
+
+  const pickYear = (year) => {
+    shellSendCommand(box, { cmd: "setYear", year });
     shellClosePopover();
+  };
+
+  yearSection.addEventListener("click", (event) => {
+    const nav = event.target.closest(".mc-yp-nav");
+    if (nav) {
+      pageStart += Number(nav.dataset.page) * 12;
+      renderYears();
+      return;
+    }
+    const yearBtn = event.target.closest(".mc-yp-year");
+    if (yearBtn) {
+      pickYear(Number(yearBtn.dataset.year));
+      return;
+    }
+    if (event.target.closest(".mc-yp-today")) pickYear(thisYear);
   });
 
-  const clearBtn = pop.querySelector('[data-act="clear"]');
-  if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-      shellSendCommand(box, { cmd: "clearRange" });
+  if (showYears) {
+    renderYears();
+    pop.appendChild(yearSection);
+  }
+
+  if (canEdit) {
+    const rangeSection = document.createElement("div");
+    rangeSection.className = "mc-range-pop-section";
+    rangeSection.innerHTML =
+      '<div class="mc-range-pop-title">표시 기간(이 차트만)</div>' +
+      '<div class="mc-range-pop-row">' +
+        '<label class="mc-visually-hidden" for="mcRangePopStart">표시 시작일</label>' +
+        '<input id="mcRangePopStart" type="date">' +
+        '<span class="mc-range-pop-sep">~</span>' +
+        '<label class="mc-visually-hidden" for="mcRangePopEnd">표시 종료일</label>' +
+        '<input id="mcRangePopEnd" type="date">' +
+      "</div>" +
+      '<p class="mc-range-pop-hint">이 차트만 이 기간으로 보입니다. 위에서 연도를 고르거나 "연도 보기로"를 누르면 연도 단위로 돌아갑니다.</p>' +
+      '<div class="mc-range-pop-actions">' +
+        (custom ? '<button type="button" class="mc-btn mc-btn-ghost" data-act="clear">연도 보기로</button>' : "") +
+        '<button type="button" class="mc-btn mc-btn-ghost" data-act="cancel">취소</button>' +
+        '<button type="button" class="mc-btn mc-btn-primary" data-act="save">저장</button>' +
+      "</div>";
+    pop.appendChild(rangeSection);
+
+    const startInput = rangeSection.querySelector("#mcRangePopStart");
+    const endInput = rangeSection.querySelector("#mcRangePopEnd");
+    startInput.value = chart.rangeStart || stats.windowStart || "";
+    endInput.value = chart.rangeEnd || stats.windowEnd || "";
+
+    rangeSection.querySelector('[data-act="cancel"]').addEventListener("click", shellClosePopover);
+
+    rangeSection.querySelector('[data-act="save"]').addEventListener("click", () => {
+      if (!startInput.value || !endInput.value) {
+        showToast("시작일과 종료일을 모두 입력하세요.", true);
+        return;
+      }
+      if (endInput.value < startInput.value) {
+        showToast("종료일은 시작일보다 빠를 수 없습니다.", true);
+        return;
+      }
+      shellSendCommand(box, { cmd: "setRange", start: startInput.value, end: endInput.value });
       shellClosePopover();
     });
+
+    const clearBtn = rangeSection.querySelector('[data-act="clear"]');
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        shellSendCommand(box, { cmd: "clearRange" });
+        shellClosePopover();
+      });
+    }
   }
 
   shellPlacePopover(pop, anchor, false);
-  startInput.focus();
+  const focusTarget = pop.querySelector(".mc-yp-year.selected") || pop.querySelector("#mcRangePopStart");
+  if (focusTarget) focusTarget.focus();
 }
 
 /* 카드 머리의 차트 이름을 눌러 그 자리에서 수정 (iframe 안에서 고치던 것과 같은 저장) */
@@ -6250,7 +6342,7 @@ function shellRenderList() {
       const range = document.createElement("button");
       range.type = "button";
       range.className = "mc-chart-box-range";
-      range.title = "표시 기간 설정";
+      range.title = "연도·표시 기간 설정";
       range.dataset.popoverAnchor = "1";
       range.addEventListener("click", () => shellOpenRangePopover(shellFindChart(chart.id) || chart, box, range));
       headInfo.appendChild(range);
@@ -7784,6 +7876,9 @@ function initChartNameUI() {
   });
 }
 
+/* "연도 보기로" 전환 뒤 보여 줄 연도 (카드 머리에서 연도를 골랐을 때만) */
+let pendingYearAfterClear = 0;
+
 function initChartRangeUI() {
   const saveBtn = document.getElementById("chartRangeSaveBtn");
   const clearBtn = document.getElementById("chartRangeClearBtn");
@@ -7829,7 +7924,7 @@ function initChartRangeUI() {
         });
         state.customStart = null;
         state.customEnd = null;
-        state.year = new Date().getFullYear();
+        state.year = pendingYearAfterClear || new Date().getFullYear();
         if (startInput) startInput.value = "";
         if (endInput) endInput.value = "";
         resetRange();
@@ -7838,6 +7933,8 @@ function initChartRangeUI() {
         notifyParentMetaChanged();
       } catch (error) {
         showToast(error.message || "전환하지 못했습니다.", true, 0);
+      } finally {
+        pendingYearAfterClear = 0;
       }
     }));
   }
@@ -7872,6 +7969,18 @@ function handleParentCommand(data) {
       break;
     }
     case "clearRange": click("chartRangeClearBtn"); break;
+    case "setYear": {
+      /* (요청사항) 카드 머리의 기간 알약에서 연도를 고르면 그 해 연도 보기로 */
+      const year = Number(data.year);
+      if (!year) break;
+      if (state.customStart) {
+        pendingYearAfterClear = year;
+        click("chartRangeClearBtn");
+      } else if (year !== state.year) {
+        changeYear(year - state.year);
+      }
+      break;
+    }
     default: break;
   }
 }

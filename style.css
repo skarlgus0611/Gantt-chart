@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v9";
+  --css-version: "2026-10-24-design-v10";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -7339,3 +7339,143 @@ input.mc-org-member-title {
 }
 
 /* ▲▲▲ 조직 관리 (1단계, 추가분) 끝 ▲▲▲ */
+
+
+/* =========================================================
+   (요청사항, 추가분) 차트 가운데 큰 연도/기간 버튼 → 카드 머리 기간 알약으로 통합
+   - iframe 안의 연도 줄은 숨기고, 연도 선택은 알약을 누르면 뜨는 창 위쪽에서 한다.
+   - 머리 구분선 아래 여백도 그만큼 줄여 균형을 맞춘다.
+   ========================================================= */
+html.is-embedded .control-bar {
+  display: none;
+}
+
+html.is-embedded main {
+  padding-top: 14px;
+}
+
+.mc-range-pop {
+  width: 336px;
+}
+
+.mc-yp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.mc-yp-nav {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #52525b;
+  cursor: pointer;
+}
+
+.mc-yp-nav:hover {
+  background: #f4f4f5;
+}
+
+.mc-yp-range {
+  font-size: 13px;
+  font-weight: 700;
+  color: #3f3f46;
+}
+
+.mc-yp-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.mc-yp-year {
+  position: relative;
+  height: 38px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #27272a;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mc-yp-year:hover {
+  background: #f0fdfa;
+}
+
+.mc-yp-year.this-year {
+  border-color: #d4d4d8;
+}
+
+.mc-yp-year.selected {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
+}
+
+.mc-yp-year.has-tasks::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #f59e0b;
+  transform: translateX(-50%);
+}
+
+.mc-yp-year.selected.has-tasks::after {
+  background: #ffffff;
+}
+
+.mc-yp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.mc-yp-foot .mc-btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.mc-yp-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: #a1a1aa;
+}
+
+.mc-yp-legend i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f59e0b;
+}
+
+.mc-yp + .mc-range-pop-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #f0f0f2;
+}
+
+/* (요청사항) 페이지를 내려도 펼친 사이드바가 따라 내려오게.
+   body 의 overflow-x:hidden 이 body 를 스크롤 상자로 만들어 sticky 가 먹지 않았다.
+   clip 은 가로 넘침은 똑같이 자르되 스크롤 상자를 만들지 않는다. */
+html:not(.is-embedded) body {
+  overflow-x: clip;
+}
