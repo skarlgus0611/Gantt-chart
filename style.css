@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v3";
+  --css-version: "2026-10-24-design-v4";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -3740,3 +3740,554 @@ main {
 }
 
 /* ▲▲▲ 모던 디자인 v3 (추가분) 끝 ▲▲▲ */
+
+/* =========================================================
+ * ▼▼▼ 모던 디자인 v4 (추가분) — 시안과 똑같이 ▼▼▼
+ * 카드 머리로 옮긴 도구 버튼, 기간 설정 창, ⋯ 메뉴, 공유 프사,
+ * 사이드바 진행률/범례, 카테고리 접기, 행 높이 슬라이더.
+ * ========================================================= */
+
+/* ---------- 상단 바: 로그인/프사 ---------- */
+#mcKeyBtn.is-logged-in::before {
+  display: none;
+}
+
+.mc-user-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 12px;
+  margin-left: 4px;
+  border-left: 1px solid #e4e4e7;
+}
+
+.mc-user-box:not(:has(:not(.hidden))) {
+  display: none;
+}
+
+.mc-user-box .mc-user-avatar {
+  margin-left: 0;
+}
+
+.mc-user-initial {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #a78bfa;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mc-modal-head-action {
+  margin-left: auto;
+  height: 32px;
+  font-size: 12.5px;
+}
+
+/* ---------- 사이드바: 진행률 · 공유 동그라미 · 범례 ---------- */
+.mc-sidebar-item-pct {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #a1a1aa;
+}
+
+.mc-sidebar-item-pct:empty {
+  display: none;
+}
+
+.mc-sidebar-item.active .mc-sidebar-item-pct {
+  color: #0f766e;
+}
+
+.mc-sidebar-item-shared .mc-sidebar-item-dot {
+  width: 16px;
+  height: 16px;
+  background: #34d399;
+  color: #ffffff;
+  font-size: 8px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-sidebar-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mc-sidebar-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 6px;
+}
+
+.mc-sidebar-legend-list {
+  display: flex;
+  align-items: center;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+}
+
+.mc-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #52525b;
+}
+
+.mc-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+#shellView.mc-sidebar-collapsed .mc-sidebar-legend,
+#shellView.mc-sidebar-collapsed .mc-sidebar-item-pct {
+  display: none;
+}
+
+/* ---------- 차트 카드 머리 ---------- */
+.mc-chart-box-name {
+  cursor: text;
+  border-radius: 6px;
+}
+
+.mc-chart-box-readonly .mc-chart-box-name,
+.mc-chart-box-readonly .mc-chart-box-range {
+  cursor: default;
+}
+
+.mc-chart-name-edit {
+  font-size: 15px;
+  width: 14em;
+}
+
+button.mc-chart-box-range {
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+button.mc-chart-box-range:hover:not(:disabled) {
+  background: #e4e4e7;
+}
+
+.mc-chart-box-readonly button.mc-chart-box-range:hover {
+  background: #f4f4f5;
+}
+
+.mc-chart-box-avg {
+  display: none;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f766e;
+  background: #ccfbf1;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.mc-chart-box-collapsed .mc-chart-box-avg:not(:empty) {
+  display: inline-block;
+}
+
+/* 접힌 카드는 공유 · ⋯ 만 남긴다 */
+.mc-chart-box-collapsed .mc-chart-tools {
+  display: none;
+}
+
+.mc-chart-box-collapsed .mc-chart-box-head {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.mc-chart-box-actions .mc-btn-group .mc-btn.mc-btn-active {
+  background: #ffffff;
+  color: #0f766e;
+  box-shadow: 0 1px 2px rgba(24, 24, 27, .08);
+}
+
+/* 공유 버튼: 겹친 프사 동그라미 + "공유" */
+.mc-chart-box-actions .mc-share-btn {
+  padding: 0 13px 0 6px;
+  gap: 7px;
+}
+
+.mc-avatar-stack {
+  display: flex;
+}
+
+.mc-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.mc-avatar-me {
+  background: #a78bfa;
+}
+
+.mc-avatar-other {
+  background: #34d399;
+  margin-left: -7px;
+}
+
+/* ---------- ⋯ 메뉴 · 기간 설정 창 ---------- */
+.mc-popover {
+  position: absolute;
+  z-index: 120;
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(24, 24, 27, .14);
+  font-family: "Pretendard", -apple-system, sans-serif;
+}
+
+.mc-menu {
+  min-width: 180px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-menu-item {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3f3f46;
+}
+
+.mc-menu-item:hover:not(:disabled) {
+  background: #f4f4f5;
+}
+
+.mc-menu-item-danger {
+  color: #be123c;
+}
+
+.mc-menu-item-danger:hover:not(:disabled) {
+  background: #fff1f2;
+}
+
+.mc-range-pop {
+  padding: 14px;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+}
+
+.mc-range-pop-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #71717a;
+  margin-bottom: 10px;
+}
+
+.mc-range-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mc-range-pop-row input[type="date"] {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  color: #18181b;
+}
+
+.mc-range-pop-sep {
+  color: #a1a1aa;
+}
+
+.mc-range-pop-hint {
+  margin: 8px 0 12px;
+  font-size: 11.5px;
+  color: #a1a1aa;
+}
+
+.mc-range-pop-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.mc-range-pop-actions .mc-btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
+/* ---------- 카드 안 차트(iframe) ---------- */
+
+/* 이름 줄과 표시 기간 입력 줄은 카드 머리로 옮겼으므로 iframe 안에서는 숨긴다.
+   (버튼 자체는 남아 있어서 카드 머리가 보내는 명령으로 그대로 눌린다) */
+html.is-embedded .topbar,
+html.is-embedded .custom-range-area {
+  display: none;
+}
+
+html.is-embedded main {
+  padding: 16px 22px 22px;
+}
+
+.control-bar {
+  min-height: 36px;
+  margin-bottom: 14px;
+}
+
+/* 표 바깥 테두리 없이 카드에 바로 붙은 모습 */
+html.is-embedded .gantt {
+  border: 0;
+  border-radius: 0;
+}
+
+html.is-embedded .task-column {
+  border-right: 0;
+}
+
+.task-header {
+  color: transparent;
+  border-bottom-color: #ececef;
+}
+
+/* 머리글: 주 칸이 좁아 글자가 없으면 월 줄만 꽉 차게 */
+.week-header:has(.week-row.compact) .month-row {
+  height: 100%;
+  border-bottom: 0;
+}
+
+.week-header:has(.week-row.compact) .week-row {
+  display: none;
+}
+
+.month-cell {
+  font-size: 12px;
+}
+
+.month-band.alt {
+  background: #fcfcfd;
+}
+
+/* 카테고리 줄: 접기 화살표, 손잡이/삭제는 마우스를 올렸을 때만 */
+.category-toggle {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #3f3f46;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.category-toggle svg {
+  transition: transform .15s ease;
+}
+
+.category-toggle[aria-expanded="false"] svg {
+  transform: rotate(-90deg);
+}
+
+.category-toggle:hover:not(:disabled) {
+  background: rgba(24, 24, 27, .06);
+}
+
+@media (hover: hover) {
+  .category-label .drag-handle,
+  .category-label .category-delete-btn,
+  .task-card .drag-handle {
+    opacity: 0;
+    transition: opacity .12s;
+  }
+
+  .category-label:hover .drag-handle,
+  .category-label:hover .category-delete-btn,
+  .category-label:focus-within .category-delete-btn,
+  .task-card:hover .drag-handle,
+  .task-card.dragging .drag-handle,
+  .category-label.dragging .drag-handle {
+    opacity: 1;
+  }
+
+  /* 숨은 손잡이가 자리만 차지하지 않게 겹쳐 둔다 */
+  .category-label .category-drag-handle,
+  .task-card .drag-handle {
+    flex-basis: 12px;
+    margin-left: -6px;
+    margin-right: -4px;
+  }
+}
+
+.task-card {
+  padding-left: 14px;
+}
+
+/* 세로 표시 범위 슬라이더: 평소엔 옅게, 마우스를 올리면 진하게 */
+.row-range {
+  border-left: 0;
+  opacity: .45;
+  transition: opacity .15s;
+}
+
+.row-range:hover,
+.row-range:focus-within {
+  opacity: 1;
+}
+
+/* 아래 높이 손잡이는 "행 높이" 슬라이더가 대신한다 */
+html.is-embedded .gantt-resize {
+  visibility: hidden;
+  height: 6px;
+}
+
+/* 작업 추가 / 카테고리 추가: 시안처럼 옅은 회색 상자 */
+.add-box,
+.add-category-box {
+  border: 1px solid #f0f0f2;
+  background: #fafafa;
+}
+
+.add-box:hover:not(:disabled),
+.add-category-box:hover:not(:disabled) {
+  border-color: #e4e4e7;
+}
+
+/* ---------- 확대/축소 + 행 높이 ---------- */
+.zoom-area {
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.zoom-col-h {
+  flex: 1 1 280px;
+  min-width: 220px;
+}
+
+.zoom-col-v {
+  width: 160px;
+}
+
+.zoom-label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.zoom-row .range-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.zoom-range-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #71717a;
+  white-space: nowrap;
+}
+
+.row-height-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.row-height-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #e4e4e7;
+}
+
+.row-height-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #e4e4e7;
+}
+
+.row-height-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2px solid #0f766e;
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .25);
+}
+
+.row-height-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2px solid #0f766e;
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .25);
+}
+
+/* 시안처럼 좌우 슬라이더는 회색 길 + 손잡이만 (사이 막대는 아주 옅게) */
+.range-slider .range-bar {
+  background: #d4d4d8;
+}
+
+.row-range .range-bar {
+  background: #d4d4d8;
+}
+
+@media (max-width: 640px) {
+  .zoom-col-v {
+    width: 100%;
+  }
+
+  .zoom-range-label {
+    display: none;
+  }
+}
+
+/* ▲▲▲ 모던 디자인 v4 (추가분) 끝 ▲▲▲ */
