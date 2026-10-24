@@ -70,7 +70,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v4";
+const APP_VERSION = "2026-10-24-design-v6";
 
 
 /* =========================================================
@@ -2889,7 +2889,7 @@ function showTaskDetail(id) {
         <div class="detail-colors">
           <span class="detail-side-key">막대 색상</span>
           <div class="detail-swatches">
-            ${swatches.map(c => `<button type="button" class="detail-swatch-btn" data-color="${c}" style="background:${c}" aria-label="색 ${c}" title="${c}"></button>`).join("")}
+            ${swatches.map(c => `<button type="button" class="detail-swatch-btn" data-color="${c}" style="--sw:${c};background:${c}" aria-label="색 ${c}" title="${c}"></button>`).join("")}
             <label class="detail-swatch-custom" title="직접 고르기">
               <input id="detailColor" type="color" value="${escapeAttr(taskColor)}" aria-label="막대 색상 직접 고르기">
               ${icon('<path d="M12 5v14M5 12h14"></path>')}
@@ -2950,9 +2950,7 @@ function showTaskDetail(id) {
     document.getElementById("detailRing").style.setProperty("--progress-color", color);
     document.getElementById("detailProgressRange").style.setProperty("--progress-color", color);
 
-    panel.querySelectorAll(".detail-swatch-btn").forEach(btn => {
-      btn.classList.toggle("selected", btn.dataset.color.toLowerCase() === color.toLowerCase());
-    });
+    markSelectedSwatch(panel, color);
   };
 
   ["detailName", "detailCategory", "detailStart", "detailEnd", "detailColor", "detailOwner"].forEach(fieldId => {
@@ -4733,10 +4731,34 @@ if (taskCategorySelect) {
  *  - 카테고리 칩 색, 기간 일수, 카테고리 미리보기를 바로 갱신
  * ========================================================= */
 
-function markSelectedSwatch(container, color) {
+/* 색 견본 선택 표시.
+   - auto 가 참이면 "카테고리 색" 버튼만 선택(작업 추가 창에서 색을 직접 안 고른 상태)
+   - 견본에 없는 색이면 "+"(직접 고르기) 동그라미를 그 색으로 채워 선택 표시 */
+function markSelectedSwatch(container, color, auto = false) {
+  const value = String(color).toLowerCase();
+  let matched = false;
+
   container.querySelectorAll(".detail-swatch-btn").forEach(btn => {
-    btn.classList.toggle("selected", btn.dataset.color.toLowerCase() === String(color).toLowerCase());
+    const on = !auto && btn.dataset.color.toLowerCase() === value;
+    btn.classList.toggle("selected", on);
+    btn.setAttribute("aria-pressed", String(on));
+    matched = matched || on;
   });
+
+  const autoBtn = container.querySelector(".detail-swatch-auto");
+  if (autoBtn) {
+    autoBtn.classList.toggle("selected", auto);
+    autoBtn.setAttribute("aria-pressed", String(auto));
+  }
+
+  const custom = container.querySelector(".detail-swatch-custom");
+  if (custom) {
+    const own = !auto && !matched;
+    custom.classList.toggle("has-color", own);
+    custom.classList.toggle("selected", own);
+    custom.style.setProperty("--sw", own ? color : "transparent");
+    custom.title = own ? "직접 고른 색 " + String(color).toUpperCase() + " (눌러서 바꾸기)" : "직접 고르기";
+  }
 }
 
 function periodDaysLabel(start, end) {
@@ -4756,9 +4778,14 @@ function refreshTaskSheet() {
   const modal = document.getElementById("taskModal");
   if (!modal) return;
 
-  const color = document.getElementById("taskColor").value;
+  const colorInput = document.getElementById("taskColor");
+  const color = colorInput.value;
   const categoryId = document.getElementById("taskCategory").value;
   const category = state.categories.find(item => item.id === categoryId);
+  const auto = colorInput.dataset.touched !== "1";
+
+  const autoDot = document.getElementById("taskColorAutoDot");
+  if (autoDot) autoDot.style.background = categoryColorOf(categoryId);
 
   applyCategoryTint(document.getElementById("taskCategory"), category ? category.color : "#a1a1aa");
   document.getElementById("taskDays").textContent =
@@ -4768,7 +4795,7 @@ function refreshTaskSheet() {
   range.value = String(Math.max(0, Math.min(100, Number(document.getElementById("taskProgress").value) || 0)));
   setProgressFill(range, range.value, color);
 
-  markSelectedSwatch(modal, color);
+  markSelectedSwatch(modal, color, auto);
 }
 
 function refreshCategorySheet() {
@@ -4783,6 +4810,17 @@ function refreshCategorySheet() {
 
   markSelectedSwatch(modal, color);
 }
+
+/* "카테고리 색" 버튼: 직접 고른 색을 버리고 카테고리 기본색으로 되돌린다. */
+document.querySelectorAll(".detail-swatch-auto[data-auto-for]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const input = document.getElementById(btn.dataset.autoFor);
+    if (!input) return;
+    input.dataset.touched = "0";
+    syncTaskColor();
+    refreshTaskSheet();
+  });
+});
 
 document.querySelectorAll(".detail-swatch-btn[data-for]").forEach(btn => {
   btn.addEventListener("click", () => {

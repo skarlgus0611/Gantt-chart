@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v4";
+  --css-version: "2026-10-24-design-v6";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -5950,9 +5950,11 @@ body.shared-viewer-readonly .detail-swatches {
  * ▼▼▼ 화면 흔들림 방지 (추가분) ▼▼▼
  * ========================================================= */
 
-/* 바깥 페이지: 스크롤바 자리를 늘 비워 둬서, 스크롤바가 생기고 없어질 때
-   폭이 17px씩 바뀌지 않게 한다(Windows 등 스크롤바가 폭을 차지하는 환경). */
+/* 바깥 페이지: 세로 스크롤바를 늘 표시해서(내용이 짧아도), 스크롤바가 생기고
+   없어질 때 폭이 17px씩 바뀌지 않게 한다(Windows 등 스크롤바가 폭을 차지하는 환경).
+   scrollbar-gutter 를 모르는 브라우저도 overflow-y: scroll 로 막힌다. */
 html:not(.is-embedded) {
+  overflow-y: scroll;
   scrollbar-gutter: stable;
 }
 
@@ -5970,3 +5972,113 @@ html.is-embedded body {
 }
 
 /* ▲▲▲ 화면 흔들림 방지 (추가분) 끝 ▲▲▲ */
+
+/* =========================================================
+ * ▼▼▼ 색 견본 다듬기 (추가분) ▼▼▼
+ * 선택 = 흰 체크 + 같은 색 테두리, 직접 고른 색은 "+" 자리에 그 색으로,
+ * 작업 추가 창에는 "카테고리 색"(기본색 따르기) 버튼
+ * ========================================================= */
+
+.detail-swatches {
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.detail-swatch-btn,
+.detail-swatch-custom {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.detail-swatch-btn.selected,
+.detail-swatch-custom.selected {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--sw, #18181b);
+}
+
+.detail-swatch-btn.selected::after,
+.detail-swatch-custom.selected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 12.5 4 4 8-9'/%3E%3C/svg%3E") center / 13px no-repeat;
+  pointer-events: none;
+}
+
+/* 직접 고르기: 평소엔 점선 "+", 직접 고른 색이 있으면 그 색으로 채움 */
+.detail-swatch-custom {
+  border: 1.5px dashed #a1a1aa;
+  background: #ffffff;
+  color: #71717a;
+}
+
+.detail-swatch-custom:hover {
+  border-color: #71717a;
+  color: #18181b;
+}
+
+.detail-swatch-custom.has-color {
+  border: 0;
+  background: var(--sw);
+}
+
+.detail-swatch-custom.has-color svg {
+  visibility: hidden;
+}
+
+/* 카테고리 색 따르기 버튼 */
+.detail-swatch-auto {
+  flex-shrink: 0;
+  height: 30px;
+  margin: 0 4px 0 0;
+  padding: 0 11px 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #e4e4e7;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #52525b;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.detail-swatch-auto-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #3b82f6;
+}
+
+.detail-swatch-auto:hover:not(:disabled) {
+  background: #fafafb;
+  border-color: #d4d4d8;
+}
+
+.detail-swatch-auto.selected,
+.detail-swatch-auto.selected:hover:not(:disabled) {
+  border-color: #0f766e;
+  background: #f0fdfa;
+  color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+/* 작업 추가 창: 견본 줄이 넘치면 다음 줄로, 이름 칸과 가운데 줄 맞춤 */
+.modal-card .detail-swatches {
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+
+/* 모달 공통 label 규칙(display:block + 아래 여백)이 "+" 를 위로 밀어 올리지 않게 */
+.modal-card label.detail-swatch-custom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+
+/* ▲▲▲ 색 견본 다듬기 (추가분) 끝 ▲▲▲ */

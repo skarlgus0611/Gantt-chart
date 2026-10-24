@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-24-design-v4">
+  <meta name="app-version" content="2026-10-24-design-v6">
 
   <title>간트차트</title>
 
@@ -20,7 +20,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-24-design-v4"
+    href="style.css?v=2026-10-24-design-v6"
   >
 </head>
 
@@ -593,21 +593,25 @@
 
           <div class="detail-prop">
             <span class="detail-prop-key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"></circle></svg>막대 색상</span>
-            <span class="detail-prop-val detail-prop-col">
+            <span class="detail-prop-val">
         <div class="detail-swatches">
-          <button type="button" class="detail-swatch-btn" data-color="#0F766E" data-for="taskColor" style="background:#0F766E" aria-label="색 #0F766E" title="#0F766E"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#3B82F6" data-for="taskColor" style="background:#3B82F6" aria-label="색 #3B82F6" title="#3B82F6"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#8B5CF6" data-for="taskColor" style="background:#8B5CF6" aria-label="색 #8B5CF6" title="#8B5CF6"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#F43F5E" data-for="taskColor" style="background:#F43F5E" aria-label="색 #F43F5E" title="#F43F5E"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#F59E0B" data-for="taskColor" style="background:#F59E0B" aria-label="색 #F59E0B" title="#F59E0B"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#10B981" data-for="taskColor" style="background:#10B981" aria-label="색 #10B981" title="#10B981"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#64748B" data-for="taskColor" style="background:#64748B" aria-label="색 #64748B" title="#64748B"></button>
+          <!-- (디자인 추가분) 카테고리 기본색 따르기: 처음엔 이게 선택돼 있고, 다른 색을 골랐다가 되돌릴 때도 누른다 -->
+          <button type="button" class="detail-swatch-auto" data-auto-for="taskColor" title="카테고리 기본색을 따릅니다">
+            <span class="detail-swatch-auto-dot" id="taskColorAutoDot"></span>
+            카테고리 색
+          </button>
+          <button type="button" class="detail-swatch-btn" data-color="#0F766E" data-for="taskColor" style="--sw:#0F766E;background:#0F766E" aria-label="색 #0F766E" title="#0F766E"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#3B82F6" data-for="taskColor" style="--sw:#3B82F6;background:#3B82F6" aria-label="색 #3B82F6" title="#3B82F6"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#8B5CF6" data-for="taskColor" style="--sw:#8B5CF6;background:#8B5CF6" aria-label="색 #8B5CF6" title="#8B5CF6"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#F43F5E" data-for="taskColor" style="--sw:#F43F5E;background:#F43F5E" aria-label="색 #F43F5E" title="#F43F5E"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#F59E0B" data-for="taskColor" style="--sw:#F59E0B;background:#F59E0B" aria-label="색 #F59E0B" title="#F59E0B"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#10B981" data-for="taskColor" style="--sw:#10B981;background:#10B981" aria-label="색 #10B981" title="#10B981"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#64748B" data-for="taskColor" style="--sw:#64748B;background:#64748B" aria-label="색 #64748B" title="#64748B"></button>
           <label class="detail-swatch-custom" title="직접 고르기">
             <input id="taskColor" type="color" value="#3b82f6" aria-label="막대 색상 직접 고르기">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
           </label>
         </div>
-              <small class="sheet-hint">고르지 않으면 카테고리 기본색을 따릅니다.</small>
             </span>
           </div>
 
@@ -712,13 +716,13 @@
             <span class="detail-prop-key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"></circle></svg>기본 색상</span>
             <span class="detail-prop-val">
         <div class="detail-swatches">
-          <button type="button" class="detail-swatch-btn" data-color="#0F766E" data-for="categoryColor" style="background:#0F766E" aria-label="색 #0F766E" title="#0F766E"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#3B82F6" data-for="categoryColor" style="background:#3B82F6" aria-label="색 #3B82F6" title="#3B82F6"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#8B5CF6" data-for="categoryColor" style="background:#8B5CF6" aria-label="색 #8B5CF6" title="#8B5CF6"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#F43F5E" data-for="categoryColor" style="background:#F43F5E" aria-label="색 #F43F5E" title="#F43F5E"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#F59E0B" data-for="categoryColor" style="background:#F59E0B" aria-label="색 #F59E0B" title="#F59E0B"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#10B981" data-for="categoryColor" style="background:#10B981" aria-label="색 #10B981" title="#10B981"></button>
-          <button type="button" class="detail-swatch-btn" data-color="#64748B" data-for="categoryColor" style="background:#64748B" aria-label="색 #64748B" title="#64748B"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#0F766E" data-for="categoryColor" style="--sw:#0F766E;background:#0F766E" aria-label="색 #0F766E" title="#0F766E"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#3B82F6" data-for="categoryColor" style="--sw:#3B82F6;background:#3B82F6" aria-label="색 #3B82F6" title="#3B82F6"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#8B5CF6" data-for="categoryColor" style="--sw:#8B5CF6;background:#8B5CF6" aria-label="색 #8B5CF6" title="#8B5CF6"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#F43F5E" data-for="categoryColor" style="--sw:#F43F5E;background:#F43F5E" aria-label="색 #F43F5E" title="#F43F5E"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#F59E0B" data-for="categoryColor" style="--sw:#F59E0B;background:#F59E0B" aria-label="색 #F59E0B" title="#F59E0B"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#10B981" data-for="categoryColor" style="--sw:#10B981;background:#10B981" aria-label="색 #10B981" title="#10B981"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#64748B" data-for="categoryColor" style="--sw:#64748B;background:#64748B" aria-label="색 #64748B" title="#64748B"></button>
           <label class="detail-swatch-custom" title="직접 고르기">
             <input id="categoryColor" type="color" value="#3b82f6" aria-label="기본 막대 색상 직접 고르기">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
@@ -761,7 +765,7 @@
        JS
   ========================= -->
 
-  <script type="module" src="app.js?v=2026-10-24-design-v4"></script>
+  <script type="module" src="app.js?v=2026-10-24-design-v6"></script>
 
 </body>
 </html>
