@@ -2370,3 +2370,33 @@ body.shared-viewer-readonly #chartNameLabel {
   align-self: center;
 }
 /* ▲▲▲ 로그인 계정 프로필 사진 (요청사항) 끝 ▲▲▲ */
+
+/* ▼▼▼ 공유 초대 개수 배지 (요청사항) ▼▼▼
+   "＋ 새 차트" 버튼, "차트 공유받기" 버튼 오른쪽 위에 아직 수락하지
+   않은 초대 개수를 빨간 원 + 흰 숫자로 표시한다. */
+.mc-badge-anchor {
+  position: relative;
+  overflow: visible;
+}
+
+.mc-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.mc-badge.hidden {
+  display: none;
+}
+/* ▲▲▲ 공유 초대 개수 배지 끝 ▲▲▲ */
