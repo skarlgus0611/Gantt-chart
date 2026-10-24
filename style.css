@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v10";
+  --css-version: "2026-10-24-design-v13";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -7478,4 +7478,340 @@ html.is-embedded main {
    clip 은 가로 넘침은 똑같이 자르되 스크롤 상자를 만들지 않는다. */
 html:not(.is-embedded) body {
   overflow-x: clip;
+}
+
+
+/* =========================================================
+   (조직 관리 2단계, 추가분) 공유 창: 이메일 · 조직원 선택 · 조직 전체
+   ========================================================= */
+.mc-share-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 0 12px;
+  background: #f4f4f5;
+  border-radius: 11px;
+}
+
+.mc-share-tab {
+  flex: 1 1 0;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #71717a;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mc-share-tab:hover {
+  color: #3f3f46;
+}
+
+.mc-share-tab.active {
+  background: #ffffff;
+  color: #0f766e;
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .1);
+}
+
+.mc-share-pane.hidden {
+  display: none !important;
+}
+
+.mc-share-pane[data-share-pane="pick"],
+.mc-share-pane[data-share-pane="org"] {
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid #ececef;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mc-share-org-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-share-org-bar select {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 38px;
+  padding: 0 30px 0 12px;
+  border: 1px solid #e4e4e7;
+  border-radius: 9px;
+  background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center / 12px;
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #27272a;
+  cursor: pointer;
+}
+
+.mc-share-org-bar select:focus,
+.mc-share-org-role:focus {
+  outline: none;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+.mc-share-org-bar .mc-btn {
+  flex-shrink: 0;
+  height: 38px;
+}
+
+.mc-share-org-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+.mc-share-pane-empty .mc-share-org-bar,
+.mc-share-pane-empty .mc-share-pane-foot,
+.mc-share-pane-empty .mc-share-pane-note,
+.mc-share-pane-empty > .mc-share-map-hint {
+  display: none;
+}
+
+.mc-share-pick-list {
+  max-height: 248px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mc-share-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.mc-share-pick-item:hover {
+  background: #fafafa;
+}
+
+.mc-share-pick-item.checked {
+  background: #f0fdfa;
+  border-color: #99f6e4;
+}
+
+.mc-share-pick-item input[type="checkbox"] {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #0f766e;
+  cursor: pointer;
+}
+
+.mc-share-map-arrow {
+  flex-shrink: 0;
+  display: inline-flex;
+  color: #a1a1aa;
+}
+
+.mc-share-pane-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f2;
+}
+
+.mc-share-pane-foot .mc-btn {
+  flex-shrink: 0;
+  height: 36px;
+}
+
+.mc-share-map-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: #a1a1aa;
+}
+
+.mc-share-pane-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #52525b;
+}
+
+.mc-share-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #fafafa;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #71717a;
+}
+
+.mc-share-empty .mc-org-ico {
+  margin-top: 1px;
+  color: #a1a1aa;
+}
+
+.mc-share-loading {
+  padding: 12px;
+  font-size: 12.5px;
+  color: #a1a1aa;
+}
+
+/* 조직으로 공유한 목록 */
+.mc-share-org-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mc-share-org-list:not(:empty) {
+  margin-top: 16px;
+}
+
+.mc-share-org-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #71717a;
+}
+
+.mc-share-org-card {
+  border: 1px solid #ececef;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.mc-share-org-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 12px;
+  background: #fafafa;
+}
+
+.mc-share-org-head .mc-row-sub,
+.mc-share-member-row .mc-row-sub.mc-org-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mc-share-org-head .mc-btn-icon {
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  background: transparent;
+  color: #a1a1aa;
+}
+
+.mc-share-org-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-share-org-body .mc-share-empty {
+  margin: 8px;
+}
+
+.mc-share-member-row.mc-share-org-member {
+  display: flex;
+  align-items: center;
+  border: 0;
+  border-top: 1px solid #f0f0f2;
+  border-radius: 0;
+}
+
+.mc-share-org-role {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 26px 0 10px;
+  border: 1px solid #e4e4e7;
+  border-radius: 999px;
+  background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center / 10px;
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #52525b;
+  cursor: pointer;
+}
+
+/* 권한마다 색 (덮어쓴 권한은 진하게) */
+.mc-share-org-role[data-role="admin"] { color: #0f766e; }
+.mc-share-org-role[data-role="editor"] { color: #1d4ed8; }
+.mc-share-org-role[data-role="viewer"] { color: #52525b; }
+.mc-share-org-role.is-override[data-role="admin"] { background-color: #ccfbf1; border-color: #99f6e4; }
+.mc-share-org-role.is-override[data-role="editor"] { background-color: #dbeafe; border-color: #bfdbfe; }
+.mc-share-org-role.is-override[data-role="viewer"] { background-color: #f4f4f5; }
+
+.mc-role-org {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+@media (max-width: 640px) {
+  .mc-share-tab span {
+    font-size: 12px;
+  }
+
+  .mc-share-pick-item .mc-role-chip:first-of-type,
+  .mc-share-pick-item .mc-share-map-arrow,
+  .mc-share-org-member .mc-role-chip {
+    display: none;
+  }
+}
+
+
+/* =========================================================
+   (디자인 추가분) 글자 버튼 앞 작은 선 아이콘 (app.js decorateTextButtons)
+   ========================================================= */
+button.has-auto-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.mc-menu-item.has-auto-ico {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.mc-auto-ico {
+  flex-shrink: 0;
+}
+
+.mc-menu-item .mc-auto-ico {
+  color: #a1a1aa;
+}
+
+.mc-menu-item-danger .mc-auto-ico {
+  color: currentColor;
 }

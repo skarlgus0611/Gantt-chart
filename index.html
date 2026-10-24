@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-24-design-v10">
+  <meta name="app-version" content="2026-10-24-design-v13">
 
   <title>간트차트</title>
 
@@ -20,7 +20,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-24-design-v10"
+    href="style.css?v=2026-10-24-design-v13"
   >
 </head>
 
@@ -236,9 +236,37 @@
           <button class="mc-modal-close" data-close="mcShareModal" type="button" aria-label="닫기" title="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
         </div>
 
-        <p class="mc-modal-sub">구글 계정 이메일로 초대하면, 상대가 수락한 뒤 이 차트를 함께 볼 수 있어요.</p>
+        <p class="mc-modal-sub">구글 계정 이메일로 초대하거나, 내 조직의 조직원·조직 전체와 함께 볼 수 있어요.</p>
 
-        <div class="mc-share-add-row">
+        <!-- (조직 관리 2단계) 공유 방법 3가지: 이메일 직접 입력 / 조직원 고르기 / 조직 전체 -->
+        <div class="mc-share-tabs" role="tablist" aria-label="공유 방법">
+          <button type="button" class="mc-share-tab active" data-share-tab="email" role="tab" aria-selected="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="m4 7 8 6 8-6"></path></svg><span>이메일</span></button>
+          <button type="button" class="mc-share-tab" data-share-tab="pick" role="tab" aria-selected="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M16 4.5a3 3 0 0 1 0 6M21 20a5 5 0 0 0-3.5-4.8"></path></svg><span>조직원 선택</span></button>
+          <button type="button" class="mc-share-tab" data-share-tab="org" role="tab" aria-selected="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1M10 21v-3h4v3"></path></svg><span>조직 전체</span></button>
+        </div>
+
+        <div class="mc-share-pane hidden" data-share-pane="pick">
+          <div class="mc-share-org-bar">
+            <select id="mcSharePickOrg" aria-label="조직 선택"></select>
+            <span id="mcSharePickCount" class="mc-share-org-count"></span>
+          </div>
+          <div id="mcSharePickList" class="mc-share-pick-list"></div>
+          <div class="mc-share-pane-foot">
+            <span class="mc-share-map-hint" data-share-map-hint></span>
+            <button id="mcSharePickBtn" class="mc-btn mc-btn-primary" type="button" disabled><svg class="mc-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M19 8v6M16 11h6"></path></svg><span>추가</span></button>
+          </div>
+        </div>
+
+        <div class="mc-share-pane hidden" data-share-pane="org">
+          <div class="mc-share-org-bar">
+            <select id="mcShareAllOrg" aria-label="조직 선택"></select>
+            <button id="mcShareAllBtn" class="mc-btn mc-btn-primary" type="button"><svg class="mc-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M16 4.5a3 3 0 0 1 0 6M21 20a5 5 0 0 0-3.5-4.8"></path></svg><span>조직 전체에 공유</span></button>
+          </div>
+          <p class="mc-share-pane-note">지금 조직원과 앞으로 들어올 조직원 모두 볼 수 있어요. 조직에서 나가거나 내보내지면 바로 볼 수 없게 돼요.</p>
+          <span class="mc-share-map-hint" data-share-map-hint></span>
+        </div>
+
+        <div class="mc-share-add-row mc-share-pane" data-share-pane="email">
           <label class="mc-input-icon">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="m4 7 8 6 8-6"></path></svg>
             <input id="mcShareEmail" type="email" placeholder="공유할 구글 계정 이메일" aria-label="공유할 구글 계정 이메일">
@@ -248,14 +276,17 @@
             <option value="editor">편집자</option>
             <option value="admin">관리자</option>
           </select>
-          <button id="mcShareAddBtn" class="mc-btn mc-btn-primary" type="button">추가</button>
+          <button id="mcShareAddBtn" class="mc-btn mc-btn-primary" type="button"><svg class="mc-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M19 8v6M16 11h6"></path></svg><span>추가</span></button>
         </div>
 
         <div id="mcShareMemberList" class="mc-manage-rows"></div>
 
+        <!-- (조직 관리 2단계) 조직으로 공유한 목록 -->
+        <div id="mcShareOrgList" class="mc-share-org-list"></div>
+
         <div class="mc-modal-actions">
-          <button id="mcShareRevokeBtn" class="mc-btn mc-btn-ghost hidden" type="button">나만 보기로 전환(공유 전체 해제)</button>
-          <button class="mc-btn mc-btn-primary" data-close="mcShareModal" type="button">닫기</button>
+          <button id="mcShareRevokeBtn" class="mc-btn mc-btn-ghost hidden" type="button"><svg class="mc-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg><span>나만 보기로 전환(공유 전체 해제)</span></button>
+          <button class="mc-btn mc-btn-primary" data-close="mcShareModal" type="button"><svg class="mc-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg><span>닫기</span></button>
         </div>
       </div>
     </div>
@@ -793,7 +824,7 @@
        JS
   ========================= -->
 
-  <script type="module" src="app.js?v=2026-10-24-design-v10"></script>
+  <script type="module" src="app.js?v=2026-10-24-design-v13"></script>
 
 </body>
 </html>
