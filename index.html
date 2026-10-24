@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-24-design-v17">
+  <meta name="app-version" content="2026-10-24-design-v24">
 
   <title>간트차트</title>
 
@@ -20,7 +20,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-24-design-v17"
+    href="style.css?v=2026-10-24-design-v24"
   >
 </head>
 
@@ -505,34 +505,6 @@
 
 
     <!-- =========================
-         작업 추가 / 카테고리 추가
-         (디자인 변경) 화면 전체 폭 막대 두 개 → 나란한 버튼 두 개
-    ========================= -->
-
-    <div class="add-actions">
-
-      <button
-        id="addTaskBtn"
-        class="add-box"
-        type="button"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
-        작업 추가
-      </button>
-
-      <button
-        id="addCategoryBtn"
-        class="add-category-box"
-        type="button"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
-        카테고리 추가
-      </button>
-
-    </div>
-
-
-    <!-- =========================
          확대 / 축소 + 행 높이
          (디자인 변경) 이름과 지금 값은 위 줄에, 슬라이더는 아래 줄에
     ========================= -->
@@ -580,6 +552,38 @@
       </div>
 
     </section>
+
+
+    <!-- =========================
+         작업 추가 / 카테고리 추가
+         (디자인 변경) 화면 전체 폭 막대 두 개 → 나란한 버튼 두 개
+    ========================= -->
+
+    <div class="add-actions">
+
+      <button
+        id="addTaskBtn"
+        class="add-box"
+        type="button"
+        title="작업 추가"
+        aria-label="작업 추가"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        작업
+      </button>
+
+      <button
+        id="addCategoryBtn"
+        class="add-category-box"
+        type="button"
+        title="카테고리 추가"
+        aria-label="카테고리 추가"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        카테고리
+      </button>
+
+    </div>
 
 
     <!-- =========================
@@ -845,7 +849,7 @@
        JS
   ========================= -->
 
-  <script type="module" src="app.js?v=2026-10-24-design-v17"></script>
+  <script type="module" src="app.js?v=2026-10-24-design-v24"></script>
 
 </body>
 </html>

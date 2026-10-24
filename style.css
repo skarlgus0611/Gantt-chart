@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v17";
+  --css-version: "2026-10-24-design-v24";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -8651,4 +8651,433 @@ body:has(.owner-filter-btn.active) .drag-handle {
   .mc-ov-chips {
     display: none;
   }
+}
+
+
+/* =========================================================
+   (디자인 추가분) 차트 박스와 바탕 구분 또렷하게
+   바탕을 한 단계 진한 회색으로, 박스엔 테두리를 조금 진하게 하고 옅은 그림자.
+   ========================================================= */
+#shellView {
+  background: #f0f1f4;
+}
+
+.mc-chart-box {
+  border-color: #dfe1e6;
+  box-shadow: 0 1px 2px rgba(24, 24, 27, .05), 0 8px 24px -12px rgba(24, 24, 27, .12);
+}
+
+.mc-chart-box:hover {
+  box-shadow: 0 1px 2px rgba(24, 24, 27, .06), 0 10px 28px -12px rgba(24, 24, 27, .16);
+}
+
+
+/* =========================================================
+   (디자인 추가분) ＋ 작업 / ＋ 카테고리: 글자보다 "버튼"으로 보이게
+   - 양끝 둥근 알약 모양
+   - ＋ 를 작은 동그라미 안에 넣어 아이콘 단추처럼
+   - 담당자별 보기도 같은 알약 모양으로 맞춤
+   ========================================================= */
+.add-actions .add-box,
+.add-actions .add-category-box {
+  height: 38px;
+  padding: 0 16px 0 6px;
+  gap: 8px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: background .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+
+.add-actions .add-box svg,
+.add-actions .add-category-box svg {
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+  padding: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.add-actions .add-box {
+  box-shadow: 0 2px 8px -2px rgba(15, 118, 110, .45);
+}
+
+.add-actions .add-box svg {
+  background: rgba(255, 255, 255, .2);
+  color: #ffffff;
+}
+
+.add-actions .add-category-box {
+  border-color: #e4e4e7;
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .06);
+}
+
+.add-actions .add-category-box svg {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.add-actions .add-category-box:hover:not(:disabled) svg {
+  background: #99f6e4;
+}
+
+.add-actions .add-box:active:not(:disabled),
+.add-actions .add-category-box:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.add-actions .owner-filter-btn {
+  border-radius: 999px;
+  padding: 0 14px 0 14px;
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .06);
+}
+
+
+/* =========================================================
+   (디자인 추가분) 위아래 바꿈: 확대/축소·행 높이를 차트 바로 밑으로,
+   ＋작업·＋카테고리·담당자별 보기는 카드 맨 아래 줄로
+   ========================================================= */
+.zoom-area {
+  margin-top: 14px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.add-actions {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #f0f0f2;
+}
+
+
+/* =========================================================
+   (디자인 추가분) 눌리는 작은 버튼들을 알약 모양으로 통일
+   - 글자 버튼: 양끝 둥근 알약
+   - 아이콘만 있는 버튼: 동그라미
+   - 입력칸은 툴바에 있는 것(검색·공유 이메일)만 알약, 폼 안 입력칸은 그대로
+   ========================================================= */
+
+/* 셸(바깥 화면) 버튼 전부: 차트 관리 · 새 차트 · 엑셀로 내보내기 · 공유 · 로그아웃 ·
+   창 아래 취소/저장/닫기 · 새로운 차트 만들기 · 차트 공유받기 · 조직 창 버튼 등 */
+.mc-btn {
+  border-radius: 999px;
+}
+
+.mc-btn:not(.mc-btn-icon) {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.mc-btn-icon {
+  border-radius: 999px;
+}
+
+#mcReloadBtn.mc-btn-icon {
+  width: 36px;
+  height: 36px;
+}
+
+/* 차트 머리의 아이콘 묶음(새로고침·전체·오늘·캡처 / 캘린더 추가·삭제) */
+.mc-btn-group {
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.mc-chart-box-actions .mc-btn-group .mc-btn {
+  width: 30px;
+  min-width: 30px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+/* 검색창 · 공유 창 이메일/권한 줄 */
+.mc-search input {
+  border-radius: 999px;
+  padding-left: 34px;
+}
+
+.mc-search svg {
+  left: 13px;
+}
+
+.mc-share-add-row input[type="email"],
+.mc-share-add-row select,
+.mc-share-org-bar select {
+  border-radius: 999px;
+}
+
+.mc-share-add-row input[type="email"] {
+  padding-left: 36px;
+}
+
+.mc-share-add-row .mc-input-icon svg {
+  left: 13px;
+}
+
+/* 공유 방법 탭 */
+.mc-share-tabs {
+  border-radius: 999px;
+}
+
+.mc-share-tab {
+  border-radius: 999px;
+}
+
+/* 창 닫기(✕) · 사이드바 접기 */
+.mc-modal-close,
+.mc-sidebar-toggle {
+  border-radius: 999px;
+}
+
+/* ⋯ 메뉴 · 공유 칩은 이미 알약 */
+
+/* 차트 안(iframe) 버튼: 작업/카테고리 창의 취소·저장, 상세 창의 삭제·취소·저장,
+   기간 저장, 단독 화면 위쪽 아이콘 버튼, 올해로 이동 */
+.modal-actions button,
+.detail-actions button,
+#saveTaskBtn,
+#saveCategoryBtn,
+.custom-range-btn,
+.yp-today,
+button.primary {
+  border-radius: 999px;
+}
+
+.modal-actions button,
+.detail-actions button:not(.detail-delete) {
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+.top-actions button {
+  border-radius: 999px;
+}
+
+/* 표시 기간 확대/축소: 띠와 고른 구간 모두 양옆 둥글게 */
+.range-slider .range-track {
+  border-radius: 999px;
+}
+
+.range-slider .range-bar {
+  border-radius: 999px;
+}
+
+.range-slider .range-handle {
+  width: 8px;
+  height: 18px;
+  border-radius: 999px;
+}
+
+/* 행 높이 띠 */
+.row-height-wrap {
+  border-radius: 999px;
+  padding: 0 14px;
+}
+
+
+/* =========================================================
+   (요청사항) 차트 카드 머리를 테마색으로 (A안)
+   - 진한 초록 바탕 + 사이드바 머리와 같은 간트 막대 무늬
+   - 글자는 흰색, 엑셀·공유·⋯ 버튼은 흰 알약, 아이콘 묶음은 반투명
+   ========================================================= */
+.mc-chart-box .mc-chart-box-head {
+  background-color: #0f766e;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='68' viewBox='0 0 200 68'%3E%3Cg stroke='%23ffffff' stroke-opacity='.06'%3E%3Cpath d='M20 0v68M60 0v68M100 0v68M140 0v68M180 0v68'/%3E%3C/g%3E%3Cg fill='%23ffffff'%3E%3Crect x='14' y='11' width='74' height='9' rx='4.5' fill-opacity='.10'/%3E%3Crect x='14' y='11' width='40' height='9' rx='4.5' fill-opacity='.10'/%3E%3Crect x='62' y='29' width='96' height='9' rx='4.5' fill-opacity='.10'/%3E%3Crect x='62' y='29' width='34' height='9' rx='4.5' fill-opacity='.10'/%3E%3Crect x='118' y='47' width='70' height='9' rx='4.5' fill-opacity='.10'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(135deg, #0f766e 0%, #0d6b64 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-position: 46% center, 0 0;
+  border-bottom-color: #0d6b64;
+}
+
+.mc-chart-box .mc-chart-box-name {
+  color: #ffffff;
+}
+
+.mc-chart-box .mc-chart-box-name:hover {
+  background: rgba(255, 255, 255, .12);
+}
+
+.mc-chart-box .mc-chart-toggle {
+  color: #ffffff;
+}
+
+.mc-chart-box .mc-chart-toggle:hover {
+  background: rgba(255, 255, 255, .14);
+}
+
+.mc-chart-box .mc-chart-box-range {
+  background: rgba(255, 255, 255, .16);
+  color: #ecfeff;
+}
+
+.mc-chart-box .mc-chart-box-range:hover {
+  background: rgba(255, 255, 255, .26);
+}
+
+/* 접혔을 때 보이는 평균 진행률: 흰 알약 */
+.mc-chart-box .mc-chart-box-avg {
+  background: #ffffff;
+  color: #0f766e;
+}
+
+/* 흰 알약 버튼: 엑셀로 내보내기 · 공유 · ⋯ */
+.mc-chart-box .mc-chart-box-actions .mc-btn {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn:hover:not(:disabled) {
+  background: #f0fdfa;
+  border-color: #f0fdfa;
+}
+
+/* 아이콘 묶음: 반투명 틀 + 흰 아이콘, 켜진 것(오늘)은 흰 동그라미 */
+.mc-chart-box .mc-chart-box-actions .mc-btn-group {
+  background: rgba(255, 255, 255, .16);
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn {
+  background: transparent;
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .22);
+  box-shadow: none;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn.mc-btn-active {
+  background: #ffffff;
+  color: #0f766e;
+}
+
+/* 이름 고치는 칸은 흰 바탕 그대로 */
+.mc-chart-box .mc-chart-name-edit {
+  color: #18181b;
+  background: #ffffff;
+}
+
+
+/* =========================================================
+   (요청사항) 차트 카드 머리 다시: 무거운 진초록 → 테마 초록을 아주 밝힌 파스텔
+   - 머리 바탕: 밝은 파스텔 초록 + 옅은 초록 막대 무늬
+   - 왼쪽 아이콘 묶음(새로고침·전체·오늘·캡처 / 캘린더 / 다운로드):
+     테마색 바탕 + 흰 아이콘(조금 굵게)
+   - 공유 · ⋯ 는 흰 알약 그대로
+   ========================================================= */
+.mc-chart-box .mc-chart-box-head {
+  background-color: #e8f3f0;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='68' viewBox='0 0 200 68'%3E%3Cg stroke='%230f766e' stroke-opacity='.06'%3E%3Cpath d='M20 0v68M60 0v68M100 0v68M140 0v68M180 0v68'/%3E%3C/g%3E%3Cg fill='%230f766e'%3E%3Crect x='14' y='11' width='74' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='14' y='11' width='40' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='62' y='29' width='96' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='62' y='29' width='34' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='118' y='47' width='70' height='9' rx='4.5' fill-opacity='.07'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(135deg, #edf7f4 0%, #e1f0ec 100%);
+  border-bottom-color: #d5e9e4;
+}
+
+.mc-chart-box .mc-chart-box-name {
+  color: #18181b;
+}
+
+.mc-chart-box .mc-chart-box-name:hover {
+  background: rgba(15, 118, 110, .08);
+}
+
+.mc-chart-box .mc-chart-toggle {
+  color: #0f766e;
+}
+
+.mc-chart-box .mc-chart-toggle:hover {
+  background: rgba(15, 118, 110, .1);
+}
+
+.mc-chart-box .mc-chart-box-range {
+  background: #ffffff;
+  color: #3f3f46;
+}
+
+.mc-chart-box .mc-chart-box-range:hover {
+  background: #ffffff;
+  color: #0f766e;
+}
+
+/* 흰 알약(공유 · ⋯)은 파스텔 위에서 테두리로 구분 */
+.mc-chart-box .mc-chart-box-actions > .mc-btn {
+  background: #ffffff;
+  border-color: #d5e9e4;
+}
+
+.mc-chart-box .mc-chart-box-actions > .mc-btn:hover:not(:disabled) {
+  background: #f0fdfa;
+  border-color: #99f6e4;
+}
+
+/* 테마색 아이콘 묶음 */
+.mc-chart-box .mc-chart-box-actions .mc-btn-group {
+  background: #0f766e;
+  box-shadow: 0 2px 6px -2px rgba(15, 118, 110, .5);
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn {
+  background: transparent;
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn svg {
+  stroke-width: 2.2;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .18);
+  box-shadow: none;
+}
+
+/* 켜진 것(오늘)은 흰 동그라미 + 초록 아이콘 */
+.mc-chart-box .mc-chart-box-actions .mc-btn-group .mc-btn.mc-btn-active {
+  background: #ffffff;
+  color: #0f766e;
+}
+
+/* 다운로드: 아이콘 + 글자 */
+.mc-chart-box .mc-chart-box-actions .mc-btn-group-text .mc-btn {
+  width: auto;
+  padding: 0 12px 0 9px;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+
+/* =========================================================
+   (요청사항) 파스텔 머리와 바탕이 비슷해 보이던 문제
+   원인: 머리(밝은 초록)와 바탕(밝은 회색)의 밝기가 거의 같았다.
+   → 바탕은 더 밝은 회색으로, 머리 초록은 한 단계 또렷하게,
+     카드에는 초록빛 테두리와 그림자를 줘서 밝기 차이로 구분한다.
+   ========================================================= */
+#shellView {
+  background: #f4f5f7;
+}
+
+.mc-chart-box {
+  border-color: #cfe2dd;
+  box-shadow: 0 1px 2px rgba(24, 24, 27, .06), 0 10px 28px -14px rgba(15, 60, 55, .28);
+}
+
+.mc-chart-box:hover {
+  box-shadow: 0 1px 2px rgba(24, 24, 27, .07), 0 12px 32px -14px rgba(15, 60, 55, .34);
+}
+
+.mc-chart-box .mc-chart-box-head {
+  background-color: #d7ece6;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='68' viewBox='0 0 200 68'%3E%3Cg stroke='%230f766e' stroke-opacity='.06'%3E%3Cpath d='M20 0v68M60 0v68M100 0v68M140 0v68M180 0v68'/%3E%3C/g%3E%3Cg fill='%230f766e'%3E%3Crect x='14' y='11' width='74' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='14' y='11' width='40' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='62' y='29' width='96' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='62' y='29' width='34' height='9' rx='4.5' fill-opacity='.07'/%3E%3Crect x='118' y='47' width='70' height='9' rx='4.5' fill-opacity='.07'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(135deg, #dcefe9 0%, #cfe7e0 100%);
+  border-bottom-color: #c3dfd7;
+}
+
+.mc-chart-box .mc-chart-box-actions > .mc-btn {
+  border-color: #c3dfd7;
 }
