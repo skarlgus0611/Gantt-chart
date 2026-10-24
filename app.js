@@ -2876,8 +2876,8 @@ function showTaskDetail(id) {
         </div>
 
         <div class="detail-progress">
-          <input id="detailProgressRange" type="range" min="0" max="100" step="5" value="${progress}" aria-label="진행률 슬라이더" style="--progress-color:${escapeAttr(taskColor)};--progress:${progress}%">
-          <input id="detailProgress" type="number" min="0" max="100" value="${progress}" aria-label="진행률(%)">
+          <input id="detailProgressRange" class="progress-range" type="range" min="0" max="100" step="5" value="${progress}" aria-label="진행률 슬라이더" style="--progress-color:${escapeAttr(taskColor)};--progress:${progress}%">
+          <input id="detailProgress" class="progress-num-input" type="number" min="0" max="100" value="${progress}" aria-label="진행률(%)">
         </div>
 
         <div class="detail-colors">
@@ -3238,6 +3238,8 @@ function syncTaskColor() {
   }
 
   colorInput.value = categoryColorOf(categorySelect.value);
+
+  if (typeof refreshTaskSheet === "function") refreshTaskSheet();
 }
 
 
@@ -3277,12 +3279,16 @@ function openTaskModal() {
   }
 
   syncTaskColor();
+  refreshTaskSheet();
 
   const modal = document.getElementById("taskModal");
 
   if (modal) {
     modal.classList.remove("hidden");
   }
+
+  const nameInput = document.getElementById("taskName");
+  if (nameInput) nameInput.focus();
 }
 
 
@@ -3384,11 +3390,16 @@ function openCategoryModal(categoryId) {
     title.textContent = category ? "카테고리 수정" : "카테고리 추가";
   }
 
+  refreshCategorySheet();
+
   const modal = document.getElementById("categoryModal");
 
   if (modal) {
     modal.classList.remove("hidden");
   }
+
+  const nameInput = document.getElementById("categoryName");
+  if (nameInput) nameInput.focus();
 }
 
 
@@ -4709,6 +4720,96 @@ if (taskCategorySelect) {
 }
 
 
+/* =========================================================
+ * (디자인 추가분) 작업 추가 / 카테고리 창의 보기 좋은 입력들
+ *  - 색 견본 동그라미를 누르면 실제 색 입력(type=color)에 값을 넣는다
+ *  - 진행률 슬라이더 ↔ 숫자 칸 연동
+ *  - 카테고리 칩 색, 기간 일수, 카테고리 미리보기를 바로 갱신
+ * ========================================================= */
+
+function markSelectedSwatch(container, color) {
+  container.querySelectorAll(".detail-swatch-btn").forEach(btn => {
+    btn.classList.toggle("selected", btn.dataset.color.toLowerCase() === String(color).toLowerCase());
+  });
+}
+
+function periodDaysLabel(start, end) {
+  const startDate = dateObj(start);
+  const endDate = dateObj(end);
+  return startDate && endDate && endDate >= startDate
+    ? (Math.round((endDate - startDate) / 86400000) + 1) + "일"
+    : "";
+}
+
+function setProgressFill(range, value, color) {
+  range.style.setProperty("--progress", value + "%");
+  if (color) range.style.setProperty("--progress-color", color);
+}
+
+function refreshTaskSheet() {
+  const modal = document.getElementById("taskModal");
+  if (!modal) return;
+
+  const color = document.getElementById("taskColor").value;
+  const categoryId = document.getElementById("taskCategory").value;
+  const category = state.categories.find(item => item.id === categoryId);
+
+  applyCategoryTint(document.getElementById("taskCategory"), category ? category.color : "#a1a1aa");
+  document.getElementById("taskDays").textContent =
+    periodDaysLabel(document.getElementById("taskStart").value, document.getElementById("taskEnd").value);
+
+  const range = document.getElementById("taskProgressRange");
+  range.value = String(Math.max(0, Math.min(100, Number(document.getElementById("taskProgress").value) || 0)));
+  setProgressFill(range, range.value, color);
+
+  markSelectedSwatch(modal, color);
+}
+
+function refreshCategorySheet() {
+  const modal = document.getElementById("categoryModal");
+  if (!modal) return;
+
+  const color = document.getElementById("categoryColor").value;
+  const name = document.getElementById("categoryName").value.trim();
+
+  applyCategoryTint(document.getElementById("categoryPreview"), color);
+  document.getElementById("categoryPreviewName").textContent = name || "새 카테고리";
+
+  markSelectedSwatch(modal, color);
+}
+
+document.querySelectorAll(".detail-swatch-btn[data-for]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const input = document.getElementById(btn.dataset.for);
+    if (!input) return;
+    input.value = btn.dataset.color.toLowerCase();
+    /* "input" 이벤트를 내서 직접 고른 색으로 기록되게 한다(작업 추가 창의 touched). */
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+});
+
+["taskCategory", "taskStart", "taskEnd", "taskColor", "taskProgress"].forEach(id => {
+  const field = document.getElementById(id);
+  if (!field) return;
+  field.addEventListener("input", refreshTaskSheet);
+  field.addEventListener("change", refreshTaskSheet);
+});
+
+const taskProgressRange = document.getElementById("taskProgressRange");
+
+if (taskProgressRange) {
+  taskProgressRange.addEventListener("input", () => {
+    setFieldValue("taskProgress", taskProgressRange.value);
+    refreshTaskSheet();
+  });
+}
+
+["categoryName", "categoryColor"].forEach(id => {
+  const field = document.getElementById(id);
+  if (field) field.addEventListener("input", refreshCategorySheet);
+});
+
+
 /* 카테고리 추가 / 수정 */
 const addCategoryBtn = document.getElementById("addCategoryBtn");
 
@@ -5071,8 +5172,60 @@ const MC_ICONS = {
   full: '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"></path>',
   today: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17"></path><circle cx="12" cy="15" r="1.6" fill="currentColor" stroke="none"></circle>',
   capture: '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-1.8h7l1 1.8h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"></path><circle cx="12" cy="12.5" r="3.4"></circle>',
-  more: '<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"></circle>'
+  more: '<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"></circle>',
+  check: '<path d="m5 12 5 5 9-10"></path>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle>',
+  eyeOff: '<path d="M3 3l18 18"></path><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7c1.8 0 3.3-.5 4.6-1.2"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path>',
+  close: '<path d="M6 6l12 12M18 6 6 18"></path>'
 };
+
+/* (디자인 추가분) 사람 동그라미 색: 이메일마다 늘 같은 색 */
+const MC_PERSON_COLORS = ["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#2dd4bf", "#fb7185"];
+
+function mcPersonColor(key) {
+  let hash = 0;
+  Array.from(String(key || "")).forEach(ch => { hash = (hash * 31 + ch.codePointAt(0)) >>> 0; });
+  return MC_PERSON_COLORS[hash % MC_PERSON_COLORS.length];
+}
+
+function mcAvatarEl(nameOrEmail) {
+  const avatar = document.createElement("span");
+  avatar.className = "mc-row-avatar";
+  avatar.setAttribute("aria-hidden", "true");
+  avatar.style.background = mcPersonColor(nameOrEmail);
+  avatar.textContent = shellPersonInitial(nameOrEmail);
+  return avatar;
+}
+
+/* 공유 멤버 한 줄: 동그라미 + 이메일 + (대기중) + 권한 칩 */
+function mcMemberRowEl(member) {
+  const row = document.createElement("div");
+  row.className = "mc-share-member-row";
+
+  row.appendChild(mcAvatarEl(member.email));
+
+  const text = document.createElement("span");
+  text.className = "mc-row-text";
+  const email = document.createElement("span");
+  email.className = "mc-row-title";
+  email.textContent = member.email;
+  text.appendChild(email);
+  if (member.status === "pending") {
+    const sub = document.createElement("span");
+    sub.className = "mc-row-sub";
+    sub.textContent = "초대 수락 대기중";
+    text.appendChild(sub);
+  }
+  row.appendChild(text);
+
+  const role = document.createElement("span");
+  role.className = "mc-role-chip mc-role-" + member.role;
+  role.textContent = { owner: "소유자", admin: "관리자", editor: "편집자", viewer: "뷰어" }[member.role] || member.role;
+  row.appendChild(role);
+
+  return row;
+}
 
 function mcIconSvg(name) {
   return '<svg class="mc-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -5889,12 +6042,20 @@ function shellRenderManageRows() {
 
   shellChartsCache.forEach((chart) => {
     const row = document.createElement("div");
-    row.className = "mc-manage-row";
+    row.className = "mc-manage-row" + (chart.hidden ? " is-hidden" : "");
+
+    /* (디자인 추가분) 차트 이름 첫 글자 타일 */
+    const tile = document.createElement("span");
+    tile.className = "mc-manage-tile";
+    tile.setAttribute("aria-hidden", "true");
+    tile.textContent = Array.from(String(chart.name || "?").trim() || "?")[0];
+    row.appendChild(tile);
 
     const nameInput = document.createElement("input");
     nameInput.type = "text";
     nameInput.value = chart.name;
     nameInput.maxLength = 200;
+    nameInput.setAttribute("aria-label", "차트 이름");
     row.appendChild(nameInput);
 
     if (chart.hidden) {
@@ -5904,10 +6065,16 @@ function shellRenderManageRows() {
       row.appendChild(badge);
     }
 
-    const saveBtn = document.createElement("button");
-    saveBtn.className = "mc-btn mc-btn-ghost";
-    saveBtn.type = "button";
-    saveBtn.textContent = "이름 저장";
+    const saveBtn = mcActionButton("check", "이름 저장", false);
+    saveBtn.classList.add("mc-manage-save");
+    /* 이름을 고쳤을 때만 저장 버튼이 보인다. Enter로도 저장. */
+    const syncSaveVisible = () => {
+      saveBtn.classList.toggle("is-dirty", nameInput.value.trim() !== chart.name);
+    };
+    nameInput.addEventListener("input", syncSaveVisible);
+    nameInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); saveBtn.click(); }
+    });
     saveBtn.addEventListener("click", () => withBusy(saveBtn, "저장 중…", async () => {
       const newName = nameInput.value.trim();
       if (!newName) { showToast("이름을 입력하세요.", true); return; }
@@ -5922,10 +6089,7 @@ function shellRenderManageRows() {
     }));
     row.appendChild(saveBtn);
 
-    const toggleBtn = document.createElement("button");
-    toggleBtn.className = "mc-btn mc-btn-ghost";
-    toggleBtn.type = "button";
-    toggleBtn.textContent = chart.hidden ? "보이기" : "숨기기";
+    const toggleBtn = mcActionButton(chart.hidden ? "eyeOff" : "eye", chart.hidden ? "보이기" : "숨기기", true);
     toggleBtn.addEventListener("click", () => withBusy(toggleBtn, "변경 중…", async () => {
       try {
         const res = await apiPost("updateChart", { data: { id: chart.id, hidden: !chart.hidden } });
@@ -5940,10 +6104,8 @@ function shellRenderManageRows() {
 
     {
       // (요청사항) 기본 차트도 다른 차트와 똑같이 삭제 버튼을 보여준다.
-      const delBtn = document.createElement("button");
-      delBtn.className = "mc-btn mc-btn-danger";
-      delBtn.type = "button";
-      delBtn.textContent = "삭제";
+      const delBtn = mcActionButton("trash", "삭제", true);
+      delBtn.classList.add("mc-row-danger");
       delBtn.addEventListener("click", () => withBusy(delBtn, "삭제 중…", async () => {
         if (!confirm('"' + chart.name + '" 차트를 완전히 삭제할까요? 이 차트의 모든 데이터가 함께 삭제되며 되돌릴 수 없습니다.')) {
           return;
@@ -6557,20 +6719,11 @@ function shellRenderShareMembersList(members, ownerEmail, canManage, chartId) {
   box.innerHTML = "";
 
   members.forEach((m) => {
-    const row = document.createElement("div");
-    row.className = "mc-share-member-row";
-
-    const label = document.createElement("span");
-    const roleLabel = { owner: "소유자", admin: "관리자", editor: "편집자", viewer: "뷰어" }[m.role] || m.role;
-    const statusLabel = m.status === "pending" ? " (대기중)" : "";
-    label.textContent = m.email + " — " + roleLabel + statusLabel;
-    row.appendChild(label);
+    const row = mcMemberRowEl(m);
 
     if (canManage && m.role !== "owner") {
-      const delBtn = document.createElement("button");
-      delBtn.type = "button";
-      delBtn.className = "mc-btn mc-btn-ghost";
-      delBtn.textContent = "삭제";
+      const delBtn = mcActionButton("close", "공유 해제", true);
+      delBtn.classList.add("mc-row-danger");
       delBtn.addEventListener("click", () => withBusy(delBtn, "삭제 중…", async () => {
         try {
           await shareFetch("unshareMember", { chartId, targetEmail: m.email });
@@ -6712,12 +6865,7 @@ async function shellOpenMembersModal(chartId) {
     );
 
     list.forEach((m) => {
-      const row = document.createElement("div");
-      row.className = "mc-share-member-row";
-      const roleLabel = { owner: "소유자", admin: "관리자", editor: "편집자", viewer: "뷰어" }[m.role] || m.role;
-      const statusLabel = m.status === "pending" ? " (대기중)" : "";
-      row.textContent = m.email + " — " + roleLabel + statusLabel;
-      box.appendChild(row);
+      box.appendChild(mcMemberRowEl(m));
     });
 
     shellOpenModal("mcMembersModal");
@@ -6780,9 +6928,19 @@ function shellRenderInvitesList(invites) {
     const row = document.createElement("div");
     row.className = "mc-invite-row";
 
-    const label = document.createElement("span");
-    label.textContent = inv.ownerEmail + "님이 \"" + inv.chartName + "\" 차트를 공유했습니다";
-    row.appendChild(label);
+    row.appendChild(mcAvatarEl(inv.ownerEmail));
+
+    const text = document.createElement("span");
+    text.className = "mc-row-text";
+    const title = document.createElement("span");
+    title.className = "mc-row-title";
+    title.textContent = inv.chartName;
+    const sub = document.createElement("span");
+    sub.className = "mc-row-sub";
+    sub.textContent = inv.ownerEmail + "님이 공유했어요";
+    text.appendChild(title);
+    text.appendChild(sub);
+    row.appendChild(text);
 
     const acceptBtn = document.createElement("button");
     acceptBtn.type = "button";

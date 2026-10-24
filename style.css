@@ -4625,56 +4625,6 @@ html.is-embedded .gantt-resize {
   gap: 10px;
 }
 
-#detailProgressRange {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 22px;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  -webkit-appearance: none;
-  appearance: none;
-  cursor: pointer;
-}
-
-#detailProgressRange:focus-visible {
-  outline-offset: 3px;
-  border-radius: 6px;
-}
-
-#detailProgressRange::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(to right, var(--progress-color, #0f766e) var(--progress, 0%), #e4e4e7 var(--progress, 0%));
-}
-
-#detailProgressRange::-moz-range-track {
-  height: 6px;
-  border-radius: 999px;
-  background: linear-gradient(to right, var(--progress-color, #0f766e) var(--progress, 0%), #e4e4e7 var(--progress, 0%));
-}
-
-#detailProgressRange::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  margin-top: -5px;
-  border-radius: 999px;
-  background: #ffffff;
-  border: 2px solid var(--progress-color, #0f766e);
-  box-shadow: 0 1px 3px rgba(24, 24, 27, .25);
-}
-
-#detailProgressRange::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: #ffffff;
-  border: 2px solid var(--progress-color, #0f766e);
-  box-shadow: 0 1px 3px rgba(24, 24, 27, .25);
-}
-
 #detailProgress {
   width: 56px;
   height: 32px;
@@ -4855,3 +4805,745 @@ body.shared-viewer-readonly .detail-swatches {
 }
 
 /* ▲▲▲ 작업 상세 패널 디자인 (추가분) 끝 ▲▲▲ */
+
+/* =========================================================
+ * ▼▼▼ 창(모달) 디자인 통일 (추가분) ▼▼▼
+ * 작업 추가 · 카테고리 · 차트 관리 · 공유 · 공유받기 · 연도 선택을
+ * 작업 상세 패널과 같은 모양으로: 제목 + 둥근 닫기 / 본문 / 아래 버튼 띠
+ * ========================================================= */
+
+/* ---------- 공통 틀 ---------- */
+.modal,
+.mc-modal-backdrop {
+  background: rgba(24, 24, 27, .42);
+  backdrop-filter: blur(2px);
+}
+
+.modal-card,
+.mc-modal {
+  padding: 0;
+  border-radius: 18px;
+  border: 1px solid #ececef;
+  box-shadow: 0 24px 64px rgba(24, 24, 27, .22);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-card {
+  max-height: calc(100vh - 30px);
+}
+
+.mc-modal {
+  padding: 22px 24px 0;
+}
+
+.modal-header,
+.mc-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.modal-header {
+  margin: 0;
+  padding: 18px 20px 6px 24px;
+}
+
+.modal-header h2,
+.mc-modal h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  color: #18181b;
+}
+
+.mc-modal > h2 {
+  margin-bottom: 12px;
+}
+
+.close-btn,
+.mc-modal-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #71717a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.close-btn:hover:not(:disabled),
+.mc-modal-close:hover:not(:disabled) {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+/* 아래 버튼 띠 */
+.modal-actions {
+  margin: 0;
+  padding: 14px 20px;
+  background: #fafafb;
+  border-top: 1px solid #f0f0f2;
+}
+
+.mc-modal-actions {
+  margin: 18px -24px 0;
+  padding: 14px 24px;
+  background: #fafafb;
+  border-top: 1px solid #f0f0f2;
+}
+
+.modal-actions button,
+.mc-modal-actions .mc-btn {
+  height: 36px;
+  padding: 0 16px;
+}
+
+.mc-modal-sub,
+.mc-hint {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #71717a;
+}
+
+/* 목록만 있는 창(차트 관리·공유받기·구성원)은 아래 여백 */
+.mc-modal > .mc-manage-rows:last-child {
+  margin-bottom: 22px;
+}
+
+/* ---------- 작업 추가 / 카테고리 (상세 패널과 같은 속성 줄) ---------- */
+.sheet-card {
+  width: min(560px, calc(100vw - 30px));
+}
+
+.sheet-card-narrow {
+  width: min(440px, calc(100vw - 30px));
+}
+
+.sheet-body {
+  padding: 4px 24px 20px;
+  overflow-y: auto;
+}
+
+.modal-card .sheet-title-input {
+  display: block;
+  width: 100%;
+  height: 46px;
+  margin: 0 0 10px;
+  padding: 0 10px;
+  margin-left: -10px;
+  width: calc(100% + 10px);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  color: #18181b;
+}
+
+.modal-card .sheet-title-input::placeholder {
+  color: #c4c4cc;
+}
+
+.modal-card .sheet-title-input:hover {
+  background: #fafafb;
+}
+
+.modal-card .sheet-title-input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+/* 모달 공통 입력 규칙(.modal-card label/input …)이 속성 줄을 덮지 않게 되돌린다 */
+.modal-card .detail-prop,
+.modal-card label.detail-prop {
+  display: grid;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.modal-card .detail-prop-val .progress-num-input {
+  flex: 0 0 auto;
+  width: 60px;
+}
+
+.detail-prop-val .progress-range,
+.detail-prop-val .progress-range:hover,
+.detail-prop-val .progress-range:focus {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.modal-card .detail-prop-val input,
+.modal-card .detail-prop-val select {
+  display: inline-block;
+  width: auto;
+  margin: 0;
+}
+
+.modal-card .detail-prop-val > input:not([type="date"]):not([type="range"]):not([type="number"]) {
+  flex: 1 1 auto;
+}
+
+.modal-card .detail-dates input[type="date"] {
+  width: 148px;
+}
+
+.modal-card .detail-prop-col {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.sheet-hint {
+  font-size: 11.5px;
+  color: #a1a1aa;
+}
+
+.modal-card .detail-memo-box {
+  margin: 12px 0 0;
+}
+
+.modal-card .detail-swatch-custom input[type="color"] {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.modal-card .detail-swatch-btn {
+  margin: 0;
+}
+
+/* 진행률 슬라이더 + 숫자 (상세 패널·작업 추가 공용) */
+.detail-progress {
+  gap: 10px;
+}
+
+.progress-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.modal-card .progress-range {
+  display: block;
+  width: auto;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.progress-range:focus-visible {
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.progress-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--progress-color, #0f766e) var(--progress, 0%), #e4e4e7 var(--progress, 0%));
+}
+
+.progress-range::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--progress-color, #0f766e) var(--progress, 0%), #e4e4e7 var(--progress, 0%));
+}
+
+.progress-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2px solid var(--progress-color, #0f766e);
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .25);
+}
+
+.progress-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2px solid var(--progress-color, #0f766e);
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .25);
+}
+
+.modal-card .progress-num-input {
+  flex: 0 0 auto;
+  width: 60px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #e4e4e7;
+  background: #ffffff;
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-pct {
+  font-size: 13px;
+  font-weight: 700;
+  color: #71717a;
+}
+
+/* 카테고리 미리보기: 실제 차트의 카테고리 줄 모양 */
+.category-preview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 40px;
+  margin: 8px 0 14px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border-left: 4px solid var(--cat-color, #3b82f6);
+  background: var(--cat-bg, #eff6ff);
+}
+
+.category-preview-name {
+  flex-shrink: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cat-text, #1e3a8a);
+}
+
+.category-preview-bar {
+  flex: 1 1 auto;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--cat-soft-bg, #bfdbfe) 0 45%, var(--cat-color, #3b82f6) 45%);
+  max-width: 220px;
+}
+
+/* ---------- 차트 관리 줄 ---------- */
+.mc-manage-rows {
+  gap: 6px;
+}
+
+.mc-manage-row {
+  gap: 10px;
+  padding: 8px 8px 8px 10px;
+  border: 1px solid #ececef;
+  border-radius: 12px;
+  flex-wrap: nowrap;
+  transition: border-color .12s, background .12s;
+}
+
+.mc-manage-row:hover {
+  border-color: #e4e4e7;
+  background: #fafafb;
+}
+
+.mc-manage-row.is-hidden .mc-manage-tile,
+.mc-manage-row.is-hidden input[type="text"] {
+  opacity: .5;
+}
+
+.mc-manage-tile {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: #f0fdfa;
+  color: #0f766e;
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-manage-row input[type="text"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: #18181b;
+}
+
+.mc-manage-row input[type="text"]:hover {
+  background: #ffffff;
+  border-color: #e4e4e7;
+}
+
+.mc-manage-row input[type="text"]:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+.mc-manage-badge {
+  flex-shrink: 0;
+  background: #f4f4f5;
+  color: #71717a;
+}
+
+.mc-manage-row .mc-btn {
+  flex-shrink: 0;
+  height: 32px;
+  font-size: 12.5px;
+}
+
+.mc-manage-row .mc-btn-icon {
+  width: 32px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.mc-manage-row .mc-btn-icon:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #e4e4e7;
+}
+
+.mc-manage-save {
+  display: none;
+}
+
+.mc-manage-save.is-dirty {
+  display: inline-flex;
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
+}
+
+.mc-manage-save.is-dirty:hover:not(:disabled) {
+  background: #0b5b55;
+}
+
+.mc-row-danger:hover:not(:disabled) {
+  color: #be123c;
+  background: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+}
+
+/* ---------- 공유 · 공유받기 · 구성원 줄 ---------- */
+.mc-share-add-row {
+  gap: 8px;
+  margin: 0 0 16px;
+  flex-wrap: nowrap;
+}
+
+.mc-input-icon {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.mc-input-icon svg {
+  position: absolute;
+  left: 11px;
+  color: #a1a1aa;
+  pointer-events: none;
+}
+
+.mc-share-add-row input[type="email"] {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px 0 34px;
+  border: 1px solid #e4e4e7;
+  border-radius: 9px;
+}
+
+.mc-share-add-row select {
+  flex-shrink: 0;
+  height: 38px;
+  padding: 0 30px 0 12px;
+  border: 1px solid #e4e4e7;
+  border-radius: 9px;
+  background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center / 12px;
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3f3f46;
+  cursor: pointer;
+}
+
+.mc-share-add-row .mc-btn {
+  flex-shrink: 0;
+  height: 38px;
+}
+
+.mc-share-add-row input:focus,
+.mc-share-add-row select:focus {
+  outline: none;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+.mc-share-member-row,
+.mc-invite-row {
+  justify-content: flex-start;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 10px 10px 12px;
+  border: 1px solid #ececef;
+  border-radius: 12px;
+}
+
+#mcShareMemberList,
+#mcMembersList,
+#mcInvitesList {
+  gap: 6px;
+}
+
+.mc-row-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mc-row-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #18181b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-row-sub {
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.mc-role-chip {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f4f4f5;
+  color: #52525b;
+}
+
+.mc-role-owner {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.mc-role-admin {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.mc-role-editor {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.mc-share-member-row .mc-btn-icon {
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  background: transparent;
+  color: #a1a1aa;
+}
+
+.mc-invite-row .mc-btn {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
+/* "무엇을 하시겠어요?" 선택 버튼 */
+.mc-share-choice-box {
+  margin: 4px 0 0;
+}
+
+.mc-share-choice-btn {
+  height: 52px;
+  justify-content: center;
+  font-size: 14.5px;
+}
+
+/* ---------- 연도 선택창 ---------- */
+/* (버그 수정) .control-bar button(32×32 화살표 규칙)이 연도 버튼·"올해로 이동"까지
+   덮어서 글자가 눌리고 잘렸다. 연도 선택창 안의 버튼은 원래 크기로 되돌린다. */
+.year-picker {
+  width: 300px;
+  padding: 12px;
+  border-color: #ececef;
+  border-radius: 16px;
+  box-shadow: 0 20px 48px rgba(24, 24, 27, .18);
+}
+
+.year-picker button {
+  width: auto;
+  height: auto;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.yp-head {
+  margin-bottom: 8px;
+}
+
+.yp-head button.yp-nav {
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+  color: #52525b;
+}
+
+.yp-range {
+  font-size: 13px;
+  font-weight: 700;
+  color: #3f3f46;
+}
+
+.yp-grid {
+  gap: 4px;
+}
+
+.year-picker .yp-year {
+  width: 100%;
+  height: 40px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  color: #3f3f46;
+}
+
+.year-picker .yp-year:hover:not(:disabled) {
+  background: #f4f4f5;
+}
+
+.year-picker .yp-year.this-year {
+  border-color: #d4d4d8;
+}
+
+.year-picker .yp-year.selected,
+.year-picker .yp-year.selected:hover:not(:disabled) {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.yp-year.has-tasks::after {
+  bottom: 6px;
+  background: #f59e0b;
+}
+
+.yp-foot {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top-color: #f0f0f2;
+}
+
+.year-picker .yp-today {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.yp-legend {
+  font-size: 11.5px;
+  color: #a1a1aa;
+}
+
+/* ---------- 좁은 화면 ---------- */
+@media (max-width: 520px) {
+  .sheet-body {
+    padding: 4px 18px 18px;
+  }
+
+  .modal-header {
+    padding: 16px 14px 4px 18px;
+  }
+
+  .modal-card .detail-prop {
+    grid-template-columns: 92px minmax(0, 1fr);
+  }
+
+  .modal-card .detail-dates input[type="date"] {
+    width: 100%;
+  }
+
+  .modal-card .detail-dates-arrow {
+    display: none;
+  }
+
+  .mc-share-add-row {
+    flex-wrap: wrap;
+  }
+
+  .mc-input-icon {
+    flex-basis: 100%;
+  }
+
+  .mc-modal {
+    padding: 18px 18px 0;
+  }
+
+  .mc-modal-actions {
+    margin: 16px -18px 0;
+    padding: 12px 18px;
+  }
+}
+
+/* ▲▲▲ 창(모달) 디자인 통일 (추가분) 끝 ▲▲▲ */

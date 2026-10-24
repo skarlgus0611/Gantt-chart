@@ -172,7 +172,7 @@
             type="button"
             aria-label="닫기"
             title="닫기"
-          >&times;</button>
+          ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
         </div>
         <div id="mcManageRows" class="mc-manage-rows"></div>
       </div>
@@ -221,7 +221,7 @@
       <div class="mc-modal mc-modal-wide">
         <div class="mc-modal-head">
           <h2>공유받은 차트</h2>
-          <button class="mc-modal-close" data-close="mcInvitesModal" type="button" aria-label="닫기" title="닫기">&times;</button>
+          <button class="mc-modal-close" data-close="mcInvitesModal" type="button" aria-label="닫기" title="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
         </div>
         <div id="mcInvitesList" class="mc-manage-rows"></div>
       </div>
@@ -232,11 +232,16 @@
       <div class="mc-modal mc-modal-wide">
         <div class="mc-modal-head">
           <h2>차트 공유 — <span id="mcShareChartName"></span></h2>
-          <button class="mc-modal-close" data-close="mcShareModal" type="button" aria-label="닫기" title="닫기">&times;</button>
+          <button class="mc-modal-close" data-close="mcShareModal" type="button" aria-label="닫기" title="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
         </div>
 
+        <p class="mc-modal-sub">구글 계정 이메일로 초대하면, 상대가 수락한 뒤 이 차트를 함께 볼 수 있어요.</p>
+
         <div class="mc-share-add-row">
-          <input id="mcShareEmail" type="email" placeholder="공유할 구글 계정 이메일">
+          <label class="mc-input-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="m4 7 8 6 8-6"></path></svg>
+            <input id="mcShareEmail" type="email" placeholder="공유할 구글 계정 이메일" aria-label="공유할 구글 계정 이메일">
+          </label>
           <select id="mcShareRole">
             <option value="viewer">뷰어</option>
             <option value="editor">편집자</option>
@@ -259,7 +264,7 @@
       <div class="mc-modal mc-modal-wide">
         <div class="mc-modal-head">
           <h2>공유 구성원</h2>
-          <button class="mc-modal-close" data-close="mcMembersModal" type="button" aria-label="닫기" title="닫기">&times;</button>
+          <button class="mc-modal-close" data-close="mcMembersModal" type="button" aria-label="닫기" title="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
         </div>
         <div id="mcMembersList" class="mc-manage-rows"></div>
       </div>
@@ -517,7 +522,8 @@
     class="modal hidden"
   >
 
-    <div class="modal-card">
+    <!-- (디자인 변경) 상세 패널과 같은 모양: 큰 제목 입력 + 아이콘 속성 줄 + 색 견본 -->
+    <div class="modal-card sheet-card">
 
       <div class="modal-header">
 
@@ -528,127 +534,94 @@
           class="close-btn"
           data-close="taskModal"
           aria-label="닫기"
-        >
-          ×
-        </button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
 
       </div>
 
-
-      <label>
-        작업명
+      <div class="sheet-body">
 
         <input
           id="taskName"
+          class="sheet-title-input"
           type="text"
           placeholder="작업명을 입력하세요"
+          aria-label="작업명"
         >
 
-      </label>
+        <div class="detail-props">
 
+          <label class="detail-prop">
+            <span class="detail-prop-key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>카테고리</span>
+            <span class="detail-prop-val">
+              <select id="taskCategory" class="detail-chip-select">
+                <option value="">기타</option>
+              </select>
+            </span>
+          </label>
 
-      <label>
-        카테고리
+          <div class="detail-prop">
+            <span class="detail-prop-key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M9 2.5v3M15 2.5v3"></path></svg>기간</span>
+            <span class="detail-prop-val detail-dates">
+              <input id="taskStart" type="date" aria-label="시작일">
+              <span class="detail-dates-arrow" aria-hidden="true">→</span>
+              <input id="taskEnd" type="date" aria-label="종료일">
+              <span class="detail-days" id="taskDays"></span>
+            </span>
+          </div>
 
-        <select id="taskCategory">
-          <option value="">
-            기타
-          </option>
-        </select>
+          <div class="detail-prop">
+            <span class="detail-prop-key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"></path></svg>진행률</span>
+            <span class="detail-prop-val detail-progress">
+              <input id="taskProgressRange" class="progress-range" type="range" min="0" max="100" step="5" value="0" aria-label="진행률 슬라이더">
+              <input id="taskProgress" class="progress-num-input" type="number" min="0" max="100" value="0" aria-label="진행률(%)">
+              <span class="progress-pct">%</span>
+            </span>
+          </div>
 
-      </label>
+          <div class="detail-prop">
+            <span class="detail-prop-key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"></circle></svg>막대 색상</span>
+            <span class="detail-prop-val detail-prop-col">
+        <div class="detail-swatches">
+          <button type="button" class="detail-swatch-btn" data-color="#0F766E" data-for="taskColor" style="background:#0F766E" aria-label="색 #0F766E" title="#0F766E"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#3B82F6" data-for="taskColor" style="background:#3B82F6" aria-label="색 #3B82F6" title="#3B82F6"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#8B5CF6" data-for="taskColor" style="background:#8B5CF6" aria-label="색 #8B5CF6" title="#8B5CF6"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#F43F5E" data-for="taskColor" style="background:#F43F5E" aria-label="색 #F43F5E" title="#F43F5E"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#F59E0B" data-for="taskColor" style="background:#F59E0B" aria-label="색 #F59E0B" title="#F59E0B"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#10B981" data-for="taskColor" style="background:#10B981" aria-label="색 #10B981" title="#10B981"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#64748B" data-for="taskColor" style="background:#64748B" aria-label="색 #64748B" title="#64748B"></button>
+          <label class="detail-swatch-custom" title="직접 고르기">
+            <input id="taskColor" type="color" value="#3b82f6" aria-label="막대 색상 직접 고르기">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </label>
+        </div>
+              <small class="sheet-hint">고르지 않으면 카테고리 기본색을 따릅니다.</small>
+            </span>
+          </div>
 
+          <label class="detail-prop">
+            <span class="detail-prop-key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20a7 7 0 0 1 14 0"></path></svg>담당자</span>
+            <span class="detail-prop-val">
+              <input id="taskOwner" type="text" placeholder="비어 있음">
+            </span>
+          </label>
 
-      <div class="date-grid">
+          <label class="detail-prop">
+            <span class="detail-prop-key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V8l8-4 8 4v12"></path><path d="M9 20v-6h6v6"></path></svg>대상처</span>
+            <span class="detail-prop-val">
+              <input id="taskTarget" type="text" placeholder="학교 / 회사 / 개인 프로젝트 등">
+            </span>
+          </label>
 
-        <label>
-          시작일
-
-          <input
-            id="taskStart"
-            type="date"
-          >
-
-        </label>
-
-
-        <label>
-          종료일
-
-          <input
-            id="taskEnd"
-            type="date"
-          >
-
-        </label>
-
-      </div>
-
-
-      <label>
-        진행률 (%)
-
-        <input
-          id="taskProgress"
-          type="number"
-          min="0"
-          max="100"
-          value="0"
-        >
-
-      </label>
-
-
-      <label>
-        막대 색상
-
-        <input
-          id="taskColor"
-          type="color"
-          value="#3b82f6"
-        >
-
-        <small>
-          바꾸지 않으면 카테고리 기본색을 따릅니다.
-        </small>
-
-      </label>
-
-
-      <label>
-        대상처
-
-        <input
-          id="taskTarget"
-          type="text"
-          placeholder="학교 / 회사 / 개인 프로젝트 등"
-        >
-
-      </label>
-
-
-      <label>
-        담당자
-
-        <input
-          id="taskOwner"
-          type="text"
-          placeholder="담당자"
-        >
-
-      </label>
-
-
-      <label>
-        메모
+        </div>
 
         <textarea
           id="taskMemo"
-          placeholder="메모"
+          class="detail-memo-box"
+          placeholder="메모 추가…"
+          aria-label="메모"
         ></textarea>
 
-      </label>
-
+      </div>
 
       <div class="modal-actions">
 
@@ -683,7 +656,7 @@
     class="modal hidden"
   >
 
-    <div class="modal-card">
+    <div class="modal-card sheet-card sheet-card-narrow">
 
       <div class="modal-header">
 
@@ -694,9 +667,7 @@
           class="close-btn"
           data-close="categoryModal"
           aria-label="닫기"
-        >
-          ×
-        </button>
+        ><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
 
       </div>
 
@@ -707,30 +678,44 @@
         type="hidden"
       >
 
+      <div class="sheet-body">
 
-      <label>
-        카테고리명
+        <!-- (디자인 추가분) 고른 이름·색이 실제 카테고리 줄에서 어떻게 보이는지 미리보기 -->
+        <div class="category-preview" id="categoryPreview" aria-hidden="true">
+          <span class="category-preview-name" id="categoryPreviewName">새 카테고리</span>
+          <span class="category-preview-bar"></span>
+        </div>
 
         <input
           id="categoryName"
+          class="sheet-title-input"
           type="text"
           placeholder="카테고리명을 입력하세요"
+          aria-label="카테고리명"
         >
 
-      </label>
+        <div class="detail-props">
+          <div class="detail-prop">
+            <span class="detail-prop-key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"></circle></svg>기본 색상</span>
+            <span class="detail-prop-val">
+        <div class="detail-swatches">
+          <button type="button" class="detail-swatch-btn" data-color="#0F766E" data-for="categoryColor" style="background:#0F766E" aria-label="색 #0F766E" title="#0F766E"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#3B82F6" data-for="categoryColor" style="background:#3B82F6" aria-label="색 #3B82F6" title="#3B82F6"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#8B5CF6" data-for="categoryColor" style="background:#8B5CF6" aria-label="색 #8B5CF6" title="#8B5CF6"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#F43F5E" data-for="categoryColor" style="background:#F43F5E" aria-label="색 #F43F5E" title="#F43F5E"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#F59E0B" data-for="categoryColor" style="background:#F59E0B" aria-label="색 #F59E0B" title="#F59E0B"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#10B981" data-for="categoryColor" style="background:#10B981" aria-label="색 #10B981" title="#10B981"></button>
+          <button type="button" class="detail-swatch-btn" data-color="#64748B" data-for="categoryColor" style="background:#64748B" aria-label="색 #64748B" title="#64748B"></button>
+          <label class="detail-swatch-custom" title="직접 고르기">
+            <input id="categoryColor" type="color" value="#3b82f6" aria-label="기본 막대 색상 직접 고르기">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          </label>
+        </div>
+            </span>
+          </div>
+        </div>
 
-
-      <label>
-        기본 막대 색상
-
-        <input
-          id="categoryColor"
-          type="color"
-          value="#3b82f6"
-        >
-
-      </label>
-
+      </div>
 
       <div class="modal-actions">
 
