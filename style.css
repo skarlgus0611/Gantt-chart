@@ -6374,6 +6374,7 @@ body.is-bar-moving * {
 
 /* =========================================================
  * ▼▼▼ 조직 관리 (1단계, 추가분) ▼▼▼
+ * 왼쪽: 받은 초대 카드 · 내 조직 / 오른쪽: 조직 머리 · 초대 카드 · 조직원 표
  * ========================================================= */
 
 /* 사이드바 버튼 안 배지(받은 조직 초대 수) */
@@ -6391,38 +6392,86 @@ body.is-bar-moving * {
 }
 
 .mc-org-modal {
-  max-width: 980px;
+  max-width: 1000px;
   width: 100%;
-  height: min(720px, 90vh);
+  height: min(740px, 90vh);
 }
 
 .mc-org-layout {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 0;
+  grid-template-columns: 250px minmax(0, 1fr);
   margin: 0 -24px;
   border-top: 1px solid #f0f0f2;
 }
 
-/* 왼쪽: 받은 초대 · 내 조직 · 새 조직 */
+/* 조직 아이콘 (조직마다 늘 같은 색) */
+.mc-org-avatar {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-org-avatar.lg {
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  font-size: 22px;
+}
+
+/* ---------- 왼쪽 ---------- */
 .mc-org-side {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 12px 16px 16px;
+  gap: 8px;
+  padding: 16px 14px;
   border-right: 1px solid #f0f0f2;
   background: #fafafb;
   overflow-y: auto;
 }
 
+.mc-org-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 0;
+}
+
 .mc-org-side-title {
-  padding: 6px 6px 2px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   color: #a1a1aa;
   letter-spacing: .04em;
+}
+
+.mc-org-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid #e4e4e7;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #3f3f46;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mc-org-new:hover:not(:disabled) {
+  border-color: #0f766e;
+  color: #0f766e;
+  background: #f0fdfa;
 }
 
 .mc-org-list {
@@ -6434,11 +6483,11 @@ body.is-bar-moving * {
 .mc-org-item {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   width: 100%;
-  padding: 7px 8px;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  padding: 8px;
+  border: 0;
+  border-radius: 11px;
   background: transparent;
   font: inherit;
   text-align: left;
@@ -6446,165 +6495,152 @@ body.is-bar-moving * {
 }
 
 .mc-org-item:hover:not(:disabled) {
-  background: #ffffff;
-  border-color: #ececef;
+  background: #f0f0f2;
 }
 
 .mc-org-item.active {
   background: #ffffff;
-  border-color: #0f766e;
-  box-shadow: 0 0 0 3px #ccfbf1;
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .1), inset 3px 0 0 #0f766e;
 }
 
-.mc-org-item .mc-manage-tile {
-  width: 28px;
-  height: 28px;
-  font-size: 12px;
+.mc-org-item-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .mc-org-item-name {
-  flex: 1 1 auto;
-  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 700;
   color: #18181b;
 }
 
-.mc-org-item .mc-role-chip {
-  padding: 2px 8px;
-  font-size: 10.5px;
-}
-
-.mc-org-empty-side {
-  padding: 6px;
-  font-size: 12.5px;
+.mc-org-item-role {
+  font-size: 11.5px;
+  font-weight: 600;
   color: #a1a1aa;
 }
 
-.mc-org-new {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  padding: 9px 10px;
-  border: 1.5px dashed #d4d4d8;
-  border-radius: 10px;
-  background: transparent;
-  color: #52525b;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.mc-org-new:hover:not(:disabled) {
-  border-color: #0f766e;
-  color: #0f766e;
-  background: #f0fdfa;
+.mc-org-empty-side {
+  padding: 8px 6px;
+  font-size: 12.5px;
+  color: #a1a1aa;
 }
 
 /* 받은 초대 카드 */
 .mc-org-invites {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  padding-bottom: 6px;
 }
 
 .mc-org-invites:empty {
   display: none;
 }
 
+.mc-org-invites .mc-org-side-title {
+  padding: 4px 4px 0;
+  color: #b45309;
+}
+
 .mc-org-invite {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid #fde68a;
-  border-radius: 12px;
-  background: #fffbeb;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(180, 83, 9, .08), inset 3px 0 0 #f59e0b;
+}
+
+.mc-org-invite-top {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.mc-org-invite-text {
+  min-width: 0;
 }
 
 .mc-org-invite-name {
   font-size: 13.5px;
   font-weight: 800;
   color: #18181b;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .mc-org-invite-from {
+  margin-top: 2px;
   font-size: 11.5px;
+  line-height: 1.4;
   color: #71717a;
-  word-break: break-all;
-}
-
-.mc-org-invite-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: #71717a;
-}
-
-.mc-org-invite-meta .mc-role-chip {
-  padding: 2px 8px;
-  font-size: 10.5px;
 }
 
 .mc-org-invite-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
-  margin-top: 4px;
 }
 
 .mc-org-invite-actions .mc-btn {
-  height: 30px;
-  padding: 0 12px;
+  height: 32px;
+  justify-content: center;
   font-size: 12.5px;
 }
 
-/* 오른쪽: 고른 조직 */
+/* ---------- 오른쪽 ---------- */
 .mc-org-main {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 24px 22px;
+  gap: 18px;
+  padding: 22px 26px 26px;
   overflow-y: auto;
   min-width: 0;
 }
 
 .mc-org-head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #f0f0f2;
 }
 
 .mc-org-title-wrap {
   min-width: 0;
-  flex: 1 1 260px;
+  flex: 1 1 auto;
 }
 
 .mc-org-name {
   margin: 0;
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 800;
+  letter-spacing: -.01em;
   color: #18181b;
 }
 
 .mc-org-name-input {
   width: 100%;
-  height: 38px;
+  height: 34px;
   margin-left: -8px;
   padding: 0 8px;
   border: 1px solid transparent;
   border-radius: 9px;
   background: transparent;
   font: inherit;
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 800;
+  letter-spacing: -.01em;
   color: #18181b;
 }
 
@@ -6622,246 +6658,83 @@ body.is-bar-moving * {
 .mc-org-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   margin-top: 4px;
-  font-size: 12px;
+}
+
+.mc-org-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
   color: #71717a;
 }
 
-.mc-org-count {
-  color: #a1a1aa;
+.mc-org-stat + .mc-org-stat::before {
+  content: "";
+  width: 3px;
+  height: 3px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: #d4d4d8;
+}
+
+.mc-org-stat.warn {
+  color: #b45309;
+}
+
+.mc-org-stat .mc-role-chip {
+  padding: 2px 9px;
+  font-size: 11px;
 }
 
 .mc-org-head-actions {
   display: flex;
+  align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .mc-org-head-actions .mc-btn {
-  height: 32px;
-  padding: 0 12px;
-  font-size: 12.5px;
-}
-
-.mc-org-danger {
-  color: #be123c;
-}
-
-.mc-org-danger:hover:not(:disabled) {
-  background: #fff1f2;
-  border-color: #fecdd3;
-}
-
-.mc-org-section-title {
-  margin-bottom: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #71717a;
-}
-
-.mc-org-hint {
-  margin: 6px 0 0;
-  font-size: 11.5px;
-  color: #a1a1aa;
-}
-
-/* 초대 · 소유권 넘기기 줄 */
-.mc-org-invite-form,
-.mc-org-transfer {
-  padding: 14px;
-  border: 1px solid #ececef;
-  border-radius: 12px;
-  background: #fafafb;
-}
-
-.mc-org-invite-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.mc-org-invite-row input,
-.mc-org-invite-row select {
   height: 36px;
-  min-width: 0;
-  padding: 0 10px;
-  border: 1px solid #e4e4e7;
-  border-radius: 9px;
-  background: #ffffff;
-  font: inherit;
-  font-size: 13px;
+}
+
+.mc-org-head-actions .mc-btn-icon {
+  width: 36px;
+}
+
+/* 펼치는 카드 (초대 · 소유권 넘기기) */
+.mc-org-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid #ccfbf1;
+  border-radius: 14px;
+  background: #f7fdfc;
+}
+
+.mc-org-panel.hidden {
+  display: none;
+}
+
+.mc-org-panel-warn {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.mc-org-panel-title {
+  font-size: 14px;
+  font-weight: 800;
   color: #18181b;
 }
 
-.mc-org-invite-row input[type="email"] {
-  flex: 2 1 200px;
-}
-
-.mc-org-invite-row input[type="text"] {
-  flex: 1 1 100px;
-}
-
-.mc-org-invite-row select {
-  flex: 0 0 auto;
-  padding-right: 28px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center / 12px;
-  cursor: pointer;
-}
-
-.mc-org-transfer select {
-  flex: 1 1 auto;
-}
-
-.mc-org-invite-row .mc-btn {
-  height: 36px;
-}
-
-.mc-org-invite-row input:focus,
-.mc-org-invite-row select:focus {
-  outline: none;
-  border-color: #0f766e;
-  box-shadow: 0 0 0 3px #ccfbf1;
-}
-
-/* 조직원 줄 */
-.mc-org-members {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.mc-org-member {
+.mc-org-invite-grid {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1.6fr) minmax(0, 1fr) auto auto 30px;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 10px 8px 12px;
-  border: 1px solid #ececef;
-  border-radius: 12px;
-}
-
-.mc-org-member.is-pending {
-  background: #fafafb;
-}
-
-.mc-org-member.is-pending .mc-row-avatar {
-  opacity: .55;
-}
-
-.mc-org-member-who {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.mc-org-member-name {
-  font-size: 13.5px;
-  font-weight: 700;
-  color: #18181b;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.mc-org-member-email {
-  font-size: 11.5px;
-  color: #a1a1aa;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.mc-org-member-title {
-  font-size: 12.5px;
-  color: #52525b;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.mc-org-inline {
-  width: 100%;
-  min-width: 0;
-  height: 28px;
-  margin-left: -6px;
-  padding: 0 6px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  font: inherit;
-}
-
-input.mc-org-member-name {
-  font-size: 13.5px;
-  font-weight: 700;
-}
-
-input.mc-org-member-title {
-  font-size: 12.5px;
-}
-
-.mc-org-inline:hover {
-  background: #fafafb;
-  border-color: #ececef;
-}
-
-.mc-org-inline:focus {
-  outline: none;
-  background: #ffffff;
-  border-color: #0f766e;
-  box-shadow: 0 0 0 3px #ccfbf1;
-}
-
-.mc-org-inline::placeholder {
-  color: #c4c4cc;
-}
-
-.mc-org-pending {
-  font-size: 11px;
-  font-weight: 700;
-  color: #b45309;
-  background: #fef3c7;
-  padding: 3px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.mc-org-role-select {
-  height: 30px;
-  padding: 0 26px 0 10px;
-  border: 1px solid #e4e4e7;
-  border-radius: 999px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center / 11px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  color: #3f3f46;
-  cursor: pointer;
-}
-
-.mc-org-member .mc-btn-icon {
-  width: 30px;
-  height: 30px;
-  border-color: transparent;
-  background: transparent;
-  color: #a1a1aa;
-}
-
-.mc-org-action-gap {
-  width: 30px;
-}
-
-/* 새 조직 만들기 */
-.mc-org-create {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 520px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
 }
 
 .mc-org-field {
@@ -6873,21 +6746,363 @@ input.mc-org-member-title {
   color: #71717a;
 }
 
+.mc-org-field.wide {
+  grid-column: 1 / -1;
+}
+
+.mc-org-field {
+  min-width: 0;
+}
+
 .mc-org-field input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.mc-org-field input,
+.mc-org-select {
   height: 40px;
   padding: 0 12px;
   border: 1px solid #e4e4e7;
-  border-radius: 9px;
+  border-radius: 10px;
+  background: #ffffff;
   font: inherit;
   font-size: 14px;
   font-weight: 600;
   color: #18181b;
 }
 
-.mc-org-field input:focus {
+.mc-org-field input::placeholder {
+  color: #c4c4cc;
+  font-weight: 500;
+}
+
+.mc-org-field input:focus,
+.mc-org-select:focus {
   outline: none;
   border-color: #0f766e;
   box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+/* 권한 고르기: 버튼 묶음 + 설명 한 줄 */
+.mc-org-seg {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 3px;
+  border-radius: 11px;
+  background: #ececef;
+}
+
+.mc-org-seg button {
+  height: 32px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #52525b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mc-org-seg button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .6);
+}
+
+.mc-org-seg button.on,
+.mc-org-seg button.on:hover:not(:disabled) {
+  background: #ffffff;
+  color: #0f766e;
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .12);
+}
+
+.mc-org-role-help {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #52525b;
+}
+
+.mc-org-panel-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mc-org-panel-foot .mc-org-hint {
+  flex: 1 1 220px;
+}
+
+.mc-org-panel-foot .mc-org-select {
+  flex: 1 1 240px;
+}
+
+.mc-org-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: #a1a1aa;
+}
+
+/* 조직원 / 초대 대기 표 */
+.mc-org-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mc-org-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-org-section-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #18181b;
+}
+
+.mc-org-section-count {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #71717a;
+  background: #f4f4f5;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.mc-org-section-empty {
+  padding: 16px;
+  border: 1.5px dashed #e4e4e7;
+  border-radius: 12px;
+  font-size: 12.5px;
+  color: #a1a1aa;
+  text-align: center;
+}
+
+.mc-org-table {
+  border: 1px solid #ececef;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.mc-org-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) 112px 40px;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 12px 8px 14px;
+  border-top: 1px solid #f4f4f5;
+  transition: background .12s;
+}
+
+.mc-org-row:first-child {
+  border-top: 0;
+}
+
+.mc-org-row:not(.mc-org-row-head):hover {
+  background: #fafafb;
+}
+
+.mc-org-row-head {
+  min-height: 34px;
+  padding-top: 0;
+  padding-bottom: 0;
+  background: #fafafb;
+  font-size: 11px;
+  font-weight: 800;
+  color: #a1a1aa;
+  letter-spacing: .03em;
+}
+
+.mc-org-row.is-pending .mc-row-avatar {
+  opacity: .5;
+}
+
+.mc-org-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mc-org-who-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mc-org-who-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mc-org-member-name {
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #18181b;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-org-me {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #0f766e;
+  background: #ccfbf1;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.mc-org-member-email {
+  font-size: 11.5px;
+  color: #a1a1aa;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-org-member-title {
+  font-size: 13px;
+  color: #3f3f46;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-org-member-title.empty {
+  color: #c4c4cc;
+}
+
+/* 표 안에서 바로 고치는 칸: 평소엔 글자처럼, 올리면 칸 모양 */
+.mc-org-inline {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  margin-left: -7px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+}
+
+input.mc-org-member-name {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+input.mc-org-member-title {
+  font-size: 13px;
+}
+
+.mc-org-inline:hover {
+  background: #ffffff;
+  border-color: #e4e4e7;
+}
+
+.mc-org-inline:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px #ccfbf1;
+}
+
+.mc-org-inline::placeholder {
+  color: #c4c4cc;
+  font-weight: 500;
+}
+
+/* 권한: 칩 모양 선택 상자 */
+.mc-org-role-select {
+  justify-self: start;
+  height: 28px;
+  padding: 0 24px 0 10px;
+  border: 0;
+  border-radius: 999px;
+  -webkit-appearance: none;
+  appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 10px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mc-org-role-select:focus {
+  outline: 2px solid #0f766e;
+  outline-offset: 1px;
+}
+
+.mc-org-role-cell {
+  justify-self: start;
+}
+
+.mc-org-row-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mc-org-row-action .mc-btn-icon {
+  width: 32px;
+  height: 32px;
+  border-color: transparent;
+  background: transparent;
+  color: #a1a1aa;
+}
+
+/* 마우스가 있는 환경에서는 올렸을 때만 보인다 */
+@media (hover: hover) {
+  .mc-org-row-action .mc-btn-icon {
+    opacity: 0;
+    transition: opacity .12s;
+  }
+
+  .mc-org-row:hover .mc-org-row-action .mc-btn-icon,
+  .mc-org-row-action .mc-btn-icon:focus-visible {
+    opacity: 1;
+  }
+}
+
+/* ---------- 새 조직 만들기 ---------- */
+.mc-org-create {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 460px;
+  margin: 24px auto 0;
+}
+
+.mc-org-create-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  background: #f0fdfa;
+  color: #0f766e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-org-create-sub {
+  margin: -6px 0 4px;
+  font-size: 13px;
+  color: #71717a;
 }
 
 .mc-org-field-row {
@@ -6900,9 +7115,15 @@ input.mc-org-member-title {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  margin-top: 4px;
 }
 
-/* 좁은 화면: 위아래로 */
+.mc-org-create-actions .mc-btn {
+  height: 40px;
+  padding: 0 18px;
+}
+
+/* ---------- 좁은 화면 ---------- */
 @media (max-width: 760px) {
   .mc-org-modal {
     height: 92vh;
@@ -6924,15 +7145,19 @@ input.mc-org-member-title {
     padding: 16px 18px;
   }
 
-  .mc-org-member {
-    grid-template-columns: 32px minmax(0, 1fr) auto 30px;
+  .mc-org-head {
+    flex-wrap: wrap;
   }
 
-  .mc-org-member-title,
-  .mc-org-member .mc-org-pending {
-    grid-column: 2 / 3;
+  .mc-org-row {
+    grid-template-columns: minmax(0, 1fr) auto 36px;
   }
 
+  .mc-org-row > :nth-child(2) {
+    display: none;
+  }
+
+  .mc-org-invite-grid,
   .mc-org-field-row {
     grid-template-columns: 1fr;
   }
