@@ -1,6 +1,46 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-09-21-q";
+  --css-version: "2026-10-24-pretendard-teal";
+}
+
+/* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
+   Inter/시스템 폰트보다 한글·영문·숫자가 한 벌로 자연스럽게 어울려서
+   "AI가 만든 느낌"을 줄이려고 교체함. 로컬 파일로 직접 서빙한다
+   (구글 폰트 네트워크 요청 없음). ▲▲▲ */
+@font-face {
+  font-family: "Pretendard";
+  src: url("fonts/Pretendard-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("fonts/Pretendard-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("fonts/Pretendard-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("fonts/Pretendard-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("fonts/Pretendard-ExtraBold.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
 }
 
 * {
@@ -16,8 +56,8 @@ body {
   min-height: 100%;
 
   font-family:
-    Arial,
-    "Noto Sans KR",
+    "Pretendard",
+    -apple-system,
     "Apple SD Gothic Neo",
     "Malgun Gothic",
     sans-serif;
@@ -26,13 +66,15 @@ body {
   color: #1f2937;
 }
 
-/* 로고 전용 글꼴. 못 불러오면 본문 글꼴로 자연스럽게 대체된다. */
+/* 로고: 본문과 같은 Pretendard를 굵기로만 구분한다(이전엔 Sora/Manrope 구글폰트 의존). */
 .brand-main {
-  font-family: "Sora", Arial, sans-serif;
+  font-family: "Pretendard", sans-serif;
+  font-weight: 800;
 }
 
 .brand-sub {
-  font-family: "Manrope", Arial, sans-serif;
+  font-family: "Pretendard", sans-serif;
+  font-weight: 500;
 }
 
 body {
@@ -140,15 +182,15 @@ button:hover:not(:disabled) {
 }
 
 button.primary {
-  background: #2563eb;
+  background: #0F766E;
 
   color: white;
 
-  border-color: #2563eb;
+  border-color: #0F766E;
 }
 
 button.primary:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: #0B5B55;
 }
 
 button:active:not(:disabled) {
@@ -165,7 +207,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid #0F766E;
 
   outline-offset: 1px;
 }
@@ -233,9 +275,9 @@ main {
 }
 
 .year-title[aria-expanded="true"] {
-  background: #eef2ff;
+  background: #F0FDFA;
 
-  border-color: #c7d2fe;
+  border-color: #99F6E4;
 }
 
 .control-bar button {
@@ -335,11 +377,11 @@ main {
 
   padding: 0 8px 0 14px;
 
-  background: #dde5f0;
+  background: #EEF1F0;
 
-  border-bottom: 1px solid #c5d0df;
+  border-bottom: 1px solid #DCE3E0;
 
-  box-shadow: inset 0 1px 0 #c5d0df;
+  box-shadow: inset 0 1px 0 #DCE3E0;
 
   font-size: 13px;
 
@@ -465,7 +507,7 @@ main {
 }
 
 .task-card:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid #0F766E;
 
   outline-offset: -2px;
 }
@@ -473,16 +515,16 @@ main {
 .task-card.dragging {
   opacity: .55;
 
-  background: #eef2ff;
+  background: #F0FDFA;
 }
 
 
 /* 끄는 동안: 놓으면 들어갈 카테고리를 강조하고 커서/선택을 정리 */
 
 .category-label.drag-over {
-  background: #bcd3fb;
+  background: #5EEAD4;
 
-  box-shadow: inset 4px 0 0 #2563eb;
+  box-shadow: inset 4px 0 0 #0F766E;
 }
 
 body.is-dragging,
@@ -582,7 +624,7 @@ body.is-dragging * {
 
   padding: 2px 4px;
 
-  border: 1px solid #2563eb;
+  border: 1px solid #0F766E;
 
   border-radius: 5px;
 
@@ -758,11 +800,11 @@ body.is-dragging * {
 
   height: 38px;
 
-  border-bottom: 1px solid #c5d0df;
+  border-bottom: 1px solid #DCE3E0;
 
-  box-shadow: inset 0 1px 0 #c5d0df;
+  box-shadow: inset 0 1px 0 #DCE3E0;
 
-  background: #dde5f0;
+  background: #EEF1F0;
 }
 
 
@@ -1040,7 +1082,7 @@ body.is-dragging * {
 }
 
 .yp-year:hover {
-  background: #eef2ff;
+  background: #F0FDFA;
 }
 
 .yp-year.this-year {
@@ -1048,9 +1090,9 @@ body.is-dragging * {
 }
 
 .yp-year.selected {
-  background: #2563eb;
+  background: #0F766E;
 
-  border-color: #2563eb;
+  border-color: #0F766E;
 
   color: white;
 }
@@ -1237,7 +1279,7 @@ body.is-dragging * {
 
   background: white;
 
-  border: 2px solid #2563eb;
+  border: 2px solid #0F766E;
 
   box-shadow: 0 2px 5px rgba(0, 0, 0, .15);
 
@@ -1307,7 +1349,7 @@ body.is-dragging * {
 
   background: white;
 
-  border: 2px solid #2563eb;
+  border: 2px solid #0F766E;
 
   box-shadow: 0 2px 5px rgba(0, 0, 0, .15);
 
@@ -1866,7 +1908,7 @@ body.is-dragging * {
 #shellView * { box-sizing: border-box; }
 
 #shellView {
-  font-family: "Manrope", "Sora", -apple-system, "Pretendard", sans-serif;
+  font-family: "Pretendard", -apple-system, sans-serif;
   background: #f4f6fb;
   min-height: 100vh;
 }
@@ -1890,7 +1932,7 @@ body.is-dragging * {
   font-weight: 800;
   margin: 0;
   color: #1f2430;
-  font-family: "Sora", sans-serif;
+  font-family: "Pretendard", sans-serif;
 }
 
 .mc-topbar-actions {
@@ -1913,12 +1955,12 @@ body.is-dragging * {
 .mc-btn:hover { background: #f0f2f7; }
 
 .mc-btn-primary {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: #0F766E;
+  border-color: #0F766E;
   color: #ffffff;
 }
 
-.mc-btn-primary:hover { background: #2f6fde; }
+.mc-btn-primary:hover { background: #0B5B55; }
 
 .mc-btn-ghost { background: #fff; }
 
@@ -1929,6 +1971,190 @@ body.is-dragging * {
 }
 
 .mc-btn-danger:hover { background: #fef2f2; }
+
+/* ▼▼▼ 접이식 사이드바 (추가분) ▼▼▼ */
+.mc-shell-layout {
+  display: flex;
+  align-items: flex-start;
+}
+
+.mc-shell-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mc-sidebar {
+  width: 248px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid #e2e6ef;
+  min-height: 100vh;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width .15s ease;
+}
+
+#shellView.mc-sidebar-collapsed .mc-sidebar {
+  width: 64px;
+}
+
+.mc-sidebar-head {
+  height: 60px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-bottom: 1px solid #f0f0f2;
+}
+
+.mc-sidebar-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: #0f766e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mc-sidebar-toggle {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid #e2e6ef;
+  background: #fff;
+  color: #52525b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mc-sidebar-toggle svg {
+  transition: transform .15s ease;
+}
+
+#shellView.mc-sidebar-collapsed .mc-sidebar-toggle svg {
+  transform: rotate(180deg);
+}
+
+.mc-sidebar-section {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.mc-sidebar-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.mc-sidebar-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #a1a1aa;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mc-sidebar-add {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: transparent;
+  color: #71717a;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.mc-sidebar-add:hover { background: #f4f4f5; }
+
+.mc-sidebar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mc-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  border-left: 3px solid transparent;
+  text-decoration: none;
+  color: #3f3f46;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  border-top: 0;
+  border-right: 0;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+}
+
+.mc-sidebar-item:hover { background: #f4f4f5; }
+
+.mc-sidebar-item-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #d4d4d8;
+  flex-shrink: 0;
+}
+
+.mc-sidebar-item-shared .mc-sidebar-item-dot { background: #8a5cf6; }
+
+.mc-sidebar-item-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mc-sidebar-item.active {
+  background: #f0fdfa;
+  border-left-color: #0f766e;
+}
+
+.mc-sidebar-item.active .mc-sidebar-item-name { color: #134e4a; }
+
+#shellView.mc-sidebar-collapsed .mc-sidebar-section-title,
+#shellView.mc-sidebar-collapsed .mc-sidebar-item-name,
+#shellView.mc-sidebar-collapsed .mc-sidebar-add {
+  display: none;
+}
+
+#shellView.mc-sidebar-collapsed .mc-sidebar-item {
+  justify-content: center;
+  padding: 7px 0;
+}
+
+#shellView.mc-sidebar-collapsed .mc-sidebar-section-head {
+  justify-content: center;
+}
+
+@media (max-width: 760px) {
+  .mc-sidebar { display: none; }
+}
+/* ▲▲▲ 접이식 사이드바 (추가분) 끝 ▲▲▲ */
 
 .mc-chart-list {
   display: flex;
@@ -2129,7 +2355,7 @@ body.is-dragging * {
 
 .custom-range-btn {
   border: 1px solid #e2e6ef;
-  background: #3b82f6;
+  background: #0F766E;
   color: #fff;
   border-radius: 8px;
   padding: 5px 12px;
@@ -2169,7 +2395,7 @@ body.is-dragging * {
   width: 9em;
   max-width: 60vw;
   padding: 2px 4px;
-  border: 1px solid #2563eb;
+  border: 1px solid #0F766E;
   border-radius: 5px;
   font: inherit;
   font-weight: 700;
