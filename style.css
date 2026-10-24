@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-pretendard-teal";
+  --css-version: "2026-10-24-design-v2";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -147,13 +147,35 @@ body {
 
   flex-shrink: 0;
 
-  gap: 8px;
+  /* (디자인 추가분) 낱개로 떠 있던 버튼들을 옅은 회색 알약 안에 묶어서
+     "툴바"처럼 한눈에 보이게 한다. */
+  gap: 2px;
+  background: #f4f4f5;
+  padding: 4px;
+  border-radius: 11px;
 }
 
 .top-actions button {
   flex-shrink: 0;
 
   white-space: nowrap;
+
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  transition: background .12s;
+}
+
+.top-actions button:hover:not(:disabled) {
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(24, 24, 27, .08);
+}
+
+.top-actions button#todayBtn {
+  color: #0f766e;
 }
 
 
@@ -377,7 +399,12 @@ main {
 
   padding: 0 8px 0 14px;
 
-  background: #EEF1F0;
+  /* (디자인 추가분) 카테고리마다 고른 색(JS가 --cat-color로 넘겨줌)을
+     옅게 섞어 줄 전체를 물들이고, 왼쪽에 그 색 띠를 세운다. 색을
+     아직 못 받은 줄(기타 등)은 --cat-color가 없어 기존 중립색 그대로. */
+  background: color-mix(in srgb, var(--cat-color, #c8cfcd) 12%, #ffffff);
+
+  border-left: 4px solid var(--cat-color, transparent);
 
   border-bottom: 1px solid #DCE3E0;
 
