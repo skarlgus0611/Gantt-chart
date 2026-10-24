@@ -14,13 +14,6 @@
 
   <title>간트차트</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500&family=Sora:wght@700&display=swap"
-    rel="stylesheet"
-  >
-
   <!-- 캡처 기능용: DOM을 이미지로 저장 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -41,30 +34,61 @@
   ========================================================= -->
   <div id="shellView" style="display:none">
 
-    <header class="mc-topbar">
-      <div class="brand mc-brand">
-        <span class="brand-main">Gantt Chart</span>
-        <span class="brand-sep">|</span>
-        <span class="brand-sub">Yearly Progress Management</span>
-      </div>
-      <div class="mc-topbar-actions">
-        <!-- (요청사항) 지금 어느 구글 계정으로 로그인했는지 프로필 사진으로 표시 -->
-        <img id="mcUserAvatar" class="mc-user-avatar hidden" alt="" referrerpolicy="no-referrer">
-        <button id="mcKeyBtn" class="mc-btn mc-btn-ghost" type="button">Google 로그인</button>
-        <button id="mcReloadBtn" class="mc-btn mc-btn-ghost" type="button">새로고침</button>
-        <button id="mcExportAllBtn" class="mc-btn mc-btn-ghost" type="button">전체 엑셀로 내보내기</button>
-        <button id="mcManageBtn" class="mc-btn mc-btn-ghost" type="button">차트 관리</button>
-        <button id="mcAddBtn" class="mc-btn mc-btn-primary mc-badge-anchor" type="button">
-          ＋ 새 차트
-          <span id="mcAddBtnBadge" class="mc-badge hidden">0</span>
-        </button>
-      </div>
-    </header>
+    <div class="mc-shell-layout">
 
-    <main id="mcChartList" class="mc-chart-list"></main>
+      <!-- ▼▼▼ 접이식 사이드바 (추가분) ▼▼▼ -->
+      <aside id="mcSidebar" class="mc-sidebar">
+        <div class="mc-sidebar-head">
+          <div class="mc-sidebar-logo" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="5" width="10" height="3.2" rx="1.6" fill="#fff"></rect>
+              <rect x="7" y="10.4" width="14" height="3.2" rx="1.6" fill="#fff" opacity="0.85"></rect>
+              <rect x="3" y="15.8" width="8" height="3.2" rx="1.6" fill="#fff" opacity="0.6"></rect>
+            </svg>
+          </div>
+          <button id="mcSidebarToggle" type="button" class="mc-sidebar-toggle" aria-label="사이드바 접기/펼치기" title="사이드바 접기/펼치기">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>
+          </button>
+        </div>
+        <div class="mc-sidebar-section">
+          <div class="mc-sidebar-section-head">
+            <span class="mc-sidebar-section-title">내 차트</span>
+            <button id="mcSidebarAddBtn" type="button" class="mc-sidebar-add" aria-label="새 차트 추가" title="새 차트 추가">＋</button>
+          </div>
+          <nav id="mcSidebarList" class="mc-sidebar-list" aria-label="차트 목록"></nav>
+        </div>
+      </aside>
+      <!-- ▲▲▲ 접이식 사이드바 (추가분) 끝 ▲▲▲ -->
 
-    <div id="mcEmpty" class="mc-empty hidden">
-      표시할 차트가 없습니다. "＋ 새 차트"를 눌러 추가하세요.
+      <div class="mc-shell-main">
+
+        <header class="mc-topbar">
+          <div class="brand mc-brand">
+            <span class="brand-main">Gantt Chart</span>
+            <span class="brand-sep">|</span>
+            <span class="brand-sub">Yearly Progress Management</span>
+          </div>
+          <div class="mc-topbar-actions">
+            <!-- (요청사항) 지금 어느 구글 계정으로 로그인했는지 프로필 사진으로 표시 -->
+            <img id="mcUserAvatar" class="mc-user-avatar hidden" alt="" referrerpolicy="no-referrer">
+            <button id="mcKeyBtn" class="mc-btn mc-btn-ghost" type="button">Google 로그인</button>
+            <button id="mcReloadBtn" class="mc-btn mc-btn-ghost" type="button">새로고침</button>
+            <button id="mcExportAllBtn" class="mc-btn mc-btn-ghost" type="button">전체 엑셀로 내보내기</button>
+            <button id="mcManageBtn" class="mc-btn mc-btn-ghost" type="button">차트 관리</button>
+            <button id="mcAddBtn" class="mc-btn mc-btn-primary mc-badge-anchor" type="button">
+              ＋ 새 차트
+              <span id="mcAddBtnBadge" class="mc-badge hidden">0</span>
+            </button>
+          </div>
+        </header>
+
+        <main id="mcChartList" class="mc-chart-list"></main>
+
+        <div id="mcEmpty" class="mc-empty hidden">
+          표시할 차트가 없습니다. "＋ 새 차트"를 눌러 추가하세요.
+        </div>
+
+      </div>
     </div>
 
     <div id="mcAddModal" class="mc-modal-backdrop hidden">
