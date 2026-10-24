@@ -131,23 +131,29 @@ export function inviteMember(chartId, email, role) {
   });
 }
 
-export function respondInvite(chartId, email, accept) {
+export async function respondInvite(chartId, email, accept) {
   const field = "members." + email;
+  const chartRef = doc(db, "charts", chartId);
   if (!accept) {
-    return updateDoc(doc(db, "charts", chartId), {
+    return updateDoc(chartRef, {
       [field]: null,
       pendingEmails: arrayRemove(email)
     });
   }
-  return getDoc(doc(db, "charts", chartId)).then((snap) => {
-    const data = snap.data() || {};
-    const entry = (data.members || {})[email] || { role: "viewer" };
-    return updateDoc(doc(db, "charts", chartId), {
-      [field]: { role: entry.role, status: "accepted" },
-      pendingEmails: arrayRemove(email),
-      memberEmails: arrayUnion(email)
-    });
+  const snap = await getDoc(chartRef);
+  const data = snap.data() || {};
+  const entry = (data.members || {})[email] || { role: "viewer" };
+  const newMemberEmails = (data.memberEmails || []).includes(email)
+    ? (data.memberEmails || [])
+    : (data.memberEmails || []).concat(email);
+  await updateDoc(chartRef, {
+    [field]: { role: entry.role, status: "accepted" },
+    pendingEmails: arrayRemove(email),
+    memberEmails: arrayUnion(email)
   });
+  /* (성능/Rules 수정) memberEmails가 실제로 바뀌는 시점(수락)이라
+     이 차트의 작업/카테고리 복사값도 같이 맞춰준다. */
+  await restampChartAcl(chartId, data.ownerId, newMemberEmails);
 }
 
 export function setMemberRole(chartId, email, role) {
@@ -155,13 +161,29 @@ export function setMemberRole(chartId, email, role) {
   return updateDoc(doc(db, "charts", chartId), { [field]: role });
 }
 
-export function removeMember(chartId, email) {
+export async function removeMember(chartId, email) {
   const field = "members." + email;
-  return updateDoc(doc(db, "charts", chartId), {
+  const chartRef = doc(db, "charts", chartId);
+  const snap = await getDoc(chartRef);
+  const data = snap.data() || {};
+  const newMemberEmails = (data.memberEmails || []).filter((e) => e !== email);
+  await updateDoc(chartRef, {
     [field]: null,
     memberEmails: arrayRemove(email),
     pendingEmails: arrayRemove(email)
   });
+  /* (성능/Rules 수정) memberEmails가 줄어드는 시점이라 작업/카테고리
+     복사값도 같이 맞춰준다 — 안 하면 제거된 사람이 작업 문서에 남아있는
+     옛 복사값 때문에 계속 읽을 수 있게 되는 보안 구멍이 생긴다. */
+  await restampChartAcl(chartId, data.ownerId, newMemberEmails);
+}
+
+export async function revokeAllSharing(chartId) {
+  const chartRef = doc(db, "charts", chartId);
+  const snap = await getDoc(chartRef);
+  const data = snap.data() || {};
+  await updateDoc(chartRef, { members: {}, memberEmails: [], pendingEmails: [] });
+  await restampChartAcl(chartId, data.ownerId, []);
 }
 
 /* 내 초대함: 아직 수락 안 한 초대가 있는 차트 목록 */
@@ -225,14 +247,22 @@ export async function getTaskOnce(chartId, taskId) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-export function createTask(chartId, data) {
+/* (성능/Rules 수정) 작업 문서 자체에 ownerId/memberEmails를 "복사"해서
+   같이 저장해둔다. 예전엔 Rules가 작업 하나 읽을 때마다 부모 차트
+   문서를 get()으로 또 읽어서 권한을 확인했는데, 이게 작업이 N개면
+   N번의 숨은 추가 조회가 되어 느렸다. 이제 읽기 권한 체크는 이
+   복사값만 보고 바로 판단하므로 get()이 전혀 필요 없다(아래
+   firestore.rules 참고). acl은 { ownerId, memberEmails } — 호출하는
+   쪽(app2.js)이 그 차트의 현재 값을 그대로 넘겨준다. */
+export function createTask(chartId, data, acl = {}) {
   return addDoc(collection(db, "charts", chartId, "tasks"), {
     name: data.name || "", categoryId: data.categoryId || "",
     start: data.start || "", end: data.end || "",
     progress: Number(data.progress) || 0, color: data.color || "",
     memo: data.memo || "", target: data.target || "", owner: data.owner || "",
     order: Number(data.order) || 0,
-    calendarEventId: "", updatedAt: serverTimestamp()
+    calendarEventId: "", updatedAt: serverTimestamp(),
+    ownerId: acl.ownerId || "", memberEmails: acl.memberEmails || []
   });
 }
 
@@ -274,11 +304,31 @@ export async function getCategoryOnce(chartId, categoryId) {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 }
 
-export function createCategory(chartId, data) {
+export function createCategory(chartId, data, acl = {}) {
   return addDoc(collection(db, "charts", chartId, "categories"), {
     name: data.name || "새 카테고리", color: data.color || "#4f8ef7",
-    order: Number(data.order) || 0
+    order: Number(data.order) || 0,
+    ownerId: acl.ownerId || "", memberEmails: acl.memberEmails || []
   });
+}
+
+/* (성능/Rules 수정) 차트의 멤버가 바뀔 때(수락/삭제/전체해제) 그 차트의
+   모든 작업·카테고리 문서에 찍혀있는 ownerId/memberEmails 복사값을
+   한 번에 다시 맞춘다. 문서가 몇 개든 배치 쓰기 1~2번으로 끝나서(500개
+   단위로 쪼갬), "읽을 때마다 N번 느려지는" 문제를 "멤버 바뀔 때만 잠깐"
+   으로 옮기는 것 — 멤버 변경은 작업 읽기보다 훨씬 드물게 일어나므로
+   전체적으로 훨씬 빠르다. */
+export async function restampChartAcl(chartId, ownerId, memberEmails) {
+  const [tasksSnap, catsSnap] = await Promise.all([
+    getDocs(collection(db, "charts", chartId, "tasks")),
+    getDocs(collection(db, "charts", chartId, "categories"))
+  ]);
+  const refs = tasksSnap.docs.map((d) => d.ref).concat(catsSnap.docs.map((d) => d.ref));
+  for (let i = 0; i < refs.length; i += 450) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 450).forEach((ref) => batch.update(ref, { ownerId: ownerId || "", memberEmails: memberEmails || [] }));
+    await batch.commit();
+  }
 }
 
 export function updateCategory(chartId, categoryId, fields) {
@@ -307,3 +357,4 @@ export async function getChartsOnce(uid, email) {
   sharedSnap.docs.forEach((d) => { byId[d.id] = { id: d.id, ...d.data() }; });
   return Object.values(byId);
 }
+
