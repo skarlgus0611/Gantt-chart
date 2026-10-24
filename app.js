@@ -976,14 +976,18 @@ async function coreApiPost(action, chartId, body = {}) {
 
     case "updateChart": {
       const data = body.data || {};
-      const chart = await fb.getChartOnce(chartId || data.id);
+      /* (버그 수정) 고칠 차트는 data.id가 먼저다. 예전엔 chartId를 먼저 써서,
+         모음(셸) 페이지의 "차트 관리"에서 숨기기/이름 저장을 누르면 셸의
+         CHART_ID("default")를 고치려다 권한 오류가 났다. */
+      const targetId = data.id || chartId;
+      const chart = await fb.getChartOnce(targetId);
       if (!chart) {
         throw new Error("차트를 찾을 수 없습니다.");
       }
       const fields = validateChartMetaFields(data, chart);
       if (Object.keys(fields).length) {
-        await fb.updateChartMeta(chartId || data.id, fields);
-        invalidateChartMetaCache(chartId || data.id);
+        await fb.updateChartMeta(targetId, fields);
+        invalidateChartMetaCache(targetId);
       }
       return { ok: true, result: null, charts: await fbListMyPersonalCharts() };
     }
@@ -5120,7 +5124,7 @@ async function shellLoadCharts() {
       name: c.name,
       rangeStart: c.rangeStart || "",
       rangeEnd: c.rangeEnd || "",
-      hidden: false,
+      hidden: !!c.hidden,
       order: 999999,
       hasCalendar: false,
       shared: true,
@@ -6040,9 +6044,51 @@ function shellRenderManageRows() {
   const root = document.getElementById("mcManageRows");
   root.innerHTML = "";
 
+  /* 목록을 다시 받아 그린다. 공유 차트는 개인 차트 목록 응답에 없으므로 전체를 다시 불러온다. */
+  const afterChange = async (chart, res) => {
+    if (chart.shared) {
+      await shellLoadCharts();
+    } else {
+      shellApplyPersonalChartsList(res.charts);
+    }
+    shellRenderManageRows();
+  };
+
   shellChartsCache.forEach((chart) => {
     const row = document.createElement("div");
     row.className = "mc-manage-row" + (chart.hidden ? " is-hidden" : "");
+
+    /* (버그 수정) 남이 공유해 준 차트는 내 것이 아니라서 이름 바꾸기·숨기기·삭제가
+       권한 오류로 실패했다. 여기서는 이름과 "공유받음" 표시, 나가기만 보여준다. */
+    if (shellIsReceivedChart(chart)) {
+      const tile = document.createElement("span");
+      tile.className = "mc-manage-tile";
+      tile.setAttribute("aria-hidden", "true");
+      tile.textContent = Array.from(String(chart.name || "?").trim() || "?")[0];
+      row.appendChild(tile);
+
+      const name = document.createElement("span");
+      name.className = "mc-manage-name";
+      name.textContent = chart.name;
+      row.appendChild(name);
+
+      const badge = document.createElement("span");
+      badge.className = "mc-manage-badge mc-manage-badge-shared";
+      badge.textContent = "공유받음";
+      badge.title = (chart.ownerEmail || "") + "님이 공유한 차트";
+      row.appendChild(badge);
+
+      const leaveBtn = mcActionButton("leave", "공유 차트 나가기", true);
+      leaveBtn.classList.add("mc-row-danger");
+      leaveBtn.addEventListener("click", async () => {
+        await shellHandleLeaveShared(chart.chartId, chart.name);
+        shellRenderManageRows();
+      });
+      row.appendChild(leaveBtn);
+
+      root.appendChild(row);
+      return;
+    }
 
     /* (디자인 추가분) 차트 이름 첫 글자 타일 */
     const tile = document.createElement("span");
@@ -6079,10 +6125,9 @@ function shellRenderManageRows() {
       const newName = nameInput.value.trim();
       if (!newName) { showToast("이름을 입력하세요.", true); return; }
       try {
-        const res = await apiPost("updateChart", { data: { id: chart.id, name: newName } });
+        const res = await apiPostForChart("updateChart", chart.id, { data: { id: chart.id, name: newName } });
         showToast("이름을 바꿨습니다.");
-        shellApplyPersonalChartsList(res.charts);
-        shellRenderManageRows();
+        await afterChange(chart, res);
       } catch (error) {
         showToast(error.message || "변경하지 못했습니다.", true, 0);
       }
@@ -6092,10 +6137,9 @@ function shellRenderManageRows() {
     const toggleBtn = mcActionButton(chart.hidden ? "eyeOff" : "eye", chart.hidden ? "보이기" : "숨기기", true);
     toggleBtn.addEventListener("click", () => withBusy(toggleBtn, "변경 중…", async () => {
       try {
-        const res = await apiPost("updateChart", { data: { id: chart.id, hidden: !chart.hidden } });
+        const res = await apiPostForChart("updateChart", chart.id, { data: { id: chart.id, hidden: !chart.hidden } });
         showToast(chart.hidden ? "다시 보이게 했습니다." : "숨겼습니다.");
-        shellApplyPersonalChartsList(res.charts);
-        shellRenderManageRows();
+        await afterChange(chart, res);
       } catch (error) {
         showToast(error.message || "변경하지 못했습니다.", true, 0);
       }
@@ -6111,10 +6155,9 @@ function shellRenderManageRows() {
           return;
         }
         try {
-          const res = await apiPost("deleteChart", { id: chart.id });
+          const res = await apiPostForChart("deleteChart", chart.id, { id: chart.id });
           showToast("삭제했습니다.");
-          shellApplyPersonalChartsList(res.charts);
-          shellRenderManageRows();
+          await afterChange(chart, res);
         } catch (error) {
           showToast(error.message || "삭제하지 못했습니다.", true, 0);
         }
@@ -6618,6 +6661,8 @@ async function fbListMySharedCharts() {
       chartId: c.id, name: c.name || "", rangeStart: c.rangeStart || "", rangeEnd: c.rangeEnd || "",
       role: c.ownerId === fbUser.uid ? "owner" : (((c.members || {})[fbUser.email] || {}).role || "viewer"),
       ownerEmail: c.ownerEmail || "",
+      /* (버그 수정) 내가 소유한 공유 차트는 "숨기기"가 먹도록 숨김 값을 넘긴다. */
+      hidden: c.ownerId === fbUser.uid && !!c.hidden,
       /* (디자인 추가분) 공유 버튼에 "+N" 동그라미를 띄우기 위한 멤버 이메일 목록 */
       members: Object.keys(c.members || {}).filter((email) => c.members[email])
     }));
@@ -7008,7 +7053,7 @@ function shellApplySharedChartsList(sharedList) {
     name: c.name,
     rangeStart: c.rangeStart || "",
     rangeEnd: c.rangeEnd || "",
-    hidden: false,
+    hidden: !!c.hidden,
     order: 999999,
     hasCalendar: false,
     shared: true,
