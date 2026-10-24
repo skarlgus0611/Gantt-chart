@@ -6165,8 +6165,10 @@ html.is-embedded body {
   display: block;
 }
 
-/* 캡처에서는 오늘 선이 막대 글자를 가리지 않게 막대를 위로 */
-.gantt.capturing .task-bar {
+/* 캡처에서는 오늘 선이 막대 글자를 가리지 않게, 막대가 든 줄 묶음을 선보다 위로
+   (줄 묶음은 transform 이 있어 막대 하나만 z-index 를 올려서는 안 된다).
+   작업 줄은 투명해서 막대가 없는 곳에서는 오늘 선이 그대로 보인다. */
+.gantt.capturing .rows-inner {
   z-index: 13;
 }
 
