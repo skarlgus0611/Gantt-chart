@@ -332,14 +332,12 @@ async function googleFetch(url, opts = {}) {
 /* ----- Drive: DB(JSON) 파일 찾기/만들기/읽기/쓰기 ----- */
 
 function emptyDb() {
+  /* (요청사항) 처음 DB 파일을 만들 때 "기본 차트"를 자동으로 끼워넣지
+     않는다. 차트가 하나도 없는 빈 목록으로 시작하고, 사용자가 직접
+     "+"로 추가한 것만 보이게 한다. */
   return {
-    charts: [
-      {
-        id: "default", name: "기본 차트", rangeStart: "", rangeEnd: "",
-        hidden: false, order: 0, createdAt: new Date().toISOString(), calendarId: ""
-      }
-    ],
-    data: { default: { tasks: [], categories: [] } }
+    charts: [],
+    data: {}
   };
 }
 
@@ -418,15 +416,15 @@ async function readDb() {
   if (!db.data || typeof db.data !== "object") {
     db.data = {};
   }
-  if (!db.data.default) {
-    db.data.default = { tasks: [], categories: [] };
-  }
-  if (!db.charts.some((c) => c.id === "default")) {
-    db.charts.unshift({
-      id: "default", name: "기본 차트", rangeStart: "", rangeEnd: "",
-      hidden: false, order: 0, createdAt: new Date().toISOString(), calendarId: ""
-    });
-  }
+  /* (요청사항, 버그 수정) 여기서 "기본 차트"가 목록에 없으면 매번
+     다시 끼워넣던 코드를 지웠다. 이 삽입은 Drive에 저장되지도 않는
+     "그 자리에서만" 만든 가짜 항목이라, 사용자가 지워도 다음에 DB를
+     또 읽을 때마다("거의 모든 동작마다") 똑같은 "기본 차트"가 다시
+     나타나는 것처럼 보였다 — 사용자가 전혀 요청하지 않았는데 매번
+     자동으로 생성되는 것처럼 느껴졌던 원인. 이제 저장된 목록 그대로만
+     보여주고, 더 이상 자동으로 만들어내지 않는다. 단일 차트 화면을
+     ?chart= 없이 열었을 때를 위한 chartData()/findChartMeta()의 안전한
+     "default" id 처리는 그대로 둔다(그건 목록에 안 보이는 내부 처리). */
 
   return db;
 }
