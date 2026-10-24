@@ -1,5 +1,5 @@
 /* =========================================================
- * 간트차트 app.js  (v3, 2026-10-18-share14)
+ * 간트차트 app.js  (v3, 2026-10-18-share15)
  *
  * 이전 버전 대비 바뀐 점
  *  - 좌우 행 높이를 CSS 고정 높이로 맞춤 (JS 높이 동기화 제거)
@@ -60,7 +60,7 @@ const WEEK_LABEL_MIN_WIDTH = 40;
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-18-share14";
+const APP_VERSION = "2026-10-18-share15";
 
 
 /* =========================================================
@@ -197,39 +197,14 @@ async function refreshUserAvatar() {
   }
 }
 
-/* (문제 3) 액세스 토큰은 보통 1시간 정도면 끝난다. 그동안은 지금처럼
-   "로그아웃" 버튼 글자가 보이지만, 토큰이 끝난 뒤 API를 부르면 401이
-   나서 결국 다시 로그인 버튼을 눌러야 했다(그때마다 계정 선택창까지
-   뜸). 서버에 리프레시 토큰을 보관하는 "완전한 로그인 유지"는 토큰을
-   서버에 안 남긴다는 보안 원칙과 부딪히므로, 그 대신 "브라우저가 이미
-   구글에 로그인돼 있고 이전에 이 앱에 동의했다면 팝업 없이 조용히
-   새 토큰만 다시 받아오기"를 시도한다(구글 계정 선택창도 안 뜸). 이게
-   되면 사실상 "이 기기/브라우저는 계속 로그인된 것처럼" 느껴진다.
-   silentAuthPending/silentAuthResolvers는 콜백 하나를 돌려써야 하는
-   initTokenClient 구조에서, "지금 진행 중인 게 사용자가 누른 로그인인지
-   뒤에서 조용히 시도한 갱신인지"를 구분하기 위한 것이다. */
-let silentAuthPending = false;
-let silentAuthResolvers = [];
-
-function trySilentReauth() {
-  return new Promise((resolve) => {
-    if (!tokenClient) {
-      resolve(false);
-      return;
-    }
-    silentAuthPending = true;
-    silentAuthResolvers.push(resolve);
-    try {
-      tokenClient.requestAccessToken({ prompt: "" });
-    } catch (error) {
-      silentAuthPending = false;
-      const resolvers = silentAuthResolvers;
-      silentAuthResolvers = [];
-      resolvers.forEach((r) => r(false));
-    }
-  });
-}
-
+/* (문제 3 — 되돌림, share15) "prompt:''로 조용히 재발급"을 페이지
+   로드/401마다 자동으로 시도하게 했었는데, 이게 실제로는 "팝업을 안
+   띄운다"가 아니라 "뜬 팝업 안에서 계정선택창만 스킵할 수도 있다"는
+   뜻이었다. 그래서 사용자 클릭 없이 자동으로 호출될 때마다 실제
+   팝업이 뜨거나(혹은 브라우저에 막혀서) 오히려 더 거슬리는 결과가
+   났다. 이 방식으로는 "팝업 없는 로그인 유지"를 안전하게 구현할 수
+   없어서 원래 동작(토큰 만료 시 로그인 버튼을 직접 눌러야 함)으로
+   되돌린다. */
 function initGoogleAuth() {
   if (!window.google || !google.accounts || !google.accounts.oauth2) {
     return;
@@ -239,27 +214,14 @@ function initGoogleAuth() {
     client_id: GOOGLE_CLIENT_ID,
     scope: GOOGLE_SCOPES,
     callback: (resp) => {
-      const wasSilent = silentAuthPending;
-      silentAuthPending = false;
-      const resolvers = silentAuthResolvers;
-      silentAuthResolvers = [];
-
       if (resp && resp.access_token) {
         accessToken = resp.access_token;
-        if (!wasSilent) {
-          // 사용자가 직접 로그인 버튼을 눌렀을 때만: 다른 계정으로
-          // 바꿨을 수 있으니 DB 파일 위치를 새로 찾게 한다.
-          dbFileId = "";
-        }
+        dbFileId = "";
         persistAuth();
         setLoginButtonsUi();
-        resolvers.forEach((r) => r(true));
-        if (!wasSilent) {
-          onGoogleLoginSuccess();
-        }
+        onGoogleLoginSuccess();
       } else {
-        resolvers.forEach((r) => r(false));
-        if (!wasSilent && typeof showToast === "function") {
+        if (typeof showToast === "function") {
           showToast("Google 로그인에 실패했습니다.");
         }
       }
@@ -267,14 +229,6 @@ function initGoogleAuth() {
   });
 
   setLoginButtonsUi();
-
-  /* 이전에 로그인했던 적이 있으면(토큰이 지금 끝나 있어도) 사용자가
-     버튼을 누르기 전에 한 번 조용히 갱신을 시도해본다. 성공하면 로그인
-     버튼을 또 누를 필요 없이 바로 이어서 쓸 수 있고, 실패해도 조용히
-     넘어가며 평소처럼 "로그인" 버튼이 보인다. */
-  if (accessToken) {
-    trySilentReauth();
-  }
 }
 
 function onGoogleLoginSuccess() {
@@ -336,7 +290,7 @@ function handleLoginButtonClick() {
   tokenClient.requestAccessToken({ prompt: "select_account" });
 }
 
-async function googleFetch(url, opts = {}, _retried = false) {
+async function googleFetch(url, opts = {}) {
   if (!accessToken) {
     throw new Error("로그인이 필요합니다. 'Google 로그인' 버튼을 눌러주세요.");
   }
@@ -357,18 +311,6 @@ async function googleFetch(url, opts = {}, _retried = false) {
   }
 
   if (response.status === 401) {
-    /* (문제 3) 토큰이 끝나서 401이 났다고 바로 "다시 로그인해주세요"로
-       포기하지 않고, 한 번은 조용한 갱신을 시도해서 성공하면 같은
-       요청을 새 토큰으로 자동으로 다시 보낸다. 사용자 입장에서는
-       아무것도 안 누르고 그냥 계속 쓰게 된다. 조용한 갱신까지 실패했을
-       때만(브라우저의 구글 로그인 자체가 끝났거나 동의가 취소된 경우)
-       진짜로 다시 로그인해달라고 알린다. */
-    if (!_retried) {
-      const refreshed = await trySilentReauth();
-      if (refreshed && accessToken) {
-        return googleFetch(url, opts, true);
-      }
-    }
     accessToken = "";
     persistAuth();
     setLoginButtonsUi();
