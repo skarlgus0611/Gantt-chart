@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v10";
+const APP_VERSION = "2026-10-24-design-v11";
 
 
 /* =========================================================
@@ -666,7 +666,7 @@ async function buildCsvForAllCharts() {
     return "﻿" + rows.join("\r\n");
   }
 
-  const charts = await fb.getChartsOnce(fbUser.uid, fbUser.email);
+  const charts = await fbGetAllMyCharts();
   const sorted = charts.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
 
   for (const chart of sorted) {
@@ -700,7 +700,96 @@ async function buildCsvForAllCharts() {
    (옛 UX와 동일). */
 function hasAnyMembers(chart) {
   const members = (chart && chart.members) || {};
-  return Object.keys(members).some((email) => members[email]);
+  /* (조직 관리 2단계) 조직(원)에게 공유한 차트도 공유 중으로 본다 */
+  return Object.keys(members).some((email) => members[email]) ||
+    ((chart && chart.orgIds) || []).length > 0;
+}
+
+/* =========================================================
+ * (조직 관리 2단계) 조직을 통한 차트 접근
+ *  - [기존 권한] 게스트→뷰어, 참여자→편집자, 관리자·소유자→관리자
+ *  - 차트마다·조직원마다 덮어쓴 권한(overrides)이 있으면 그것을 쓴다.
+ *  - 직접 초대받은 권한과 조직을 통한 권한 중 높은 쪽이 내 권한.
+ *  보안 규칙(firebase/firestore.rules)도 같은 계산을 한다.
+ * ========================================================= */
+const ORG_TO_CHART_ROLE = { guest: "viewer", member: "editor", admin: "admin", owner: "admin" };
+const CHART_ROLE_RANK = { viewer: 0, editor: 1, admin: 2, owner: 3 };
+const CHART_ROLE_LABEL = { viewer: "뷰어", editor: "편집자", admin: "관리자", owner: "소유자" };
+let myOrgMembershipsCache = null;
+
+async function fbMyOrgMemberships(force) {
+  if (!fbUser || typeof fb.getMyOrgMemberships !== "function") return [];
+  if (!myOrgMembershipsCache || force) {
+    try {
+      myOrgMembershipsCache = await fb.getMyOrgMemberships(String(fbUser.email || "").toLowerCase());
+    } catch (error) {
+      console.warn("조직 정보를 불러오지 못했습니다(보안 규칙 확인 필요):", error);
+      myOrgMembershipsCache = [];
+    }
+  }
+  return myOrgMembershipsCache;
+}
+
+function higherChartRole(a, b) {
+  if (!a) return b || "";
+  if (!b) return a;
+  return (CHART_ROLE_RANK[a] || 0) >= (CHART_ROLE_RANK[b] || 0) ? a : b;
+}
+
+/* 한 조직원(email, 조직 권한 orgRole)이 이 차트에서 갖는 권한. 공유 대상이 아니면 "" */
+function chartOrgShareRole(chart, orgId, email, orgRole) {
+  const share = ((chart && chart.orgShares) || {})[orgId];
+  if (!share) return "";
+  const key = String(email || "").toLowerCase();
+  if (!share.all && !(share.picked || {})[key]) return "";
+  return (share.overrides || {})[key] || ORG_TO_CHART_ROLE[orgRole] || "viewer";
+}
+
+function chartOrgRole(chart, memberships) {
+  if (!fbUser || !chart) return "";
+  const email = String(fbUser.email || "").toLowerCase();
+  let best = "";
+  /* 보안 규칙이 앞 3개 조직까지만 확인하므로 화면도 똑같이 */
+  ((chart.orgIds || []).slice(0, 3)).forEach((orgId) => {
+    const membership = (memberships || []).find((m) => m.orgId === orgId && m.status === "accepted");
+    if (membership) best = higherChartRole(best, chartOrgShareRole(chart, orgId, email, membership.role));
+  });
+  return best;
+}
+
+function chartManualRole(chart) {
+  if (!fbUser || !chart) return "";
+  const entry = (chart.members || {})[fbUser.email];
+  return entry && entry.status === "accepted" ? (entry.role || "viewer") : "";
+}
+
+function chartMyRole(chart, memberships) {
+  if (!fbUser || !chart) return "";
+  if (chart.ownerId === fbUser.uid) return "owner";
+  return higherChartRole(chartManualRole(chart), chartOrgRole(chart, memberships));
+}
+
+/* 내가 속한 조직에 공유된 차트들 (직접 공유·소유 차트와 겹치는 것은 뺀다) */
+async function fbGetOrgSharedCharts(knownIds) {
+  if (!fbUser || typeof fb.getOrgChartIndex !== "function") return [];
+  const memberships = (await fbMyOrgMemberships(true)).filter((m) => m.status === "accepted");
+  const indexLists = await Promise.all(memberships.map((m) =>
+    fb.getOrgChartIndex(m.orgId).catch((error) => {
+      console.warn("조직 차트 목록을 불러오지 못했습니다:", error);
+      return [];
+    })
+  ));
+  const ids = Array.from(new Set(indexLists.flat().map((entry) => entry.chartId || entry.id)))
+    .filter((id) => id && !knownIds.has(id));
+  /* 고른 조직원에게만 공유된 차트는 다른 조직원이 열 수 없다 → 조용히 뺀다 */
+  const charts = await Promise.all(ids.map((id) => fb.getChartOnce(id).catch(() => null)));
+  return charts.filter((chart) => chart && chartOrgRole(chart, memberships));
+}
+
+async function fbGetAllMyCharts() {
+  const base = await fb.getChartsOnce(fbUser.uid, fbUser.email);
+  const extra = await fbGetOrgSharedCharts(new Set(base.map((c) => c.id)));
+  return base.concat(extra);
 }
 
 function fbListPersonalCharts(charts) {
@@ -722,7 +811,7 @@ let chartsOnceInFlight = null;
 function fbGetChartsOnceShared() {
   if (!fbUser) return Promise.resolve([]);
   if (!chartsOnceInFlight) {
-    chartsOnceInFlight = fb.getChartsOnce(fbUser.uid, fbUser.email).finally(() => {
+    chartsOnceInFlight = fbGetAllMyCharts().finally(() => {
       chartsOnceInFlight = null;
     });
   }
@@ -1007,6 +1096,14 @@ async function coreApiPost(action, chartId, body = {}) {
           console.error(error);
         }
       }
+      /* (조직 관리 2단계) 조직 목록 문서부터 정리 — 차트가 먼저 없어지면 규칙이 확인을 못 한다 */
+      if ((chart.orgIds || []).length && typeof fb.removeChartOrgIndexes === "function") {
+        try {
+          await fb.removeChartOrgIndexes(id, chart.orgIds);
+        } catch (error) {
+          console.error(error);
+        }
+      }
       await fb.deleteChart(id);
       invalidateChartMetaCache(id);
       return { ok: true, result: null, charts: await fbListMyPersonalCharts() };
@@ -1089,7 +1186,9 @@ async function apiGet() {
   if (fbUser) {
     const chart = await getChartMetaCached(chartId);
     if (chart && chart.ownerId !== fbUser.uid) {
-      const role = ((chart.members || {})[fbUser.email] || {}).role || "viewer";
+      /* (조직 관리 2단계) 조직을 통한 권한도 함께 본다 */
+      const memberships = (chart.orgIds || []).length ? await fbMyOrgMemberships() : [];
+      const role = chartMyRole(chart, memberships) || "viewer";
       if (role === "viewer") {
         document.body.classList.add("shared-viewer-readonly");
       }
@@ -5599,6 +5698,8 @@ async function shellLoadCharts() {
       hasCalendar: false,
       shared: true,
       role: c.role,
+      viaOrgOnly: !!c.viaOrgOnly,
+      orgNames: c.orgNames || [],
       ownerEmail: c.ownerEmail,
       members: Array.isArray(c.members) ? c.members : []
     }));
@@ -5843,7 +5944,10 @@ function shellOpenMoreMenu(chart, box, anchor) {
 
   if (chart.shared && chart.role !== "owner") {
     add("공유 구성원 보기", () => shellOpenMembersModal(chart.chartId));
-    add("공유 차트 나가기", () => shellHandleLeaveShared(chart.chartId, chart.name), true);
+    /* (조직 관리 2단계) 조직을 통해 들어온 차트는 조직에서 나가면 함께 빠진다 */
+    if (!chart.viaOrgOnly) {
+      add("공유 차트 나가기", () => shellHandleLeaveShared(chart.chartId, chart.name), true);
+    }
   }
 
   if (!menu.children.length) {
@@ -6109,7 +6213,7 @@ function shellBuildActionsEl(chart, box) {
 
 function shellSharedStateKey(chart) {
   return (chart.shared ? "1" : "0") + ":" + (chart.role || "") + ":" +
-    (chart.members || []).join(",") + ":" + shellMyName();
+    (chart.members || []).join(",") + ":" + (chart.orgNames || []).join(",") + ":" + shellMyName();
 }
 
 /* ---- 차트 iframe이 알려준 요약값(평균 진행률·카테고리·보이는 기간) ---- */
@@ -6529,7 +6633,7 @@ function shellRenderSidebar(visible) {
  *  - 참여자: 초대(참여자 이하로), 게스트 권한 수정(참여자 이하로). 추방 불가
  *  - 관리자: 초대·추방, 이름·직급 수정, 자기보다 낮은 사람 권한 수정(관리자 이하로)
  *  - 소유자: 전부 + 조직 이름 변경·삭제·소유권 넘기기
- * 같은 규칙을 서버 쪽 firebase/organizations.rules 에서도 검사한다.
+ * 같은 규칙을 서버 쪽 firebase/firestore.rules 에서도 검사한다.
  * ========================================================= */
 
 const ORG_ROLE_LABEL = { owner: "소유자", admin: "관리자", member: "참여자", guest: "게스트" };
@@ -6633,7 +6737,7 @@ function orgShowError(error, fallback) {
   console.error(error);
   const denied = error && (error.code === "permission-denied" || /permission/i.test(error.message || ""));
   showToast(denied
-    ? "권한이 없어서 하지 못했습니다. (조직 보안 규칙이 아직 적용되지 않았다면 firebase/organizations.rules 를 Firebase 콘솔에 붙여 넣어 주세요)"
+    ? "권한이 없어서 하지 못했습니다. (조직 보안 규칙이 아직 적용되지 않았다면 firebase/firestore.rules 를 Firebase 콘솔에 붙여 넣어 주세요)"
     : (error && error.message) || fallback, true, denied ? 6000 : 0);
 }
 
@@ -6756,6 +6860,7 @@ function shellOrgRenderSide() {
           orgState.selectedOrgId = m.orgId;
           orgState.creating = false;
           await shellOrgLoad();
+          shellLoadCharts(); /* (조직 관리 2단계) 조직을 통해 공유된 차트 목록도 바뀐다 */
         } catch (error) {
           orgShowError(error, "수락하지 못했습니다.");
         }
@@ -6967,6 +7072,7 @@ function shellOrgOpenMenu(anchor, myRole, orgName, main) {
         showToast("조직을 삭제했습니다.");
         orgState.selectedOrgId = "";
         await shellOrgLoad();
+        shellLoadCharts(); /* (조직 관리 2단계) 조직을 통해 공유된 차트 목록도 바뀐다 */
       } catch (error) {
         orgShowError(error, "삭제하지 못했습니다.");
       }
@@ -6979,6 +7085,7 @@ function shellOrgOpenMenu(anchor, myRole, orgName, main) {
         showToast("조직에서 나갔습니다.");
         orgState.selectedOrgId = "";
         await shellOrgLoad();
+        shellLoadCharts(); /* (조직 관리 2단계) 조직을 통해 공유된 차트 목록도 바뀐다 */
       } catch (error) {
         orgShowError(error, "나가지 못했습니다.");
       }
@@ -8127,11 +8234,15 @@ async function fbListMyInvites(email) {
 async function fbListMySharedCharts() {
   if (!fbUser) return [];
   const all = await fbGetChartsOnceShared();
+  const memberships = myOrgMembershipsCache || [];
   return all
     .filter((c) => (c.ownerId === fbUser.uid && hasAnyMembers(c)) || c.ownerId !== fbUser.uid)
     .map((c) => ({
       chartId: c.id, name: c.name || "", rangeStart: c.rangeStart || "", rangeEnd: c.rangeEnd || "",
-      role: c.ownerId === fbUser.uid ? "owner" : (((c.members || {})[fbUser.email] || {}).role || "viewer"),
+      role: chartMyRole(c, memberships) || "viewer",
+      /* (조직 관리 2단계) 조직을 통해서만 들어온 차트는 "나가기" 대신 조직에서 나가야 한다 */
+      viaOrgOnly: c.ownerId !== fbUser.uid && !chartManualRole(c) && !!chartOrgRole(c, memberships),
+      orgNames: (c.orgIds || []).map((orgId) => ((c.orgShares || {})[orgId] || {}).orgName || "").filter(Boolean),
       ownerEmail: c.ownerEmail || "",
       /* (버그 수정) 내가 소유한 공유 차트는 "숨기기"가 먹도록 숨김 값을 넘긴다. */
       hidden: c.ownerId === fbUser.uid && !!c.hidden,
@@ -8189,9 +8300,7 @@ async function shareFetch(action, params = {}) {
         fb.getTasksOnce(chartId), fb.getCategoriesOnce(chartId)
       ]);
       const resolved = resolveTasksAndCats({ tasks, categories });
-      const myRole = chart.ownerId === fbUser.uid
-        ? "owner"
-        : (((chart.members || {})[fbUser.email] || {}).role || "viewer");
+      const myRole = chartMyRole(chart, await fbMyOrgMemberships()) || "viewer";
       return {
         name: chart.name || "", rangeStart: chart.rangeStart || "", rangeEnd: chart.rangeEnd || "",
         tasks: resolved.tasks, categories: resolved.categories, myRole
@@ -8210,6 +8319,13 @@ async function shareFetch(action, params = {}) {
          멤버를 비우는 것과 작업/카테고리의 ACL 복사값 재조정을 한 번에
          처리한다(firebase-core.js 참고). */
       await fb.revokeAllSharing(chartId);
+      /* (조직 관리 2단계) 조직으로 준 공유도 함께 해제 */
+      {
+        const chart = await fb.getChartOnce(chartId);
+        for (const orgId of ((chart && chart.orgIds) || [])) {
+          await fb.unshareChartFromOrg(chartId, orgId);
+        }
+      }
       invalidateChartMetaCache(chartId);
       return { ok: true };
 
@@ -8296,9 +8412,16 @@ async function shellOpenShareModal(chartId, chartName, alreadyShared, myRole) {
     }
   } else {
     const box = document.getElementById("mcShareMemberList");
-    if (box) box.innerHTML = "<div class=\"mc-hint\">아직 공유되지 않은 차트입니다. 이메일을 추가하면 공유가 시작됩니다.</div>";
+    if (box) box.innerHTML = "<div class=\"mc-hint\">아직 공유되지 않은 차트입니다. 이메일·조직원·조직을 추가하면 공유가 시작됩니다.</div>";
     if (revokeBtn) revokeBtn.classList.add("hidden"); // 아직 공유 전이라 해제할 게 없음
   }
+
+  /* (조직 관리 2단계) 조직원 선택 · 조직 전체 탭과 조직 공유 목록 */
+  shellShareSetTab("email");
+  const orgList = document.getElementById("mcShareOrgList");
+  if (orgList) orgList.innerHTML = "";
+  shareOrgState.chart = null;
+  shellShareOrgRefresh();
 
   shellOpenModal("mcShareModal");
 }
@@ -8371,6 +8494,438 @@ async function shellHandleRevokeAllSharing() {
   }
 }
 
+/* =========================================================
+ * (조직 관리 2단계) 공유 창: 조직원 선택 · 조직 전체 · 조직으로 공유한 목록
+ *  - 이메일 직접 초대(기존)는 그대로 두고, 탭 두 개를 더했다.
+ *  - 조직으로 준 권한은 차트 members 에 적지 않고 orgShares 에 적는다.
+ *    (보안 규칙이 조직 소속을 그때그때 확인 → 나가거나 내보내지면 바로 끊김)
+ * ========================================================= */
+const shareOrgState = { chart: null, memberships: [], rosters: {}, picked: new Set() };
+
+const SHARE_MAP_HINT = "기존 권한: 게스트→뷰어 · 참여자→편집자 · 관리자→관리자";
+
+function shellShareSetTab(tab) {
+  document.querySelectorAll("#mcShareModal .mc-share-tab").forEach((btn) => {
+    const on = btn.dataset.shareTab === tab;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-selected", String(on));
+  });
+  document.querySelectorAll("#mcShareModal [data-share-pane]").forEach((pane) => {
+    pane.classList.toggle("hidden", pane.dataset.sharePane !== tab);
+  });
+}
+
+/* 이 차트를 조직에 공유할 수 있는 조직: 수락한 조직 중 참여자 이상 */
+function shareOrgSelectable() {
+  return shareOrgState.memberships.filter((m) => m.status === "accepted" && orgRank(m.role) >= 1);
+}
+
+async function shareOrgRoster(orgId) {
+  if (!shareOrgState.rosters[orgId]) {
+    shareOrgState.rosters[orgId] = fb.getOrgMembers(orgId)
+      .then((list) => list.filter((m) => m.status === "accepted"))
+      .catch((error) => {
+        console.warn(error);
+        return null; // 이 조직원이 아니면 목록을 못 읽는다
+      });
+  }
+  return shareOrgState.rosters[orgId];
+}
+
+function shareOrgShareOf(orgId) {
+  return ((shareOrgState.chart && shareOrgState.chart.orgShares) || {})[orgId] || null;
+}
+
+function shareOrgFillSelect(select, orgs, keep) {
+  const previous = keep ? select.value : "";
+  select.innerHTML = "";
+  orgs.forEach((m) => {
+    const option = document.createElement("option");
+    option.value = m.orgId;
+    option.textContent = m.orgName || "(이름 없는 조직)";
+    select.appendChild(option);
+  });
+  if (previous && orgs.some((m) => m.orgId === previous)) select.value = previous;
+}
+
+function shareOrgEmptyNote(text) {
+  const note = orgEl("div", "mc-share-empty");
+  note.appendChild(orgIcon("info", 15));
+  note.appendChild(orgEl("span", "", text));
+  return note;
+}
+
+const SHARE_NO_ORG_TEXT = "공유할 수 있는 조직이 없어요. 사이드바 [조직원 관리]에서 조직을 만들거나, 참여자 이상인 조직이 있어야 해요.";
+
+async function shellShareOrgRefresh() {
+  const chartId = shareModalChartId;
+  if (!chartId || typeof fb.getOrgChartIndex !== "function") return;
+  try {
+    const [chart, memberships] = await Promise.all([fb.getChartOnce(chartId), fbMyOrgMemberships(true)]);
+    if (chartId !== shareModalChartId) return;
+    shareOrgState.chart = chart;
+    shareOrgState.memberships = memberships;
+    shareOrgState.rosters = {};
+    shareOrgState.picked = new Set();
+  } catch (error) {
+    console.error(error);
+    return;
+  }
+
+  /* 조직으로만 공유한 차트면 "아직 공유되지 않은 차트" 안내를 지운다 */
+  const manualList = document.getElementById("mcShareMemberList");
+  if (manualList && manualList.querySelector(".mc-hint") && ((shareOrgState.chart || {}).orgIds || []).length) {
+    manualList.innerHTML = "";
+  }
+
+  const orgs = shareOrgSelectable();
+  shareOrgFillSelect(document.getElementById("mcSharePickOrg"), orgs, true);
+  shareOrgFillSelect(document.getElementById("mcShareAllOrg"), orgs, true);
+  document.querySelectorAll("#mcShareModal [data-share-map-hint]").forEach((hint) => {
+    hint.innerHTML = "";
+    hint.appendChild(orgIcon("info", 13));
+    hint.appendChild(orgEl("span", "", SHARE_MAP_HINT));
+  });
+
+  const allPane = document.querySelector('#mcShareModal [data-share-pane="org"]');
+  allPane.classList.toggle("mc-share-pane-empty", !orgs.length);
+  const oldNote = allPane.querySelector(".mc-share-empty");
+  if (oldNote) oldNote.remove();
+  if (!orgs.length) allPane.prepend(shareOrgEmptyNote(SHARE_NO_ORG_TEXT));
+
+  await Promise.all([shellShareRenderPick(), shellShareRenderOrgList()]);
+}
+
+/* ---- 조직원 선택 탭 ---- */
+async function shellShareRenderPick() {
+  const pane = document.querySelector('#mcShareModal [data-share-pane="pick"]');
+  const select = document.getElementById("mcSharePickOrg");
+  const list = document.getElementById("mcSharePickList");
+  const button = document.getElementById("mcSharePickBtn");
+  const count = document.getElementById("mcSharePickCount");
+  const orgs = shareOrgSelectable();
+
+  pane.classList.toggle("mc-share-pane-empty", !orgs.length);
+  list.innerHTML = "";
+  shareOrgState.picked = new Set();
+  const syncButton = () => {
+    const n = shareOrgState.picked.size;
+    button.disabled = !n;
+    button.textContent = n ? n + "명 추가" : "추가";
+    count.textContent = n ? n + "명 선택" : "";
+  };
+  syncButton();
+
+  if (!orgs.length) {
+    list.appendChild(shareOrgEmptyNote(SHARE_NO_ORG_TEXT));
+    return;
+  }
+
+  const orgId = select.value;
+  const share = shareOrgShareOf(orgId);
+  if (share && share.all) {
+    list.appendChild(shareOrgEmptyNote("이미 이 조직 전체에 공유하고 있어요. 아래 목록에서 사람마다 권한을 바꿀 수 있어요."));
+    return;
+  }
+
+  list.appendChild(orgEl("div", "mc-share-loading", "불러오는 중…"));
+  const roster = await shareOrgRoster(orgId);
+  if (select.value !== orgId) return;
+  list.innerHTML = "";
+
+  const chart = shareOrgState.chart || {};
+  const me = orgMyEmail();
+  const owner = String(chart.ownerEmail || "").toLowerCase();
+  const already = (share && share.picked) || {};
+  const candidates = (roster || []).filter((m) => m.email !== me && m.email !== owner && !already[m.email]);
+
+  if (!candidates.length) {
+    list.appendChild(shareOrgEmptyNote(roster && roster.length > 1
+      ? "이 조직의 조직원은 모두 이미 공유받았어요."
+      : "고를 수 있는 조직원이 없어요."));
+    return;
+  }
+
+  candidates.forEach((member) => {
+    const item = orgEl("label", "mc-share-pick-item");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.addEventListener("change", () => {
+      if (box.checked) shareOrgState.picked.add(member.email);
+      else shareOrgState.picked.delete(member.email);
+      item.classList.toggle("checked", box.checked);
+      syncButton();
+    });
+    item.appendChild(box);
+    item.appendChild(mcAvatarEl(member.name || member.email));
+    const text = orgEl("span", "mc-row-text");
+    text.appendChild(orgEl("span", "mc-row-title", member.name || member.email));
+    text.appendChild(orgEl("span", "mc-row-sub", (member.title ? member.title + " · " : "") + member.email));
+    item.appendChild(text);
+    item.appendChild(orgRoleChip(member.role));
+    const arrow = orgEl("span", "mc-share-map-arrow");
+    arrow.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>';
+    item.appendChild(arrow);
+    const chartRole = ORG_TO_CHART_ROLE[member.role] || "viewer";
+    item.appendChild(orgEl("span", "mc-role-chip mc-role-" + chartRole, CHART_ROLE_LABEL[chartRole]));
+    list.appendChild(item);
+  });
+}
+
+/* 처음 공유하는 순간 차트 박스를 "공유 중"으로 (shellHandleShareAdd 와 같은 처리) */
+async function shellShareMarkShared(chartId) {
+  if (shareModalIsExisting) return;
+  shareModalIsExisting = true;
+  const revokeBtn = document.getElementById("mcShareRevokeBtn");
+  if (revokeBtn) revokeBtn.classList.remove("hidden");
+  const entry = shellChartsCache.find((c) => c.id === chartId);
+  if (entry) {
+    entry.shared = true;
+    entry.chartId = chartId;
+    entry.role = "owner";
+    shellRenderList();
+  } else {
+    await shellLoadCharts();
+  }
+}
+
+function shareOrgCheckLimit(orgId) {
+  const ids = (shareOrgState.chart && shareOrgState.chart.orgIds) || [];
+  if (!ids.includes(orgId) && ids.length >= (fb.ORG_SHARE_LIMIT || 3)) {
+    showToast("한 차트는 조직 " + (fb.ORG_SHARE_LIMIT || 3) + "곳까지 공유할 수 있어요.", true);
+    return false;
+  }
+  return true;
+}
+
+function shareOrgMeta() {
+  const chart = shareOrgState.chart || {};
+  return {
+    chartName: chart.name || document.getElementById("mcShareChartName").textContent || "",
+    ownerEmail: chart.ownerEmail || "",
+    sharedByEmail: orgMyEmail()
+  };
+}
+
+function shareOrgName(orgId) {
+  const membership = shareOrgState.memberships.find((m) => m.orgId === orgId);
+  return (membership && membership.orgName) || "";
+}
+
+async function shellShareAddPicked() {
+  const chartId = shareModalChartId;
+  const orgId = document.getElementById("mcSharePickOrg").value;
+  const emails = Array.from(shareOrgState.picked);
+  if (!chartId || !orgId || !emails.length) return;
+  if (!shareOrgCheckLimit(orgId)) return;
+
+  try {
+    const share = shareOrgShareOf(orgId);
+    if (share) {
+      const picked = { ...(share.picked || {}) };
+      emails.forEach((email) => { picked[email] = true; });
+      await fb.updateChartOrgShare(chartId, orgId, { picked });
+    } else {
+      const picked = {};
+      emails.forEach((email) => { picked[email] = true; });
+      await fb.shareChartToOrg(chartId, orgId, { orgName: shareOrgName(orgId), all: false, picked }, shareOrgMeta());
+    }
+    invalidateChartMetaCache(chartId);
+    showToast(emails.length + "명에게 공유했습니다.");
+    await shellShareMarkShared(chartId);
+    await shellShareOrgRefresh();
+  } catch (error) {
+    orgShowError(error, "공유하지 못했습니다.");
+  }
+}
+
+async function shellShareAddWholeOrg() {
+  const chartId = shareModalChartId;
+  const orgId = document.getElementById("mcShareAllOrg").value;
+  if (!chartId || !orgId) return;
+  if (!shareOrgCheckLimit(orgId)) return;
+
+  try {
+    const share = shareOrgShareOf(orgId);
+    if (share && share.all) {
+      showToast("이미 이 조직 전체에 공유하고 있어요.");
+      return;
+    }
+    if (share) {
+      await fb.updateChartOrgShare(chartId, orgId, { all: true });
+    } else {
+      await fb.shareChartToOrg(chartId, orgId, { orgName: shareOrgName(orgId), all: true }, shareOrgMeta());
+    }
+    invalidateChartMetaCache(chartId);
+    showToast("'" + (shareOrgName(orgId) || "조직") + "' 전체에 공유했습니다.");
+    await shellShareMarkShared(chartId);
+    await shellShareOrgRefresh();
+  } catch (error) {
+    orgShowError(error, "공유하지 못했습니다.");
+  }
+}
+
+/* ---- 조직으로 공유한 목록 (조직마다 카드 하나) ---- */
+async function shellShareRenderOrgList() {
+  const box = document.getElementById("mcShareOrgList");
+  if (!box) return;
+  box.innerHTML = "";
+
+  const chart = shareOrgState.chart || {};
+  const orgIds = chart.orgIds || [];
+  if (!orgIds.length) return;
+
+  box.appendChild(orgLabel("building", "조직으로 공유", "mc-share-org-title"));
+
+  for (const orgId of orgIds) {
+    const share = shareOrgShareOf(orgId) || {};
+    const myMembership = shareOrgState.memberships.find((m) => m.orgId === orgId && m.status === "accepted");
+    const orgName = (myMembership && myMembership.orgName) || share.orgName || "(조직)";
+
+    const card = orgEl("div", "mc-share-org-card");
+    const head = orgEl("div", "mc-share-org-head");
+    head.appendChild(orgAvatarEl(orgId, orgName));
+    const headText = orgEl("div", "mc-row-text");
+    headText.appendChild(orgEl("span", "mc-row-title", orgName));
+    const pickedCount = Object.keys(share.picked || {}).length;
+    headText.appendChild(share.all
+      ? orgLabel("users", "조직 전체 · 나중에 들어오는 조직원 포함", "mc-row-sub")
+      : orgLabel("user", "고른 조직원 " + pickedCount + "명", "mc-row-sub"));
+    head.appendChild(headText);
+
+    const removeBtn = mcActionButton("close", "이 조직 공유 해제", true);
+    removeBtn.classList.add("mc-row-danger");
+    removeBtn.addEventListener("click", () => withBusy(removeBtn, "해제 중…", async () => {
+      if (!confirm("'" + orgName + "' 조직 공유를 해제할까요? 이 조직을 통해 보던 사람은 더 이상 볼 수 없어요.")) return;
+      try {
+        await fb.unshareChartFromOrg(shareModalChartId, orgId);
+        invalidateChartMetaCache(shareModalChartId);
+        showToast("조직 공유를 해제했습니다.");
+        await shellShareOrgRefresh();
+      } catch (error) {
+        orgShowError(error, "해제하지 못했습니다.");
+      }
+    }));
+    head.appendChild(removeBtn);
+    card.appendChild(head);
+
+    const body = orgEl("div", "mc-share-org-body");
+    card.appendChild(body);
+    box.appendChild(card);
+
+    const roster = myMembership ? await shareOrgRoster(orgId) : null;
+    if (!roster) {
+      body.appendChild(shareOrgEmptyNote("이 조직의 조직원만 사람별 목록을 볼 수 있어요."));
+      continue;
+    }
+
+    const owner = String(chart.ownerEmail || "").toLowerCase();
+    const included = roster.filter((m) => m.email !== owner && (share.all || (share.picked || {})[m.email]));
+    if (!included.length) {
+      body.appendChild(shareOrgEmptyNote(share.all ? "아직 다른 조직원이 없어요." : "고른 조직원이 없어요. 위 [조직원 선택]에서 추가하세요."));
+      continue;
+    }
+
+    included.forEach((member) => body.appendChild(shellShareOrgMemberRow(orgId, share, member)));
+  }
+}
+
+function shellShareOrgMemberRow(orgId, share, member) {
+  const row = orgEl("div", "mc-share-member-row mc-share-org-member");
+  row.appendChild(mcAvatarEl(member.name || member.email));
+  const text = orgEl("span", "mc-row-text");
+  text.appendChild(orgEl("span", "mc-row-title", member.name || member.email));
+  text.appendChild(orgEl("span", "mc-row-sub", (member.title ? member.title + " · " : "") + member.email));
+  row.appendChild(text);
+  row.appendChild(orgRoleChip(member.role));
+
+  const base = ORG_TO_CHART_ROLE[member.role] || "viewer";
+  const override = (share.overrides || {})[member.email] || "";
+  const select = document.createElement("select");
+  select.className = "mc-share-org-role";
+  select.setAttribute("aria-label", (member.name || member.email) + " 이 차트 권한");
+  [["", "기존 권한 · " + CHART_ROLE_LABEL[base]], ["viewer", "뷰어"], ["editor", "편집자"], ["admin", "관리자"]].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.appendChild(option);
+  });
+  select.value = override;
+  const paint = () => {
+    select.dataset.role = select.value || base;
+    select.classList.toggle("is-override", !!select.value);
+  };
+  paint();
+  select.addEventListener("change", async () => {
+    const value = select.value;
+    select.disabled = true;
+    try {
+      await fb.setChartOrgOverride(shareModalChartId, orgId, member.email, value);
+      share.overrides = { ...(share.overrides || {}) };
+      if (value) share.overrides[member.email] = value; else delete share.overrides[member.email];
+      invalidateChartMetaCache(shareModalChartId);
+      paint();
+      showToast((member.name || member.email) + " 님의 권한을 " + (value ? CHART_ROLE_LABEL[value] : "기존 권한") + "(으)로 바꿨습니다.");
+    } catch (error) {
+      select.value = override;
+      paint();
+      orgShowError(error, "권한을 바꾸지 못했습니다.");
+    } finally {
+      select.disabled = false;
+    }
+  });
+  row.appendChild(select);
+
+  if (!share.all) {
+    const removeBtn = mcActionButton("close", "이 사람 공유 해제", true);
+    removeBtn.classList.add("mc-row-danger");
+    removeBtn.addEventListener("click", () => withBusy(removeBtn, "해제 중…", async () => {
+      try {
+        await fb.setChartOrgPicked(shareModalChartId, orgId, member.email, false);
+        invalidateChartMetaCache(shareModalChartId);
+        showToast("공유를 해제했습니다.");
+        await shellShareOrgRefresh();
+      } catch (error) {
+        orgShowError(error, "해제하지 못했습니다.");
+      }
+    }));
+    row.appendChild(removeBtn);
+  }
+  return row;
+}
+
+/* 공유 구성원 보기(뷰어·편집자용 창)에도 조직 공유를 한 줄씩 */
+async function shellAppendOrgSharesToMembersList(chartId, box) {
+  try {
+    const chart = await fb.getChartOnce(chartId);
+    ((chart && chart.orgIds) || []).forEach((orgId) => {
+      const share = (chart.orgShares || {})[orgId] || {};
+      const row = orgEl("div", "mc-share-member-row");
+      row.appendChild(orgAvatarEl(orgId, share.orgName || "조직"));
+      const text = orgEl("span", "mc-row-text");
+      text.appendChild(orgEl("span", "mc-row-title", share.orgName || "(조직)"));
+      text.appendChild(orgEl("span", "mc-row-sub", share.all ? "조직 전체 · 기존 권한" : "고른 조직원 " + Object.keys(share.picked || {}).length + "명"));
+      row.appendChild(text);
+      row.appendChild(orgLabel("building", "조직", "mc-role-chip mc-role-org"));
+      box.appendChild(row);
+    });
+  } catch (error) {
+    console.warn(error);
+  }
+}
+
+function initShareOrgUi() {
+  document.querySelectorAll("#mcShareModal .mc-share-tab").forEach((btn) => {
+    btn.addEventListener("click", () => shellShareSetTab(btn.dataset.shareTab));
+  });
+  const pickOrg = document.getElementById("mcSharePickOrg");
+  if (pickOrg) pickOrg.addEventListener("change", shellShareRenderPick);
+  const pickBtn = document.getElementById("mcSharePickBtn");
+  if (pickBtn) pickBtn.addEventListener("click", () => withBusy(pickBtn, "공유 중…", shellShareAddPicked));
+  const allBtn = document.getElementById("mcShareAllBtn");
+  if (allBtn) allBtn.addEventListener("click", () => withBusy(allBtn, "공유 중…", shellShareAddWholeOrg));
+}
+
 async function shellOpenMembersModal(chartId) {
   try {
     const info = await shareFetch("getSharedChartMembers", { chartId });
@@ -8384,6 +8939,7 @@ async function shellOpenMembersModal(chartId) {
     list.forEach((m) => {
       box.appendChild(mcMemberRowEl(m));
     });
+    await shellAppendOrgSharesToMembersList(chartId, box);
 
     shellOpenModal("mcMembersModal");
   } catch (error) {
@@ -8530,6 +9086,8 @@ function shellApplySharedChartsList(sharedList) {
     hasCalendar: false,
     shared: true,
     role: c.role,
+    viaOrgOnly: !!c.viaOrgOnly,
+    orgNames: c.orgNames || [],
     ownerEmail: c.ownerEmail,
     members: Array.isArray(c.members) ? c.members : []
   }));
@@ -8564,6 +9122,8 @@ function initShareUi() {
   if (shareAddBtn) {
     shareAddBtn.addEventListener("click", () => withBusy(shareAddBtn, "처리 중…", shellHandleShareAdd));
   }
+
+  initShareOrgUi(); /* (조직 관리 2단계) */
 
   const revokeBtn = document.getElementById("mcShareRevokeBtn");
   if (revokeBtn) {

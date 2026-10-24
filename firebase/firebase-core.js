@@ -28,7 +28,7 @@ import {
 import {
   initializeFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
   getDoc, getDocs, onSnapshot, query, where, serverTimestamp, arrayUnion, arrayRemove,
-  writeBatch, FieldPath
+  writeBatch, FieldPath, deleteField
 } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js";
 
 /* (당신 콘솔에서 받은 설정값 그대로) */
@@ -377,7 +377,7 @@ export async function getChartsOnce(uid, email) {
  *
  * 초대받은 사람은 자기 문서만 읽을 수 있어서(보안 규칙) 수락 전에는
  * 조직 이름과 초대한 사람만 보이고, 수락한 뒤에야 조직원 목록을 본다.
- * 권한 검사는 app.js 화면 쪽과 firebase/organizations.rules 양쪽에서 한다.
+ * 권한 검사는 app.js 화면 쪽과 firebase/firestore.rules 양쪽에서 한다.
  * ========================================================= */
 
 export function orgMembershipId(orgId, email) {
@@ -482,3 +482,92 @@ export async function deleteOrganization(orgId, memberEmails) {
   return batch.commit();
 }
 /* ▲▲▲ 조직 관리 (1단계, 추가분) 끝 ▲▲▲ */
+
+
+/* =========================================================
+ * ▼▼▼ 조직 관리 (2단계, 추가분): 차트를 조직(원)에게 공유 ▼▼▼
+ *
+ *   charts/{chartId}
+ *     orgIds: [orgId, ...]                 ← 최대 3개 (보안 규칙이 앞 3개까지만 확인)
+ *     orgShares: {
+ *       [orgId]: {
+ *         orgName,
+ *         all: true|false,                 ← 조직 전체 (나중에 들어온 조직원도 자동 포함)
+ *         picked: { email: true },         ← all 이 아니면 고른 조직원만
+ *         overrides: { email: "viewer"|"editor"|"admin" }   ← 이 차트에서만 바꾼 권한
+ *       }
+ *     }
+ *   organizations/{orgId}/charts/{chartId}  ← 조직원이 "공유받은 차트"를 찾는 목록
+ *     chartId, chartName, ownerEmail, sharedByEmail, sharedAt
+ *
+ * 조직을 통한 접근은 차트 members 에 이름을 적어 두지 않는다. 보안 규칙이
+ * 그때그때 orgMemberships 를 확인하므로, 조직에서 나가거나 내보내지면 그
+ * 즉시 접근이 끊기고, 나중에 들어온 조직원은 바로 접근할 수 있다.
+ * [기존 권한] 게스트→뷰어, 참여자→편집자, 관리자·소유자→관리자
+ * ========================================================= */
+
+export const ORG_SHARE_LIMIT = 3;
+
+export async function shareChartToOrg(chartId, orgId, share, meta) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, "charts", chartId),
+    new FieldPath("orgShares", orgId), {
+      orgName: share.orgName || "",
+      all: !!share.all,
+      picked: share.picked || {},
+      overrides: share.overrides || {}
+    },
+    "orgIds", arrayUnion(orgId)
+  );
+  batch.set(doc(db, "organizations", orgId, "charts", chartId), {
+    chartId,
+    chartName: meta.chartName || "",
+    ownerEmail: meta.ownerEmail || "",
+    sharedByEmail: String(meta.sharedByEmail || "").toLowerCase(),
+    sharedAt: serverTimestamp()
+  });
+  return batch.commit();
+}
+
+/* 고른 조직원·권한 덮어쓰기만 바꿀 때 (목록 문서는 그대로) */
+export function updateChartOrgShare(chartId, orgId, fields) {
+  const args = [];
+  Object.keys(fields).forEach((key) => {
+    args.push(new FieldPath("orgShares", orgId, key), fields[key]);
+  });
+  return updateDoc(doc(db, "charts", chartId), ...args);
+}
+
+export function setChartOrgOverride(chartId, orgId, email, role) {
+  return updateDoc(doc(db, "charts", chartId),
+    new FieldPath("orgShares", orgId, "overrides", String(email).toLowerCase()), role ? role : deleteField());
+}
+
+export function setChartOrgPicked(chartId, orgId, email, picked) {
+  return updateDoc(doc(db, "charts", chartId),
+    new FieldPath("orgShares", orgId, "picked", String(email).toLowerCase()), picked ? true : deleteField());
+}
+
+export async function unshareChartFromOrg(chartId, orgId) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, "charts", chartId),
+    new FieldPath("orgShares", orgId), deleteField(),
+    "orgIds", arrayRemove(orgId)
+  );
+  batch.delete(doc(db, "organizations", orgId, "charts", chartId));
+  return batch.commit();
+}
+
+/* 차트를 지우기 전에 조직 목록 문서부터 정리 (차트가 없어지면 규칙이 확인을 못 한다) */
+export async function removeChartOrgIndexes(chartId, orgIds) {
+  if (!orgIds || !orgIds.length) return;
+  const batch = writeBatch(db);
+  orgIds.forEach((orgId) => batch.delete(doc(db, "organizations", orgId, "charts", chartId)));
+  return batch.commit();
+}
+
+export async function getOrgChartIndex(orgId) {
+  const snap = await getDocs(collection(db, "organizations", orgId, "charts"));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+/* ▲▲▲ 조직 관리 (2단계, 추가분) 끝 ▲▲▲ */

@@ -25,8 +25,11 @@ service cloud.firestore {
       return isOwner(c) ? "owner" :
         (isAcceptedMember(c) ? c.members[myEmail()].role : null);
     }
-    function canRead(c) { return isOwner(c) || isAcceptedMember(c) || isPendingMember(c); }
-    function canEdit(c) { return isOwner(c) || myRole(c) in ["admin", "editor"]; }
+    /* (조직 관리 2단계) 조직을 통한 접근도 더한다 — 아래 orgChartRoleIn 참고 */
+    function canRead(c) { return isOwner(c) || isAcceptedMember(c) || isPendingMember(c)
+      || orgChartRoleIn(c, ["viewer", "editor", "admin"]); }
+    function canEdit(c) { return isOwner(c) || myRole(c) in ["admin", "editor"]
+      || orgChartRoleIn(c, ["editor", "admin"]); }
 
     /* (버그 수정) "수락"/"거절"/"공유 나가기"는 소유자도 관리자도 아닌
        바로 그 사람 자신이 차트 문서를 수정하는 동작이다(자기 멤버십
@@ -53,6 +56,7 @@ service cloud.firestore {
       allow read: if canRead(resource.data);
       allow create: if isSignedIn() && request.auth.uid == request.resource.data.ownerId;
       allow update: if isOwner(resource.data) || myRole(resource.data) == "admin"
+        || orgChartRoleIn(resource.data, ["admin"])
         || isModifyingOwnMembership(resource.data, request.resource.data);
       allow delete: if isOwner(resource.data) || myRole(resource.data) == "admin";
 
@@ -84,7 +88,9 @@ service cloud.firestore {
         allow read: if isSignedIn() && (
           (request.auth.uid == resource.data.get('ownerId', null)) ||
           (myEmail() in resource.data.get('memberEmails', [])) ||
-          (!('ownerId' in resource.data) && canRead(chartDoc(chartId)))
+          (!('ownerId' in resource.data) && canRead(chartDoc(chartId))) ||
+          // (조직 관리 2단계) 조직을 통한 접근은 작업 문서에 복사해 두지 않는다
+          orgChartRoleIn(chartDoc(chartId), ["viewer", "editor", "admin"])
         );
 
         allow create: if isSignedIn() && canEdit(chartDoc(chartId))
@@ -105,7 +111,9 @@ service cloud.firestore {
         allow read: if isSignedIn() && (
           (request.auth.uid == resource.data.get('ownerId', null)) ||
           (myEmail() in resource.data.get('memberEmails', [])) ||
-          (!('ownerId' in resource.data) && canRead(chartDoc(chartId)))
+          (!('ownerId' in resource.data) && canRead(chartDoc(chartId))) ||
+          // (조직 관리 2단계) 조직을 통한 접근은 작업 문서에 복사해 두지 않는다
+          orgChartRoleIn(chartDoc(chartId), ["viewer", "editor", "admin"])
         );
 
         allow create: if isSignedIn() && canEdit(chartDoc(chartId))
@@ -124,7 +132,7 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // 조직 관리 (1단계) — 새로 추가된 규칙
+    // 조직 관리 (1단계·2단계) — 새로 추가된 규칙
     // 권한 (높은 순): owner(소유자) > admin(관리자) > member(참여자) > guest(게스트)
     // =========================================================
     function orgSignedIn() {
@@ -166,6 +174,63 @@ service cloud.firestore {
       allow update, delete: if orgSignedIn()
         && orgIsMember(orgId)
         && orgMyRole(orgId) == 'owner';
+    }
+
+    // ---------------------------------------------------------
+    // (조직 관리 2단계) 차트를 조직(원)에게 공유
+    //   charts/{id}.orgIds    : [orgId, ...]   (앞 3개까지 확인)
+    //   charts/{id}.orgShares : { orgId: { all, picked{email:true}, overrides{email:role} } }
+    // 조직 소속을 그때그때 확인하므로, 조직에서 나가거나 내보내지면 바로
+    // 접근이 끊기고, 나중에 들어온 조직원은 바로 볼 수 있다.
+    // [기존 권한] 게스트→뷰어, 참여자→편집자, 관리자·소유자→관리자
+    // ---------------------------------------------------------
+    function orgMapChartRole(orgRole) {
+      return orgRole == 'guest' ? 'viewer' : (orgRole == 'member' ? 'editor' : 'admin');
+    }
+
+    function orgChartRoleAt(c, i) {
+      let orgId = c.orgIds[i];
+      let share = c.orgShares[orgId];
+      let mem = get(orgMembershipPath(orgId, orgMyEmail())).data;
+      let included = share.get('all', false) == true
+        || share.get('picked', {}).get(orgMyEmail(), false) == true;
+      let override = share.get('overrides', {}).get(orgMyEmail(), '');
+      return (mem.status == 'accepted' && included)
+        ? (override != '' ? override : orgMapChartRole(mem.role))
+        : 'none';
+    }
+
+    function orgChartRoleIn(c, roles) {
+      let ids = c.get('orgIds', []);
+      return orgSignedIn() && (
+        (ids.size() > 0 && orgChartRoleAt(c, 0) in roles) ||
+        (ids.size() > 1 && orgChartRoleAt(c, 1) in roles) ||
+        (ids.size() > 2 && orgChartRoleAt(c, 2) in roles)
+      );
+    }
+
+    // 차트를 관리할 수 있는 사람 (소유자 · 관리자 · 조직을 통한 관리자)
+    function orgChartManager(chartId) {
+      let c = get(/databases/$(database)/documents/charts/$(chartId)).data;
+      return isOwner(c) || myRole(c) == "admin" || orgChartRoleIn(c, ["admin"]);
+    }
+
+    // 조직원이 "공유받은 차트"를 찾는 목록
+    match /organizations/{orgId}/charts/{chartId} {
+      allow read: if orgSignedIn() && orgIsMember(orgId);
+
+      allow create, update: if orgSignedIn()
+        && orgIsMember(orgId)
+        && orgRank(orgMyRole(orgId)) >= 1
+        && request.resource.data.chartId == chartId
+        && orgChartManager(chartId);
+
+      // 차트 관리자(조직을 나간 뒤에도 공유 해제는 할 수 있게), 또는
+      // 조직 관리자 이상(지워진 차트 정리)
+      allow delete: if orgSignedIn() && (
+        orgChartManager(chartId) ||
+        (orgIsMember(orgId) && orgRank(orgMyRole(orgId)) >= 2)
+      );
     }
 
     match /orgMemberships/{membershipId} {
