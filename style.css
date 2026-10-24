@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v24";
+  --css-version: "2026-10-24-design-v25";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9080,4 +9080,14 @@ button.primary {
 
 .mc-chart-box .mc-chart-box-actions > .mc-btn {
   border-color: #c3dfd7;
+}
+
+
+/* (요청사항) 조직 현황 창: 아래 여백을 조금 더 */
+.mc-ov-modal {
+  padding-bottom: 20px;
+}
+
+.mc-ov-foot {
+  padding-bottom: 2px;
 }
