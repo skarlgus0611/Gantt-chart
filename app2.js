@@ -738,6 +738,23 @@ async function coreApiPost(action, chartId, body = {}) {
       const [tasks, categories] = await Promise.all([
         fb.getTasksOnce(chartId), fb.getCategoriesOnce(chartId)
       ]);
+      /* (마이그레이션, 1회성) Rules를 get() 없는 새 버전으로 바꾸기 전엔
+         기존 작업/카테고리 문서에 ownerId/memberEmails 복사값이 없다.
+         이 차트를 여는 시점에 한 번 조용히 채워 넣는다 — 이미 채워져
+         있으면(마이그레이션 끝났으면) 아무 일도 안 하고 그냥 지나간다.
+         Rules를 새 버전으로 바꾸기 *전에* app2.js를 먼저 올려서 이
+         자동 채우기가 한 번씩 돌게 한 다음에 Rules를 바꿔야 안전하다. */
+      const needsAclStamp = tasks.some((t) => t.ownerId === undefined) || categories.some((c) => c.ownerId === undefined);
+      if (needsAclStamp) {
+        try {
+          const chartForStamp = await getChartMetaCached(chartId);
+          if (chartForStamp) {
+            await fb.restampChartAcl(chartId, chartForStamp.ownerId, chartForStamp.memberEmails || []);
+          }
+        } catch (error) {
+          console.error("ACL 마이그레이션 실패(다음에 다시 시도됨):", error);
+        }
+      }
       return { ok: true, data: resolveTasksAndCats({ tasks, categories }) };
     }
 
@@ -752,7 +769,8 @@ async function coreApiPost(action, chartId, body = {}) {
         { name: "", categoryId: "", start: "", end: "", progress: 0, color: "", memo: "", target: "", owner: "" },
         body.data || {}, cats
       );
-      const ref = await fb.createTask(chartId, { ...t, order: existingTasks.length });
+      const ref = await fb.createTask(chartId, { ...t, order: existingTasks.length },
+        { ownerId: chart ? chart.ownerId : fbUser && fbUser.uid, memberEmails: chart ? (chart.memberEmails || []) : [] });
       await syncCalendarOnCreate(chart, chartId, ref.id, t);
       return { ok: true, result: ref.id };
     }
@@ -793,8 +811,11 @@ async function coreApiPost(action, chartId, body = {}) {
         { name: data.name === undefined ? "새 카테고리" : data.name, color: data.color },
         { name: "새 카테고리", color: DEFAULT_COLOR }
       );
-      const existingCats = await fb.getCategoriesOnce(chartId);
-      const ref = await fb.createCategory(chartId, { ...c, order: existingCats.length });
+      const [existingCats, chartForCat] = await Promise.all([
+        fb.getCategoriesOnce(chartId), getChartMetaCached(chartId)
+      ]);
+      const ref = await fb.createCategory(chartId, { ...c, order: existingCats.length },
+        { ownerId: chartForCat ? chartForCat.ownerId : fbUser && fbUser.uid, memberEmails: chartForCat ? (chartForCat.memberEmails || []) : [] });
       return { ok: true, result: ref.id };
     }
 
@@ -861,10 +882,14 @@ async function coreApiPost(action, chartId, body = {}) {
         await fb.updateChartMeta(ref.id, fields);
       }
 
+      /* 새로 만드는 차트라 아직 멤버가 없다 — ownerId/memberEmails 복사값은
+         소유자만, 멤버는 빈 배열로 찍어둔다(성능/Rules 수정 참고). */
+      const newChartAcl = { ownerId: fbUser.uid, memberEmails: [] };
+
       const catIdMap = {};
       let catOrder = 0;
       for (const cat of body.categories || []) {
-        const catRef = await fb.createCategory(ref.id, { name: cat.name, color: cat.color, order: catOrder++ });
+        const catRef = await fb.createCategory(ref.id, { name: cat.name, color: cat.color, order: catOrder++ }, newChartAcl);
         catIdMap[cat.id] = catRef.id;
       }
 
@@ -874,7 +899,7 @@ async function coreApiPost(action, chartId, body = {}) {
           name: t.name, categoryId: catIdMap[t.categoryId] || "",
           start: t.start, end: t.end, progress: t.progress, color: t.color,
           memo: t.memo, target: t.target, owner: t.owner, order: taskOrder++
-        });
+        }, newChartAcl);
       }
 
       const result = {
@@ -5706,6 +5731,7 @@ async function shareFetch(action, params = {}) {
 
     case "respondInvite": {
       await fb.respondInvite(chartId, fbUser.email, !!params.accept);
+      invalidateChartMetaCache(chartId);
       const invites = await fbListMyInvites(fbUser.email);
       const sharedCharts = await fbListMySharedCharts();
       return { invites, sharedCharts };
@@ -5713,13 +5739,17 @@ async function shareFetch(action, params = {}) {
 
     case "shareChart": {
       await fb.inviteMember(chartId, params.targetEmail, params.role);
+      invalidateChartMetaCache(chartId);
       const chart = await fb.getChartOnce(chartId);
       if (!chart) throw new Error("차트를 찾을 수 없습니다.");
       return shareMembersShape(chart);
     }
 
     case "unshareMember":
+      /* removeMember가 memberEmails 변경에 맞춰 작업/카테고리의 ACL
+         복사값도 같이 재조정한다(firebase-core.js 참고). */
       await fb.removeMember(chartId, params.targetEmail);
+      invalidateChartMetaCache(chartId);
       return { ok: true };
 
     case "getSharedChartMembers": {
@@ -5752,12 +5782,16 @@ async function shareFetch(action, params = {}) {
 
     case "revokeAllSharing":
       /* (단순해진 점) 새 차트로 복사할 필요 없이, 이 차트의 멤버만
-         전부 비우면 바로 "개인 전용" 상태로 돌아간다. */
-      await fb.updateChartMeta(chartId, { members: {}, memberEmails: [], pendingEmails: [] });
+         전부 비우면 바로 "개인 전용" 상태로 돌아간다. revokeAllSharing이
+         멤버를 비우는 것과 작업/카테고리의 ACL 복사값 재조정을 한 번에
+         처리한다(firebase-core.js 참고). */
+      await fb.revokeAllSharing(chartId);
+      invalidateChartMetaCache(chartId);
       return { ok: true };
 
     case "leaveSharedChart":
       await fb.removeMember(chartId, fbUser.email);
+      invalidateChartMetaCache(chartId);
       return { ok: true };
 
     default:
@@ -5872,9 +5906,20 @@ async function shellHandleShareAdd() {
 
     if (!shareModalIsExisting) {
       shareModalIsExisting = true;
-      /* 개인→공유 전환은 차트가 "공유 중" 쪽 목록으로 옮겨 보이니,
-         이 경우만 전체 목록을 새로고침한다. */
-      await shellLoadCharts();
+      /* (성능 수정) 개인→공유 전환 때문에 차트 목록 전체를 다시 긁어오던
+         것을, 이 차트 하나만 캐시에서 "공유 중" 상태로 바꿔주는 걸로
+         대체한다 — id가 더 이상 안 바뀌니(shellLoadCharts 주석 참고)
+         박스/iframe도 그대로 유지된 채 헤더 버튼만 바뀐다. */
+      const entry = shellChartsCache.find((c) => c.id === chartId);
+      if (entry) {
+        entry.shared = true;
+        entry.chartId = chartId;
+        entry.role = "owner";
+        shellRenderList();
+      } else {
+        // 캐시에 없는 경우(드묾)만 안전하게 전체 새로고침.
+        await shellLoadCharts();
+      }
     }
   } catch (error) {
     showToast(error.message || "공유하지 못했습니다.", true, 0);
@@ -5893,7 +5938,19 @@ async function shellHandleRevokeAllSharing() {
 
     shellCloseModal("mcShareModal");
     showToast("공유를 해제하고 개인 차트로 되돌렸습니다.");
-    await shellLoadCharts();
+
+    /* (성능 수정) 여기서도 전체 차트 목록을 다시 받아오지 않고, 이
+       차트 하나만 캐시에서 "개인 전용" 상태로 바꾼다. id는 그대로라
+       박스/iframe이 유지된다. */
+    const entry = shellChartsCache.find((c) => c.id === chartId);
+    if (entry) {
+      entry.shared = false;
+      delete entry.role;
+      delete entry.ownerEmail;
+      shellRenderList();
+    } else {
+      await shellLoadCharts();
+    }
   } catch (error) {
     showToast(error.message || "공유 해제에 실패했습니다.", true, 0);
   }
