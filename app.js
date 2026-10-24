@@ -373,7 +373,27 @@ function newRowId() {
   return (Date.now().toString(36) + Math.random().toString(36).slice(2)).slice(0, 12);
 }
 
+/* 드래그로 저장한 순서(order)대로 정렬한다. Firestore는 문서 ID 순으로
+   돌려주기 때문에, 정렬하지 않으면 끌어서 바꾼 순서가 다시 불러올 때
+   원래대로 돌아간다. order가 없는 옛 문서는 받은 순서 그대로 뒤에 둔다. */
+function sortBySavedOrder(list) {
+  return list
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const ao = Number.isFinite(Number(a.item.order)) ? Number(a.item.order) : Infinity;
+      const bo = Number.isFinite(Number(b.item.order)) ? Number(b.item.order) : Infinity;
+      if (ao !== bo) return ao < bo ? -1 : 1;
+      return a.index - b.index;
+    })
+    .map(entry => entry.item);
+}
+
 function resolveTasksAndCats(bucket) {
+  bucket = {
+    tasks: sortBySavedOrder(bucket.tasks || []),
+    categories: sortBySavedOrder(bucket.categories || [])
+  };
+
   const catMap = {};
   bucket.categories.forEach((c) => {
     catMap[c.id] = c;
@@ -1900,7 +1920,7 @@ function renderTaskColumn() {
       category.className = "category-label";
       category.dataset.group = group.id;
       category.style.height = h + "px";
-      category.style.setProperty("--cat-color", validHex(group.color) || DEFAULT_COLOR); /* (디자인 추가분) 카테고리 줄 전체를 그 카테고리 색으로 옅게 물들이기 위한 변수 */
+      applyCategoryTint(category, group.color); /* (디자인 추가분) 카테고리 줄 전체를 그 카테고리 색으로 옅게 물들인다 */
 
 
       /* "기타"는 실제 카테고리가 아니라 순서를 저장할 곳이 없으므로
@@ -2119,6 +2139,38 @@ function renderTaskColumn() {
 }
 
 
+/* (디자인 추가분) 카테고리 색을 흰색/검정과 섞은 옅은·진한 색들.
+   CSS color-mix()로 하면 캡처 도구(html2canvas)가 그 색을 못 읽어서
+   캡처가 실패하므로, 여기서 미리 계산한 hex 값을 CSS 변수로 넘긴다. */
+function mixHex(hex, otherHex, ratio) {
+  const a = parseInt(hex.slice(1), 16);
+  const b = parseInt(otherHex.slice(1), 16);
+  const channel = shift => Math.round(((a >> shift) & 255) * ratio + ((b >> shift) & 255) * (1 - ratio));
+  return "#" + [16, 8, 0].map(shift => channel(shift).toString(16).padStart(2, "0")).join("");
+}
+
+function categoryTintVars(color) {
+  const c = validHex(color) || DEFAULT_COLOR;
+  return {
+    "--cat-color": c,
+    "--cat-bg": mixHex(c, "#ffffff", 0.10),
+    "--cat-text": mixHex(c, "#18181b", 0.55),
+    "--cat-badge-bg": mixHex(c, "#ffffff", 0.18),
+    "--cat-badge-text": mixHex(c, "#18181b", 0.80),
+    "--cat-soft-bg": mixHex(c, "#ffffff", 0.30),
+    "--cat-soft-text": mixHex(c, "#18181b", 0.60)
+  };
+}
+
+function applyCategoryTint(el, color) {
+  Object.entries(categoryTintVars(color)).forEach(([key, value]) => el.style.setProperty(key, value));
+}
+
+function categoryTintStyle(color) {
+  return Object.entries(categoryTintVars(color)).map(([key, value]) => key + ":" + value).join(";");
+}
+
+
 /* (디자인 추가분) 담당자가 적혀 있으면 이름 첫 글자를 카테고리 색 동그라미로 */
 function ownerBadgeHtml(task, group) {
 
@@ -2132,7 +2184,7 @@ function ownerBadgeHtml(task, group) {
 
   return `<span
         class="owner-badge"
-        style="--cat-color:${color}"
+        style="${categoryTintStyle(color)}"
         title="담당자: ${escapeHtml(owner)}"
         aria-hidden="true"
       >${escapeHtml(Array.from(owner)[0])}</span>`;
@@ -2328,7 +2380,7 @@ function renderTimeline() {
 
       categoryRow.className = "timeline-category";
       categoryRow.style.height = h + "px";
-      categoryRow.style.setProperty("--cat-color", validHex(item.group.color) || DEFAULT_COLOR); /* (디자인 추가분) */
+      applyCategoryTint(categoryRow, item.group.color); /* (디자인 추가분) */
 
       rowsInner.appendChild(categoryRow);
 
@@ -4117,7 +4169,7 @@ function buildCaptureChart() {
 
       category.className = "category-label";
       category.style.height = heights[i] + "px";
-      category.style.setProperty("--cat-color", validHex(group.color) || DEFAULT_COLOR); /* (디자인 추가분) */
+      applyCategoryTint(category, group.color); /* (디자인 추가분) */
 
       if (group.id) {
 
@@ -4274,7 +4326,7 @@ function buildCaptureChart() {
 
       categoryRow.className = "timeline-category";
       categoryRow.style.height = heights[i] + "px";
-      categoryRow.style.setProperty("--cat-color", validHex(row.group.color) || DEFAULT_COLOR); /* (디자인 추가분) */
+      applyCategoryTint(categoryRow, row.group.color); /* (디자인 추가분) */
 
       rowsInnerRight.appendChild(categoryRow);
 
