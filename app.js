@@ -65,12 +65,11 @@ const DEFAULT_COLOR = "#3b82f6";
 
 /* 주 단위 날짜 라벨을 보여 주려면 한 주 칸이 최소 이만큼(px) 필요하다.
    1년 전체를 화면 폭에 맞추면 이보다 좁아져서 월 라벨만 보인다. */
-const WEEK_LABEL_MIN_WIDTH = 40;
 
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v6";
+const APP_VERSION = "2026-10-24-design-v7";
 
 
 /* =========================================================
@@ -2367,12 +2366,7 @@ function renderTimeline() {
 
   inner.style.width = width + "px";
 
-  inner.style.setProperty("--week-width", (dayWidth * 7) + "px");
-
-  /* 주 칸이 너무 좁으면 주 단위 세로선은 그리지 않는다. (월 배경이 구분해 준다) */
-  if (dayWidth * 7 < WEEK_LABEL_MIN_WIDTH) {
-    inner.classList.add("no-week-lines");
-  }
+  /* 세로 그리드는 renderDayGrid 가 하루 너비에 맞춰 그린다(아래). */
 
 
   /* 주 헤더 */
@@ -2389,6 +2383,9 @@ function renderTimeline() {
 
   /* 월별 뒷배경 (흰색 / 옅은 회백색 번갈아) - 세로 창 안에 고정 */
   renderMonthBands(viewport, dayWidth);
+
+  /* (요청사항) 하루 단위 세로 그리드: 촘촘해지면 2일·1주·2주·1달로 점점 줄인다 */
+  renderDayGrid(viewport, visibleDays, dayWidth);
 
   const rowsInner = document.createElement("div");
 
@@ -2524,6 +2521,114 @@ function renderMonthBands(inner, dayWidth) {
  * 배경, 막대, 오늘 선과 어긋나지 않는다.
  * ========================================================= */
 
+/* =========================================================
+ * DAY GRID (요청사항)
+ *
+ * 세로 그리드 간격을 하루 너비(px)에 따라 고른다.
+ *   1일 → 2일 → 1주(월요일) → 2주 → 1달(1일)
+ * 줄 사이가 GRID_MIN_GAP px 보다 좁아지면 다음 단계로 넘어가서, 기간이
+ * 길어져도 선이 거슬릴 만큼 빽빽해지지 않는다. 머리글 날짜 눈금은 글자
+ * 폭이 필요하므로 더 넉넉한 간격(LABEL_MIN_GAP)으로 같은 단계를 고른다.
+ * ========================================================= */
+
+const GRID_STEPS = [1, 2, 7, 14];
+const GRID_MIN_GAP = 12;
+const DAY_LABEL_MIN_GAP = 22;
+const DATE_LABEL_MIN_GAP = 40;
+
+function pickGridStep(dayWidth, forLabels = false) {
+
+  for (const step of GRID_STEPS) {
+
+    const needed = !forLabels
+      ? GRID_MIN_GAP
+      : (step <= 2 ? DAY_LABEL_MIN_GAP : DATE_LABEL_MIN_GAP);
+
+    if (step * dayWidth >= needed) {
+      return step;
+    }
+  }
+
+  return "month";
+}
+
+/* 보이는 구간(0 ~ visibleDays-1) 안에서 눈금이 서는 날(구간 시작 기준 n번째 날).
+   1일·2일: 매일/매달 1일부터 2일마다, 1주·2주: 월요일, 1달: 매달 1일.
+   첫 칸(0)은 늘 포함한다(머리글 칸이 빈틈없이 이어지도록). */
+function gridTickDays(visibleDays, step) {
+
+  const ticks = [0];
+
+  for (let offset = 1; offset < visibleDays; offset++) {
+
+    const date = dateFromYearDay(state.rangeStart + offset);
+
+    let on;
+
+    if (step === 1) {
+      on = true;
+    } else if (step === 2) {
+      on = (date.getDate() - 1) % 2 === 0;
+    } else if (step === 7 || step === 14) {
+      on = date.getDay() === 1 &&
+        (step === 7 || Math.floor(dayOffsetFromYearStart(date) / 7) % 2 === 0);
+    } else {
+      on = date.getDate() === 1;
+    }
+
+    if (on) {
+      ticks.push(offset);
+    }
+  }
+
+  return ticks;
+}
+
+function renderDayGrid(container, visibleDays, dayWidth) {
+
+  const layer = document.createElement("div");
+
+  layer.className = "day-grid";
+
+  const step = pickGridStep(dayWidth);
+
+  /* 매일 그릴 만큼 넓으면 주말 칸을 옅게 칠한다 */
+  if (step === 1) {
+    for (let offset = 0; offset < visibleDays; offset++) {
+      const weekday = dateFromYearDay(state.rangeStart + offset).getDay();
+      if (weekday === 0 || weekday === 6) {
+        const shade = document.createElement("div");
+        shade.className = "day-grid-weekend";
+        shade.style.left = (offset * dayWidth) + "px";
+        shade.style.width = dayWidth + "px";
+        layer.appendChild(shade);
+      }
+    }
+  }
+
+  gridTickDays(visibleDays, step).forEach(offset => {
+
+    if (offset === 0) {
+      return;
+    }
+
+    const date = dateFromYearDay(state.rangeStart + offset);
+
+    const line = document.createElement("div");
+
+    line.className =
+      "day-grid-line" +
+      (date.getDate() === 1 ? " month" : date.getDay() === 1 ? " week" : "");
+
+    line.style.left = (offset * dayWidth) + "px";
+
+    layer.appendChild(line);
+  });
+
+  container.appendChild(layer);
+}
+
+
 function renderWeekHeader(inner, visibleDays, dayWidth) {
 
   const header = document.createElement("div");
@@ -2570,9 +2675,13 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
   header.appendChild(monthRow);
 
 
-  /* 2행: 주 시작 날짜. 칸이 너무 좁아지면 글자 없이 구분선만 남긴다.
-     (헤더 높이를 늘 같게 유지해서 오늘 선 · 월별 뒷배경 위치가 어긋나지 않는다) */
-  const showWeekLabels = dayWidth * 7 >= WEEK_LABEL_MIN_WIDTH;
+  /* 2행: 날짜 눈금 (요청사항)
+     세로 그리드와 같은 규칙으로 간격을 고른다. 칸이 넓으면 매일(날짜 숫자,
+     주말은 색), 좁아지면 2일 → 1주 → 2주마다 "월/일", 더 좁으면 줄을 숨기고
+     월 줄만 보인다. (헤더 높이는 늘 같아서 오늘 선·배경 위치가 어긋나지 않는다) */
+  const labelStep = pickGridStep(dayWidth, true);
+
+  const showWeekLabels = labelStep !== "month";
 
   const weekRow = document.createElement("div");
 
@@ -2580,27 +2689,51 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
 
   const weekColumns = [];
 
-  for (let offset = 0; offset < visibleDays; offset += 7) {
+  const ticks = showWeekLabels ? gridTickDays(visibleDays, labelStep) : [0];
 
-    const days = Math.min(7, visibleDays - offset);
+  ticks.forEach((offset, i) => {
+
+    const next = i + 1 < ticks.length ? ticks[i + 1] : visibleDays;
+
+    const days = next - offset;
 
     const date = dateFromYearDay(state.rangeStart + offset);
 
-    const end = dateFromYearDay(state.rangeStart + offset + days - 1);
+    const end = dateFromYearDay(state.rangeStart + next - 1);
 
     const cell = document.createElement("div");
 
     cell.className = "week-cell";
-    cell.title = `${dateKey(date)} ~ ${dateKey(end)}`;
+    cell.title = days > 1 ? `${dateKey(date)} ~ ${dateKey(end)}` : dateKey(date);
 
-    if (showWeekLabels) {
-      cell.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
+    /* 구간 맨 앞처럼 잘린 좁은 칸은 글자가 잘려 보이므로 비워 둔다 */
+    const roomy = days * dayWidth >= (labelStep <= 2 ? DAY_LABEL_MIN_GAP : DATE_LABEL_MIN_GAP) - 2;
+
+    if (showWeekLabels && roomy) {
+
+      if (labelStep <= 2) {
+        /* 매일·2일 눈금: 날짜 숫자만. 달이 바뀌는 날은 "월/일" */
+        cell.textContent = date.getDate() === 1
+          ? `${date.getMonth() + 1}/1`
+          : String(date.getDate());
+
+        const weekday = date.getDay();
+        if (labelStep === 1 && (weekday === 0 || weekday === 6)) {
+          cell.classList.add(weekday === 0 ? "sun" : "sat");
+        }
+      } else {
+        cell.textContent = `${date.getMonth() + 1}/${date.getDate()}`;
+      }
+
+      if (dateKey(date) === dateKey(new Date())) {
+        cell.classList.add("today");
+      }
     }
 
     weekRow.appendChild(cell);
 
     weekColumns.push((days * dayWidth) + "px");
-  }
+  });
 
   weekRow.style.gridTemplateColumns = weekColumns.join(" ");
 
@@ -2704,10 +2837,199 @@ function renderTaskBar(
 
     event.stopPropagation();
 
+    /* 꾹 눌러 옮긴 직후 따라오는 클릭은 상세창을 열지 않는다. */
+    if (bar.dataset.justDragged === "1") {
+      bar.dataset.justDragged = "";
+      return;
+    }
+
     showTaskDetail(task.id);
   });
 
   row.appendChild(bar);
+
+
+  /* (요청사항) 캡처 이미지에서만 보이는 작업 제목(막대 바로 위).
+     막대가 오른쪽에 치우쳐 있으면 잘리지 않게 막대 오른쪽 끝에 맞춘다. */
+  const caption = document.createElement("div");
+
+  caption.className = "task-bar-caption";
+  caption.textContent = task.name;
+  caption.style.bottom = `calc(100% - ${bar.style.top} + 1px)`;
+
+  if (left > 60) {
+    caption.style.right = (100 - left - width) + "%";
+    caption.classList.add("align-right");
+  } else {
+    caption.style.left = left + "%";
+  }
+
+  row.appendChild(caption);
+
+
+  /* (요청사항) 꾹 눌러(1초) 띄운 뒤 좌우로 끌어 일정 옮기기 */
+  enableBarLongPressMove(bar, row, task, visibleDays);
+}
+
+
+/* =========================================================
+ * 막대 꾹 눌러 옮기기 (요청사항)
+ *
+ * - 막대를 1초 누르고 있으면(누르는 동안 막대가 차오름) 떠오른 상태가 된다.
+ * - 떠오른 채로 좌우로 끌면 하루 단위로 움직이고, 막대 아래에 새 시작~끝
+ *   날짜가 작게 뜬다. 손을 떼면 시작일·종료일을 같은 일수만큼 옮겨 저장한다
+ *   (기간 길이는 그대로).
+ * - 1초 전에 손을 떼면 평소처럼 클릭(상세창), 1초 전에 움직이면 취소.
+ * - 끄는 중 Esc 를 누르면 원래 자리로 돌아간다. 뷰어(읽기 전용)는 안 된다.
+ * ========================================================= */
+
+const BAR_LONG_PRESS_MS = 1000;
+const BAR_PRESS_MOVE_TOLERANCE = 6;
+
+function shortDateLabel(date) {
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function enableBarLongPressMove(bar, row, task, visibleDays) {
+
+  /* 휴대폰에서 꾹 누르면 뜨는 메뉴/글자 선택을 막는다. */
+  bar.addEventListener("contextmenu", event => event.preventDefault());
+
+  bar.addEventListener("pointerdown", startEvent => {
+
+    if (startEvent.button !== 0) return;
+    if (document.body.classList.contains("shared-viewer-readonly")) return;
+
+    const start = dateObj(task.start);
+    const end = dateObj(task.end);
+
+    if (!start || !end) return;
+
+    const startX = startEvent.clientX;
+    const startY = startEvent.clientY;
+    const dayWidth = row.clientWidth / Math.max(1, visibleDays);
+
+    let floating = false;
+    let shiftDays = 0;
+    let dateTip = null;
+
+    bar.classList.add("pressing");
+
+    const pressTimer = setTimeout(() => {
+
+      floating = true;
+
+      bar.classList.remove("pressing");
+      bar.classList.add("floating");
+      document.body.classList.add("is-bar-moving");
+
+      try { bar.setPointerCapture(startEvent.pointerId); } catch (error) { /* 무시 */ }
+
+      dateTip = document.createElement("div");
+      dateTip.className = "task-bar-dates";
+      dateTip.style.left = bar.style.left;
+      dateTip.style.top = `calc(${bar.style.top} + ${bar.style.height} + 3px)`;
+      row.appendChild(dateTip);
+
+      updateTip();
+    }, BAR_LONG_PRESS_MS);
+
+    function shifted(date) {
+      const copy = new Date(date);
+      copy.setDate(copy.getDate() + shiftDays);
+      return copy;
+    }
+
+    function updateTip() {
+      const offset = shiftDays * dayWidth;
+      bar.style.setProperty("--drag-x", offset + "px");
+      if (dateTip) {
+        dateTip.style.transform = `translateX(${offset}px)`;
+        dateTip.textContent = `${shortDateLabel(shifted(start))} ~ ${shortDateLabel(shifted(end))}`;
+      }
+    }
+
+    function onMove(event) {
+
+      if (!floating) {
+        /* 1초가 되기 전에 움직이면 꾹 누르기가 아니다(스크롤 등) → 취소 */
+        if (Math.abs(event.clientX - startX) > BAR_PRESS_MOVE_TOLERANCE ||
+            Math.abs(event.clientY - startY) > BAR_PRESS_MOVE_TOLERANCE) {
+          finish(false);
+        }
+        return;
+      }
+
+      event.preventDefault();
+
+      const next = Math.round((event.clientX - startX) / dayWidth);
+
+      if (next !== shiftDays) {
+        shiftDays = next;
+        updateTip();
+      }
+    }
+
+    function onKey(event) {
+      if (event.key === "Escape" && floating) {
+        shiftDays = 0;
+        finish(false);
+      }
+    }
+
+    function cleanup() {
+      clearTimeout(pressTimer);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+      bar.classList.remove("pressing", "floating");
+      bar.style.removeProperty("--drag-x");
+      document.body.classList.remove("is-bar-moving");
+      if (dateTip) dateTip.remove();
+    }
+
+    async function finish(save) {
+
+      const wasFloating = floating;
+      const days = shiftDays;
+
+      cleanup();
+
+      if (!wasFloating) return;
+
+      /* 떠오른 뒤에 손을 뗐으면 뒤따르는 클릭으로 상세창이 열리지 않게 */
+      bar.dataset.justDragged = "1";
+      setTimeout(() => { bar.dataset.justDragged = ""; }, 400);
+
+      if (!save || days === 0) return;
+
+      const newStart = dateKey(shifted(start));
+      const newEnd = dateKey(shifted(end));
+
+      /* 바로 옮겨 보이게 한 뒤 저장한다. 실패하면 서버 기준으로 되돌린다. */
+      task.start = newStart;
+      task.end = newEnd;
+      renderTimeline();
+
+      try {
+        await apiPost("update", { data: { id: task.id, start: newStart, end: newEnd } });
+        showToast(`'${task.name}' 일정을 ${newStart} ~ ${newEnd}(으)로 옮겼습니다.`);
+        await loadData(false);
+      } catch (error) {
+        alert("일정 저장 실패\n" + error.message);
+        await loadData(false);
+      }
+    }
+
+    function onUp() { finish(true); }
+    function onCancel() { finish(false); }
+
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+  });
 }
 
 
@@ -4293,7 +4615,12 @@ async function captureChart() {
       const canvas = await html2canvas(gantt, {
         backgroundColor: "#ffffff",
         scale: 2,
-        ignoreElements: element => element.id === "vRangeSlider"
+        ignoreElements: element => element.id === "vRangeSlider",
+        /* (요청사항) 캡처 이미지에서만 막대 위에 작업 제목을 보여준다(화면은 그대로) */
+        onclone: clonedDoc => {
+          const clonedGantt = clonedDoc.querySelector("#chartSingleView .gantt");
+          if (clonedGantt) clonedGantt.classList.add("capturing");
+        }
       });
 
       const from = dateKey(dateFromYearDay(state.rangeStart));
