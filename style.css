@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v19";
+  --css-version: "2026-10-24-design-v20";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -8669,4 +8669,67 @@ body:has(.owner-filter-btn.active) .drag-handle {
 
 .mc-chart-box:hover {
   box-shadow: 0 1px 2px rgba(24, 24, 27, .06), 0 10px 28px -12px rgba(24, 24, 27, .16);
+}
+
+
+/* =========================================================
+   (디자인 추가분) ＋ 작업 / ＋ 카테고리: 글자보다 "버튼"으로 보이게
+   - 양끝 둥근 알약 모양
+   - ＋ 를 작은 동그라미 안에 넣어 아이콘 단추처럼
+   - 담당자별 보기도 같은 알약 모양으로 맞춤
+   ========================================================= */
+.add-actions .add-box,
+.add-actions .add-category-box {
+  height: 38px;
+  padding: 0 16px 0 6px;
+  gap: 8px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: background .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+
+.add-actions .add-box svg,
+.add-actions .add-category-box svg {
+  box-sizing: border-box;
+  width: 26px;
+  height: 26px;
+  padding: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.add-actions .add-box {
+  box-shadow: 0 2px 8px -2px rgba(15, 118, 110, .45);
+}
+
+.add-actions .add-box svg {
+  background: rgba(255, 255, 255, .2);
+  color: #ffffff;
+}
+
+.add-actions .add-category-box {
+  border-color: #e4e4e7;
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .06);
+}
+
+.add-actions .add-category-box svg {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.add-actions .add-category-box:hover:not(:disabled) svg {
+  background: #99f6e4;
+}
+
+.add-actions .add-box:active:not(:disabled),
+.add-actions .add-category-box:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.add-actions .owner-filter-btn {
+  border-radius: 999px;
+  padding: 0 14px 0 14px;
+  box-shadow: 0 1px 3px rgba(24, 24, 27, .06);
 }
