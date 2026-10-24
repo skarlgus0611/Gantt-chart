@@ -5029,6 +5029,7 @@ function shellRenderList() {
     if (!box) {
       box = document.createElement("div");
       box.className = "mc-chart-box";
+      box.id = "mc-chart-anchor-" + chart.id; /* (사이드바 추가분) 사이드바 클릭 시 이 박스로 바로 이동시키기 위한 앵커 */
       box.dataset.chartId = chart.id;
       box.dataset.sharedState = stateKey;
       if (chart.shared) box.classList.add("mc-chart-box-shared");
@@ -5120,7 +5121,81 @@ function shellRenderList() {
   Object.keys(existing).forEach((id) => {
     if (!seen[id]) existing[id].remove();
   });
+
+  shellRenderSidebar(visible); /* (사이드바 추가분) */
 }
+
+/* ▼▼▼ 접이식 사이드바 (추가분) ▼▼▼
+   왼쪽 사이드바에 지금 보이는 차트 목록을 나열하고, 클릭하면 아래
+   해당 차트 박스로 스크롤 이동한다. 데이터는 shellRenderList가 이미
+   들고 있는 목록(visible)을 그대로 재사용하므로 별도 조회가 없다. */
+function shellRenderSidebar(visible) {
+  const list = document.getElementById("mcSidebarList");
+  if (!list) return;
+
+  list.innerHTML = "";
+
+  visible.forEach((chart) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "mc-sidebar-item" + (chart.shared ? " mc-sidebar-item-shared" : "");
+    item.title = chart.name;
+
+    const dot = document.createElement("span");
+    dot.className = "mc-sidebar-item-dot";
+    item.appendChild(dot);
+
+    const name = document.createElement("span");
+    name.className = "mc-sidebar-item-name";
+    name.textContent = chart.name;
+    item.appendChild(name);
+
+    item.addEventListener("click", () => {
+      const target = document.getElementById("mc-chart-anchor-" + chart.id);
+      if (!target) return;
+      target.classList.remove("mc-chart-box-collapsed");
+      const toggle = target.querySelector(".mc-chart-toggle");
+      if (toggle) {
+        toggle.setAttribute("aria-expanded", "true");
+        const arrow = toggle.querySelector(".mc-chart-toggle-arrow");
+        if (arrow) arrow.textContent = "▼";
+        const label = toggle.querySelector(".mc-chart-toggle-label");
+        if (label) label.textContent = "";
+      }
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      document.querySelectorAll(".mc-sidebar-item.active").forEach((el) => el.classList.remove("active"));
+      item.classList.add("active");
+    });
+
+    list.appendChild(item);
+  });
+}
+
+function shellInitSidebarToggle() {
+  const toggleBtn = document.getElementById("mcSidebarToggle");
+  const addBtn = document.getElementById("mcSidebarAddBtn");
+  const shellView = document.getElementById("shellView");
+  if (!toggleBtn || !shellView) return;
+
+  let collapsed = false;
+  try { collapsed = localStorage.getItem("mcSidebarCollapsed") === "1"; } catch (error) { /* 무시 */ }
+  shellView.classList.toggle("mc-sidebar-collapsed", collapsed);
+
+  toggleBtn.addEventListener("click", () => {
+    collapsed = !collapsed;
+    shellView.classList.toggle("mc-sidebar-collapsed", collapsed);
+    try { localStorage.setItem("mcSidebarCollapsed", collapsed ? "1" : "0"); } catch (error) { /* 무시 */ }
+  });
+
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      const mainAddBtn = document.getElementById("mcAddBtn");
+      if (mainAddBtn) mainAddBtn.click();
+    });
+  }
+}
+/* ▲▲▲ 접이식 사이드바 (추가분) 끝 ▲▲▲ */
 
 /* (추가분) 캘린더 연동 + CSV 내보내기: 차트 박스 위 버튼들의 동작. */
 
@@ -5346,6 +5421,8 @@ function initShell() {
   document.querySelectorAll("#shellView [data-close]").forEach((btn) => {
     btn.addEventListener("click", () => shellCloseModal(btn.dataset.close));
   });
+
+  shellInitSidebarToggle(); /* (사이드바 추가분) */
 
   document.getElementById("mcAddBtn").addEventListener("click", () => {
     /* (공유 기능 추가분) 바로 "새 차트" 입력창을 띄우던 것을, 먼저
