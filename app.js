@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v13";
+const APP_VERSION = "2026-10-24-design-v14";
 
 
 /* =========================================================
@@ -102,7 +102,10 @@ let state = {
   chartHeight: 420,
 
   /* (디자인 추가분) 접어 둔 카테고리 id 목록("기타"는 ""). 이 브라우저에만 기억한다. */
-  collapsedGroups: loadCollapsedGroups()
+  collapsedGroups: loadCollapsedGroups(),
+
+  /* (조직 관리 3단계) 담당자별 보기. null 이면 전체 */
+  ownerFilter: loadOwnerFilter()
 };
 
 function collapsedStorageKey() {
@@ -413,6 +416,7 @@ function resolveTasksAndCats(bucket) {
       memo: t.memo || "",
       target: t.target || "",
       owner: t.owner || "",
+      ownerEmail: t.ownerEmail || "",
       updated: t.updated || ""
     };
   });
@@ -430,7 +434,9 @@ function applyTaskFields(base, data, cats) {
   const t = {
     name: base.name, categoryId: base.categoryId, start: base.start, end: base.end,
     progress: base.progress, color: base.color, memo: base.memo,
-    target: base.target, owner: base.owner
+    target: base.target, owner: base.owner,
+    /* (조직 관리 3단계) 조직원 목록에서 고른 담당자면 그 사람 이메일. 직접 적은 이름이면 "" */
+    ownerEmail: base.ownerEmail || ""
   };
 
   const has = (k) => data[k] !== undefined && data[k] !== null;
@@ -483,6 +489,16 @@ function applyTaskFields(base, data, cats) {
   }
   if (has("owner")) {
     t.owner = strLimited(data.owner, LIMITS.owner, "담당자");
+  }
+  if (has("ownerEmail")) {
+    const email = String(data.ownerEmail).trim().toLowerCase();
+    t.ownerEmail = email && /^[^\s@]+@[^\s@]+$/.test(email) && email.length <= 200 ? email : "";
+  } else if (has("owner") && t.owner !== base.owner) {
+    /* 담당자 이름만 바뀌었으면 예전 이메일 연결은 끊는다 */
+    t.ownerEmail = "";
+  }
+  if (!String(t.owner || "").trim()) {
+    t.ownerEmail = "";
   }
 
   return t;
@@ -919,7 +935,7 @@ async function coreApiPost(action, chartId, body = {}) {
         fb.getCategoriesOnce(chartId), fb.getTasksOnce(chartId), getChartMetaCached(chartId)
       ]);
       const t = applyTaskFields(
-        { name: "", categoryId: "", start: "", end: "", progress: 0, color: "", memo: "", target: "", owner: "" },
+        { name: "", categoryId: "", start: "", end: "", progress: 0, color: "", memo: "", target: "", owner: "", ownerEmail: "" },
         body.data || {}, cats
       );
       const ref = await fb.createTask(chartId, { ...t, order: existingTasks.length },
@@ -1051,7 +1067,7 @@ async function coreApiPost(action, chartId, body = {}) {
         await fb.createTask(ref.id, {
           name: t.name, categoryId: catIdMap[t.categoryId] || "",
           start: t.start, end: t.end, progress: t.progress, color: t.color,
-          memo: t.memo, target: t.target, owner: t.owner, order: taskOrder++
+          memo: t.memo, target: t.target, owner: t.owner, ownerEmail: t.ownerEmail || "", order: taskOrder++
         }, newChartAcl);
       }
 
@@ -1548,6 +1564,8 @@ function isLightColor(hex) {
 
 function render() {
 
+  updateOwnerFilterButton(); /* (조직 관리 3단계) */
+
   const yearTitle = document.getElementById("yearTitle");
 
   if (yearTitle) {
@@ -1770,7 +1788,9 @@ function groupTasks() {
 
       return (
         task.start <= yearEnd &&
-        task.end >= yearStart
+        task.end >= yearStart &&
+        /* (조직 관리 3단계) 담당자별 보기 */
+        taskMatchesOwnerFilter(task, state.ownerFilter)
       );
     });
 
@@ -1813,8 +1833,9 @@ function groupTasks() {
 
     if (!tasks.length) {
 
-      /* 작업이 아예 없는 카테고리만 빈 상태로 보여 준다. */
-      if (!usedCategoryIds.has(category.id)) {
+      /* 작업이 아예 없는 카테고리만 빈 상태로 보여 준다.
+         (담당자별로 볼 때는 그 사람 작업이 없는 카테고리는 숨긴다) */
+      if (!usedCategoryIds.has(category.id) && !state.ownerFilter) {
         groups.push({
           id: category.id,
           name: category.name,
@@ -2373,6 +2394,428 @@ function ownerBadgeHtml(task, group) {
         aria-hidden="true"
       >${escapeHtml(Array.from(owner)[0])}</span>`;
 }
+
+
+/* =========================================================
+ * (조직 관리 3단계) 담당자를 조직원 중에서 고르기
+ *  - 담당자 칸을 누르면 아래에 사람 목록이 뜬다.
+ *    · 이 차트를 조직에 공유했으면 그 조직의 조직원
+ *    · 아직 조직에 공유하지 않은 차트면 내가 속한 모든 조직의 조직원
+ *    · 그리고 나, 차트 소유자, 이메일로 공유받은 사람
+ *  - 고르면 이름이 들어가고 이메일(ownerEmail)도 함께 저장된다.
+ *  - 목록에 없는 사람은 지금처럼 이름을 그대로 적으면 된다.
+ * ========================================================= */
+let assigneeCandidatesPromise = null;
+
+function assigneeChartId() {
+  return IS_SHARED_CHART ? SHARED_CHART_ID : CHART_ID;
+}
+
+async function fetchAssigneeCandidates() {
+  if (!fbUser) return [];
+
+  const chart = await getChartMetaCached(assigneeChartId()).catch(() => null);
+  const memberships = (await fbMyOrgMemberships()).filter((m) => m.status === "accepted");
+  const chartOrgIds = (chart && chart.orgIds) || [];
+  const orgIds = chartOrgIds.length
+    ? chartOrgIds.filter((orgId) => memberships.some((m) => m.orgId === orgId))
+    : memberships.map((m) => m.orgId);
+
+  const byEmail = new Map();
+  const add = (person) => {
+    const email = String(person.email || "").trim().toLowerCase();
+    if (!email) return;
+    const previous = byEmail.get(email) || {};
+    byEmail.set(email, {
+      ...previous,
+      ...Object.fromEntries(Object.entries(person).filter(([, value]) => value)),
+      email
+    });
+  };
+
+  add({ email: fbUser.email, name: fbUser.displayName || "", me: true });
+
+  const rosters = await Promise.all(orgIds.map((orgId) =>
+    typeof fb.getOrgMembers === "function" ? fb.getOrgMembers(orgId).catch(() => []) : []
+  ));
+  rosters.flat()
+    .filter((member) => member.status === "accepted")
+    .forEach((member) => add({ email: member.email, name: member.name, title: member.title, orgName: member.orgName }));
+
+  if (chart) {
+    add({ email: chart.ownerEmail });
+    Object.keys(chart.members || {}).forEach((email) => {
+      const entry = chart.members[email];
+      if (entry && entry.status === "accepted") add({ email });
+    });
+  }
+
+  const myEmail = String(fbUser.email || "").toLowerCase();
+  return Array.from(byEmail.values()).sort((a, b) => {
+    if (a.email === myEmail) return -1;
+    if (b.email === myEmail) return 1;
+    return (a.name || a.email).localeCompare(b.name || b.email, "ko");
+  });
+}
+
+function loadAssigneeCandidates() {
+  if (!assigneeCandidatesPromise) {
+    assigneeCandidatesPromise = fetchAssigneeCandidates().catch((error) => {
+      console.warn("담당자 목록을 불러오지 못했습니다:", error);
+      assigneeCandidatesPromise = null;
+      return [];
+    });
+  }
+  return assigneeCandidatesPromise;
+}
+
+function assigneeDisplayName(person) {
+  return person.name || person.email;
+}
+
+/* 직접 적은 이름이 목록의 한 사람과 정확히 같으면 그 사람으로 연결한다 */
+function assigneeMatchByName(candidates, text) {
+  const value = String(text || "").trim();
+  if (!value) return null;
+  const hits = candidates.filter((person) => assigneeDisplayName(person) === value || person.email === value.toLowerCase());
+  return hits.length === 1 ? hits[0] : null;
+}
+
+const ASSIGNEE_ICON_USER = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20a7 7 0 0 1 14 0"></path></svg>';
+const ASSIGNEE_ICON_PENCIL = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"></path></svg>';
+
+let assigneeMenu = null;
+let assigneeMenuInput = null;
+let assigneeMenuActive = 0;
+
+function closeAssigneeMenu() {
+  if (assigneeMenu) assigneeMenu.remove();
+  assigneeMenu = null;
+  assigneeMenuInput = null;
+}
+
+function chooseAssignee(input, person) {
+  input.value = assigneeDisplayName(person);
+  input.dataset.ownerEmail = person.email;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  closeAssigneeMenu();
+}
+
+async function openAssigneeMenu(input, typed) {
+  if (input.disabled || input.readOnly) return;
+  const candidates = await loadAssigneeCandidates();
+  if (document.activeElement !== input) return;
+
+  const query = input.value.trim().toLowerCase();
+  const chosen = input.dataset.ownerEmail || "";
+  /* 칸을 막 눌렀을 때는 이미 적힌 이름과 상관없이 모두 보여 준다 */
+  const showAll = !typed || !query || candidates.some((person) => person.email === chosen && assigneeDisplayName(person).toLowerCase() === query);
+  const list = showAll ? candidates : candidates.filter((person) =>
+    [person.name, person.email, person.title, person.orgName].some((field) => String(field || "").toLowerCase().includes(query))
+  );
+  const exact = candidates.some((person) => assigneeDisplayName(person).toLowerCase() === query);
+
+  if (!assigneeMenu) {
+    assigneeMenu = document.createElement("div");
+    assigneeMenu.className = "assignee-menu";
+    assigneeMenu.setAttribute("role", "listbox");
+    /* 누르는 동안 입력칸 포커스를 잃지 않게 */
+    assigneeMenu.addEventListener("mousedown", (event) => event.preventDefault());
+    document.body.appendChild(assigneeMenu);
+  }
+  assigneeMenuInput = input;
+  assigneeMenuActive = Math.max(0, list.findIndex((person) => person.email === chosen));
+  assigneeMenu.innerHTML = "";
+
+  if (!candidates.length || (candidates.length === 1 && !query)) {
+    const empty = document.createElement("div");
+    empty.className = "assignee-empty";
+    empty.innerHTML = ASSIGNEE_ICON_USER + "<span>조직에 공유하면 조직원 중에서 고를 수 있어요. 이름을 그대로 적어도 돼요.</span>";
+    assigneeMenu.appendChild(empty);
+  }
+
+  list.forEach((person, index) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "assignee-item" + (person.email === chosen ? " selected" : "") + (index === assigneeMenuActive ? " active" : "");
+    item.setAttribute("role", "option");
+    const initial = Array.from(assigneeDisplayName(person))[0] || "?";
+    item.innerHTML =
+      '<span class="assignee-avatar" style="background:' + mcPersonColor(person.email) + '">' + escapeHtml(initial) + "</span>" +
+      '<span class="assignee-text"><span class="assignee-name">' + escapeHtml(assigneeDisplayName(person)) + "</span>" +
+      '<span class="assignee-sub">' + escapeHtml([person.title, person.name ? person.email : person.orgName].filter(Boolean).join(" · ")) + "</span></span>" +
+      (person.me ? '<span class="assignee-me">나</span>' : "");
+    item.addEventListener("click", () => chooseAssignee(input, person));
+    assigneeMenu.appendChild(item);
+  });
+
+  if (typed && query && !exact) {
+    const free = document.createElement("div");
+    free.className = "assignee-free";
+    free.innerHTML = ASSIGNEE_ICON_PENCIL + "<span>목록에 없으면 \"" + escapeHtml(input.value.trim()) + "\" 그대로 저장돼요</span>";
+    assigneeMenu.appendChild(free);
+  }
+
+  if (!assigneeMenu.children.length) {
+    closeAssigneeMenu();
+    return;
+  }
+
+  const rect = input.getBoundingClientRect();
+  const width = Math.max(rect.width, 260);
+  assigneeMenu.style.width = width + "px";
+  assigneeMenu.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + "px";
+  const below = window.innerHeight - rect.bottom;
+  const height = Math.min(assigneeMenu.scrollHeight, 280);
+  assigneeMenu.style.top = (below < height + 12 && rect.top > below ? rect.top - height - 6 : rect.bottom + 6) + "px";
+}
+
+function moveAssigneeActive(step) {
+  if (!assigneeMenu) return;
+  const items = Array.from(assigneeMenu.querySelectorAll(".assignee-item"));
+  if (!items.length) return;
+  assigneeMenuActive = (assigneeMenuActive + step + items.length) % items.length;
+  items.forEach((item, index) => item.classList.toggle("active", index === assigneeMenuActive));
+  items[assigneeMenuActive].scrollIntoView({ block: "nearest" });
+}
+
+const ASSIGNEE_INPUT_IDS = ["taskOwner", "detailOwner"];
+
+document.addEventListener("focusin", (event) => {
+  const input = event.target;
+  if (!input || !ASSIGNEE_INPUT_IDS.includes(input.id)) return;
+  openAssigneeMenu(input);
+});
+
+document.addEventListener("focusout", (event) => {
+  if (event.target === assigneeMenuInput) closeAssigneeMenu();
+});
+
+document.addEventListener("input", (event) => {
+  const input = event.target;
+  if (!input || !ASSIGNEE_INPUT_IDS.includes(input.id) || !event.isTrusted) return;
+  /* 손으로 고치면 예전 연결은 끊고, 목록의 이름과 똑같으면 그 사람으로 다시 잇는다 */
+  input.dataset.ownerEmail = "";
+  loadAssigneeCandidates().then((candidates) => {
+    const match = assigneeMatchByName(candidates, input.value);
+    if (match) input.dataset.ownerEmail = match.email;
+  });
+  openAssigneeMenu(input, true);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!assigneeMenu || event.target !== assigneeMenuInput) return;
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    moveAssigneeActive(event.key === "ArrowDown" ? 1 : -1);
+  } else if (event.key === "Enter") {
+    const active = assigneeMenu.querySelector(".assignee-item.active");
+    if (active) {
+      event.preventDefault();
+      active.click();
+    }
+  } else if (event.key === "Escape") {
+    event.stopPropagation();
+    closeAssigneeMenu();
+  }
+}, true);
+
+window.addEventListener("resize", closeAssigneeMenu);
+document.addEventListener("scroll", (event) => {
+  if (assigneeMenu && !assigneeMenu.contains(event.target)) closeAssigneeMenu();
+}, true);
+
+
+/* =========================================================
+ * (조직 관리 3단계) 담당자별 보기
+ *  - "작업 추가" 줄 오른쪽 [담당자: 전체 ▾] 에서 사람을 고르면 그 사람 작업만 보인다.
+ *  - 고른 사람은 이 차트·이 브라우저에 기억한다.
+ *  - 보는 동안에는 순서 끌기를 잠시 막는다(가려진 작업 순서가 꼬이지 않게).
+ * ========================================================= */
+function ownerFilterStorageKey() {
+  return "ganttOwnerFilter:" + CHART_ID;
+}
+
+function loadOwnerFilter() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ownerFilterStorageKey()) || "null");
+    return saved && saved.kind ? saved : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function saveOwnerFilter(filter) {
+  try {
+    if (filter) localStorage.setItem(ownerFilterStorageKey(), JSON.stringify(filter));
+    else localStorage.removeItem(ownerFilterStorageKey());
+  } catch (error) {
+    // 무시
+  }
+}
+
+/* 작업의 담당자를 한 사람 단위로: 이메일이 있으면 이메일, 없으면 적힌 이름 */
+function taskOwnerKey(task) {
+  if (task.ownerEmail) return "email:" + task.ownerEmail;
+  const name = String(task.owner || "").trim();
+  return name ? "name:" + name : "none";
+}
+
+function taskMatchesOwnerFilter(task, filter) {
+  if (!filter) return true;
+  if (filter.kind === "none") return !String(task.owner || "").trim();
+  if (filter.kind === "email") {
+    return task.ownerEmail === filter.value ||
+      (!task.ownerEmail && !!filter.label && String(task.owner || "").trim() === filter.label);
+  }
+  return !task.ownerEmail && String(task.owner || "").trim() === filter.value;
+}
+
+function ownerFilterPeople() {
+  const people = new Map();
+  (state.tasks || []).forEach((task) => {
+    const key = taskOwnerKey(task);
+    const entry = people.get(key) || {
+      key,
+      kind: key === "none" ? "none" : key.split(":")[0],
+      value: key === "none" ? "" : key.slice(key.indexOf(":") + 1),
+      label: key === "none" ? "담당자 없음" : String(task.owner || "").trim() || task.ownerEmail,
+      count: 0
+    };
+    entry.count += 1;
+    people.set(key, entry);
+  });
+
+  /* 이메일로 고른 사람과 같은 이름을 손으로 적은 작업은 한 사람으로 합친다 */
+  const list = Array.from(people.values());
+  list.filter((p) => p.kind === "email").forEach((person) => {
+    const twin = list.find((p) => p.kind === "name" && p.value === person.label);
+    if (twin) {
+      person.count += twin.count;
+      twin.merged = true;
+    }
+  });
+
+  const myEmail = fbUser ? String(fbUser.email || "").toLowerCase() : "";
+  return list
+    .filter((p) => !p.merged)
+    .map((p) => ({ ...p, me: p.kind === "email" && p.value === myEmail }))
+    .sort((a, b) => {
+      if (a.me !== b.me) return a.me ? -1 : 1;
+      if ((a.kind === "none") !== (b.kind === "none")) return a.kind === "none" ? 1 : -1;
+      return a.label.localeCompare(b.label, "ko");
+    });
+}
+
+const OWNER_FILTER_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M16 4.5a3 3 0 0 1 0 6M21 20a5 5 0 0 0-3.5-4.8"></path></svg>';
+const OWNER_FILTER_CARET = '<svg class="owner-filter-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>';
+
+function updateOwnerFilterButton() {
+  const button = document.getElementById("ownerFilterBtn");
+  if (!button) return;
+  const filter = state.ownerFilter;
+  button.classList.toggle("active", !!filter);
+  button.innerHTML = OWNER_FILTER_ICON +
+    '<span class="owner-filter-label">' + (filter ? escapeHtml(filter.label) + "의 작업" : "담당자별 보기") + "</span>" +
+    (filter ? '<span class="owner-filter-clear" role="button" aria-label="전체 보기" title="전체 보기">' +
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></span>'
+      : OWNER_FILTER_CARET);
+}
+
+function setOwnerFilter(filter) {
+  state.ownerFilter = filter;
+  saveOwnerFilter(filter);
+  closeOwnerFilterMenu();
+  render();
+}
+
+let ownerFilterMenu = null;
+
+function closeOwnerFilterMenu() {
+  if (ownerFilterMenu) ownerFilterMenu.remove();
+  ownerFilterMenu = null;
+}
+
+function openOwnerFilterMenu(button) {
+  if (ownerFilterMenu) {
+    closeOwnerFilterMenu();
+    return;
+  }
+  const people = ownerFilterPeople();
+  const filter = state.ownerFilter;
+
+  const menu = document.createElement("div");
+  menu.className = "owner-filter-menu";
+  menu.setAttribute("role", "menu");
+
+  const addItem = (label, sub, count, isActive, onClick, avatarHtml) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "owner-filter-item" + (isActive ? " selected" : "");
+    item.setAttribute("role", "menuitemradio");
+    item.setAttribute("aria-checked", String(isActive));
+    item.innerHTML = avatarHtml +
+      '<span class="assignee-text"><span class="assignee-name">' + escapeHtml(label) + "</span>" +
+      (sub ? '<span class="assignee-sub">' + escapeHtml(sub) + "</span>" : "") + "</span>" +
+      (count !== null ? '<span class="owner-filter-count">' + count + "</span>" : "") +
+      (isActive ? '<svg class="owner-filter-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>' : "");
+    item.addEventListener("click", onClick);
+    menu.appendChild(item);
+  };
+
+  addItem("전체", "모든 담당자", (state.tasks || []).length, !filter, () => setOwnerFilter(null),
+    '<span class="assignee-avatar owner-filter-all">' + OWNER_FILTER_ICON + "</span>");
+
+  if (people.length) menu.appendChild(Object.assign(document.createElement("div"), { className: "owner-filter-sep" }));
+
+  people.forEach((person) => {
+    const isActive = !!filter && filter.kind === person.kind && filter.value === person.value;
+    const avatar = person.kind === "none"
+      ? '<span class="assignee-avatar owner-filter-none">–</span>'
+      : '<span class="assignee-avatar" style="background:' + mcPersonColor(person.kind === "email" ? person.value : person.label) + '">' +
+        escapeHtml(Array.from(person.label)[0] || "?") + "</span>";
+    const sub = person.kind === "email" ? person.value : (person.kind === "name" ? "직접 적은 이름" : "");
+    addItem(person.label + (person.me ? " (나)" : ""), sub, person.count, isActive,
+      () => setOwnerFilter({ kind: person.kind, value: person.value, label: person.label }), avatar);
+  });
+
+  document.body.appendChild(menu);
+  const rect = button.getBoundingClientRect();
+  const width = menu.offsetWidth;
+  menu.style.left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)) + "px";
+  const height = menu.offsetHeight;
+  menu.style.top = (rect.top > height + 12 && window.innerHeight - rect.bottom < height + 12
+    ? rect.top - height - 6 : rect.bottom + 6) + "px";
+  ownerFilterMenu = menu;
+}
+
+function initOwnerFilter() {
+  const actions = document.querySelector(".add-actions");
+  if (!actions || document.getElementById("ownerFilterBtn")) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = "ownerFilterBtn";
+  button.className = "owner-filter-btn";
+  button.title = "담당자별로 작업 보기";
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (event.target.closest(".owner-filter-clear")) {
+      setOwnerFilter(null);
+      return;
+    }
+    openOwnerFilterMenu(button);
+  });
+  actions.appendChild(button);
+  updateOwnerFilterButton();
+}
+
+document.addEventListener("click", (event) => {
+  if (ownerFilterMenu && !ownerFilterMenu.contains(event.target)) closeOwnerFilterMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeOwnerFilterMenu();
+});
+window.addEventListener("resize", closeOwnerFilterMenu);
 
 
 /* =========================================================
@@ -3411,6 +3854,9 @@ function showTaskDetail(id) {
     markSelectedSwatch(panel, color);
   };
 
+  /* (조직 관리 3단계) 조직원 목록에서 고른 담당자의 이메일 */
+  document.getElementById("detailOwner").dataset.ownerEmail = task.ownerEmail || "";
+
   ["detailName", "detailCategory", "detailStart", "detailEnd", "detailColor", "detailOwner"].forEach(fieldId => {
     const field = document.getElementById(fieldId);
     field.addEventListener("input", refreshDetailHead);
@@ -3514,7 +3960,9 @@ async function saveTaskDetail(id) {
 
     target: document.getElementById("detailTarget").value,
 
-    owner: document.getElementById("detailOwner").value
+    owner: document.getElementById("detailOwner").value,
+
+    ownerEmail: document.getElementById("detailOwner").dataset.ownerEmail || ""
   };
 
 
@@ -3733,6 +4181,10 @@ function openTaskModal() {
   setFieldValue("taskMemo", "");
   setFieldValue("taskTarget", "");
   setFieldValue("taskOwner", "");
+  {
+    const ownerInput = document.getElementById("taskOwner");
+    if (ownerInput) ownerInput.dataset.ownerEmail = "";
+  }
 
   const colorInput = document.getElementById("taskColor");
 
@@ -3809,7 +4261,9 @@ async function saveNewTask() {
 
           target: document.getElementById("taskTarget").value,
 
-          owner: document.getElementById("taskOwner").value
+          owner: document.getElementById("taskOwner").value,
+
+          ownerEmail: document.getElementById("taskOwner").dataset.ownerEmail || ""
         }
       });
 
@@ -4001,6 +4455,13 @@ function setupDrag() {
     }
 
     if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    /* (조직 관리 3단계) 담당자별로 보는 중에는 가려진 작업 순서가 꼬이지 않게 막는다 */
+    if (state.ownerFilter) {
+      event.preventDefault();
+      showToast("담당자별로 보는 중에는 순서를 바꿀 수 없어요. '전체'로 돌린 뒤 옮겨 주세요.", true);
       return;
     }
 
@@ -8224,6 +8685,7 @@ if (IS_SHELL_MODE) {
   checkVersions();
 
   setupDrag();
+  initOwnerFilter(); /* (조직 관리 3단계) 담당자별 보기 */
 
   initChartRangeUI();
   initChartNameUI();
