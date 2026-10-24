@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v20";
+  --css-version: "2026-10-24-design-v21";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -8732,4 +8732,146 @@ body:has(.owner-filter-btn.active) .drag-handle {
   border-radius: 999px;
   padding: 0 14px 0 14px;
   box-shadow: 0 1px 3px rgba(24, 24, 27, .06);
+}
+
+
+/* =========================================================
+   (디자인 추가분) 위아래 바꿈: 확대/축소·행 높이를 차트 바로 밑으로,
+   ＋작업·＋카테고리·담당자별 보기는 카드 맨 아래 줄로
+   ========================================================= */
+.zoom-area {
+  margin-top: 14px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.add-actions {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #f0f0f2;
+}
+
+
+/* =========================================================
+   (디자인 추가분) 눌리는 작은 버튼들을 알약 모양으로 통일
+   - 글자 버튼: 양끝 둥근 알약
+   - 아이콘만 있는 버튼: 동그라미
+   - 입력칸은 툴바에 있는 것(검색·공유 이메일)만 알약, 폼 안 입력칸은 그대로
+   ========================================================= */
+
+/* 셸(바깥 화면) 버튼 전부: 차트 관리 · 새 차트 · 엑셀로 내보내기 · 공유 · 로그아웃 ·
+   창 아래 취소/저장/닫기 · 새로운 차트 만들기 · 차트 공유받기 · 조직 창 버튼 등 */
+.mc-btn {
+  border-radius: 999px;
+}
+
+.mc-btn:not(.mc-btn-icon) {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.mc-btn-icon {
+  border-radius: 999px;
+}
+
+#mcReloadBtn.mc-btn-icon {
+  width: 36px;
+  height: 36px;
+}
+
+/* 차트 머리의 아이콘 묶음(새로고침·전체·오늘·캡처 / 캘린더 추가·삭제) */
+.mc-btn-group {
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.mc-chart-box-actions .mc-btn-group .mc-btn {
+  width: 30px;
+  min-width: 30px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+/* 검색창 · 공유 창 이메일/권한 줄 */
+.mc-search input {
+  border-radius: 999px;
+  padding-left: 34px;
+}
+
+.mc-search svg {
+  left: 13px;
+}
+
+.mc-share-add-row input[type="email"],
+.mc-share-add-row select,
+.mc-share-org-bar select {
+  border-radius: 999px;
+}
+
+.mc-share-add-row input[type="email"] {
+  padding-left: 36px;
+}
+
+.mc-share-add-row .mc-input-icon svg {
+  left: 13px;
+}
+
+/* 공유 방법 탭 */
+.mc-share-tabs {
+  border-radius: 999px;
+}
+
+.mc-share-tab {
+  border-radius: 999px;
+}
+
+/* 창 닫기(✕) · 사이드바 접기 */
+.mc-modal-close,
+.mc-sidebar-toggle {
+  border-radius: 999px;
+}
+
+/* ⋯ 메뉴 · 공유 칩은 이미 알약 */
+
+/* 차트 안(iframe) 버튼: 작업/카테고리 창의 취소·저장, 상세 창의 삭제·취소·저장,
+   기간 저장, 단독 화면 위쪽 아이콘 버튼, 올해로 이동 */
+.modal-actions button,
+.detail-actions button,
+#saveTaskBtn,
+#saveCategoryBtn,
+.custom-range-btn,
+.yp-today,
+button.primary {
+  border-radius: 999px;
+}
+
+.modal-actions button,
+.detail-actions button:not(.detail-delete) {
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+.top-actions button {
+  border-radius: 999px;
+}
+
+/* 표시 기간 확대/축소: 띠와 고른 구간 모두 양옆 둥글게 */
+.range-slider .range-track {
+  border-radius: 999px;
+}
+
+.range-slider .range-bar {
+  border-radius: 999px;
+}
+
+.range-slider .range-handle {
+  width: 8px;
+  height: 18px;
+  border-radius: 999px;
+}
+
+/* 행 높이 띠 */
+.row-height-wrap {
+  border-radius: 999px;
+  padding: 0 14px;
 }
