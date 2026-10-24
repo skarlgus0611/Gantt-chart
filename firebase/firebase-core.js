@@ -28,7 +28,7 @@ import {
 import {
   initializeFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
   getDoc, getDocs, onSnapshot, query, where, serverTimestamp, arrayUnion, arrayRemove,
-  writeBatch
+  writeBatch, FieldPath
 } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js";
 
 /* (당신 콘솔에서 받은 설정값 그대로) */
@@ -123,22 +123,28 @@ export function deleteChart(chartId) {
  * updateDoc이라, 예전 ShareServer.gs의 인덱스 파일+락+버전번호
  * 체계 자체가 필요 없어진다. */
 
+/* (버그 수정) "members." + email 처럼 문자열을 이어붙여서 필드 경로로
+   쓰면, Firestore는 그 문자열 안의 "." 를 전부 경로 구분자로 해석한다.
+   이메일 자체에 "." 이 있으면(예: "a@gmail.com"의 ".com") 그 지점에서
+   또 쪼개져서, "members.a@gmail.com"이 실제로는
+   members → "a@gmail" → "com" 처럼 한 단계 더 깊이 들어가 버렸다 —
+   그래서 이메일 끝(.com 등)이 날아가고 role이 "undefined"로 보이는
+   버그가 생겼다. FieldPath를 쓰면 이메일 문자열 전체를 "한 단계"로
+   정확히 취급한다. */
 export function inviteMember(chartId, email, role) {
-  const field = "members." + email;
-  return updateDoc(doc(db, "charts", chartId), {
-    [field]: { role, status: "pending" },
-    pendingEmails: arrayUnion(email)
-  });
+  return updateDoc(doc(db, "charts", chartId),
+    new FieldPath("members", email), { role, status: "pending" },
+    "pendingEmails", arrayUnion(email)
+  );
 }
 
 export async function respondInvite(chartId, email, accept) {
-  const field = "members." + email;
   const chartRef = doc(db, "charts", chartId);
   if (!accept) {
-    return updateDoc(chartRef, {
-      [field]: null,
-      pendingEmails: arrayRemove(email)
-    });
+    return updateDoc(chartRef,
+      new FieldPath("members", email), null,
+      "pendingEmails", arrayRemove(email)
+    );
   }
   const snap = await getDoc(chartRef);
   const data = snap.data() || {};
@@ -146,32 +152,30 @@ export async function respondInvite(chartId, email, accept) {
   const newMemberEmails = (data.memberEmails || []).includes(email)
     ? (data.memberEmails || [])
     : (data.memberEmails || []).concat(email);
-  await updateDoc(chartRef, {
-    [field]: { role: entry.role, status: "accepted" },
-    pendingEmails: arrayRemove(email),
-    memberEmails: arrayUnion(email)
-  });
+  await updateDoc(chartRef,
+    new FieldPath("members", email), { role: entry.role, status: "accepted" },
+    "pendingEmails", arrayRemove(email),
+    "memberEmails", arrayUnion(email)
+  );
   /* (성능/Rules 수정) memberEmails가 실제로 바뀌는 시점(수락)이라
      이 차트의 작업/카테고리 복사값도 같이 맞춰준다. */
   await restampChartAcl(chartId, data.ownerId, newMemberEmails);
 }
 
 export function setMemberRole(chartId, email, role) {
-  const field = "members." + email + ".role";
-  return updateDoc(doc(db, "charts", chartId), { [field]: role });
+  return updateDoc(doc(db, "charts", chartId), new FieldPath("members", email, "role"), role);
 }
 
 export async function removeMember(chartId, email) {
-  const field = "members." + email;
   const chartRef = doc(db, "charts", chartId);
   const snap = await getDoc(chartRef);
   const data = snap.data() || {};
   const newMemberEmails = (data.memberEmails || []).filter((e) => e !== email);
-  await updateDoc(chartRef, {
-    [field]: null,
-    memberEmails: arrayRemove(email),
-    pendingEmails: arrayRemove(email)
-  });
+  await updateDoc(chartRef,
+    new FieldPath("members", email), null,
+    "memberEmails", arrayRemove(email),
+    "pendingEmails", arrayRemove(email)
+  );
   /* (성능/Rules 수정) memberEmails가 줄어드는 시점이라 작업/카테고리
      복사값도 같이 맞춰준다 — 안 하면 제거된 사람이 작업 문서에 남아있는
      옛 복사값 때문에 계속 읽을 수 있게 되는 보안 구멍이 생긴다. */
@@ -357,4 +361,3 @@ export async function getChartsOnce(uid, email) {
   sharedSnap.docs.forEach((d) => { byId[d.id] = { id: d.id, ...d.data() }; });
   return Object.values(byId);
 }
-
