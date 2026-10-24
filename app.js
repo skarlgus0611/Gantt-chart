@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v7";
+const APP_VERSION = "2026-10-24-design-v8";
 
 
 /* =========================================================
@@ -1516,6 +1516,7 @@ function postStatsToParent() {
       chartId: CHART_ID,
       avgProgress: avg,
       categories: (state.categories || []).map(c => ({ name: c.name, color: validHex(c.color) || DEFAULT_COLOR })),
+      groups: sidebarTaskGroups(),
       windowStart: dateKey(getYearStart()),
       windowEnd: dateKey(getYearEnd()),
       windowDays: windowTotalDays(),
@@ -1525,6 +1526,37 @@ function postStatsToParent() {
   } catch (error) {
     // 교차 출처 등 예외적인 경우만 조용히 무시.
   }
+}
+
+
+/* (요청사항) 사이드바 카테고리 목록용: 카테고리 순서대로, 그 카테고리의 작업
+   전부(보이는 기간과 상관없이, 끌어서 정한 순서). 카테고리 없는 작업은 맨 아래 "기타". */
+function sidebarTaskGroups() {
+
+  const tasks = state.tasks || [];
+  const categoryIds = new Set((state.categories || []).map(c => c.id));
+
+  const groups = (state.categories || []).map(category => ({
+    id: category.id,
+    name: category.name,
+    color: validHex(category.color) || DEFAULT_COLOR,
+    tasks: tasks
+      .filter(task => task.categoryId === category.id)
+      .map(task => ({ id: task.id, name: task.name }))
+  }));
+
+  const others = tasks.filter(task => !categoryIds.has(task.categoryId));
+
+  if (others.length) {
+    groups.push({
+      id: "",
+      name: "기타",
+      color: "#a1a1aa",
+      tasks: others.map(task => ({ id: task.id, name: task.name }))
+    });
+  }
+
+  return groups;
 }
 
 
@@ -6018,29 +6050,132 @@ function shellApplyStats(chartId) {
   const pct = document.querySelector('.mc-sidebar-item[data-chart-id="' + CSS.escape(chartId) + '"] .mc-sidebar-item-pct');
   if (pct) pct.textContent = stats.avgProgress === null ? "" : stats.avgProgress + "%";
 
-  if (chartId === shellActiveChartId) shellRenderLegend();
+  shellRenderSidebarTree(chartId);
 }
 
-/* 사이드바 아래 카테고리 범례: 지금 선택된 차트의 카테고리 */
-function shellRenderLegend() {
-  const wrap = document.getElementById("mcSidebarLegend");
-  const list = document.getElementById("mcSidebarLegendList");
-  if (!wrap || !list) return;
+/* =========================================================
+ * (요청사항) 사이드바: 차트마다 그 아래에 카테고리 목록
+ *  - ▸ 삼각형 + 색 동그라미 + 카테고리 이름 + 작업 수
+ *  - 펼치면 그 카테고리의 작업(카테고리 안 번호 + 제목)이 아래에 나오고,
+ *    아래쪽 카테고리·차트는 그만큼 밀려 내려간다(보통 흐름).
+ *  - 처음엔 모두 접힘, 펼친 상태는 이 브라우저에 기억한다.
+ *  - 작업을 누르면 그 차트의 상세창(막대를 누른 것과 같은 창)이 열린다.
+ * ========================================================= */
+const SIDE_TREE_OPEN_KEY = "mcSideTreeOpen";
 
-  const stats = shellStats[shellActiveChartId];
-  const categories = (stats && stats.categories) || [];
-  list.innerHTML = "";
-  categories.forEach((cat) => {
-    const item = document.createElement("span");
-    item.className = "mc-legend-item";
+function shellSideTreeOpenSet() {
+  try {
+    const list = JSON.parse(localStorage.getItem(SIDE_TREE_OPEN_KEY) || "[]");
+    return new Set(Array.isArray(list) ? list : []);
+  } catch (error) {
+    return new Set();
+  }
+}
+
+function shellSaveSideTreeOpenSet(set) {
+  try { localStorage.setItem(SIDE_TREE_OPEN_KEY, JSON.stringify(Array.from(set))); } catch (error) { /* 무시 */ }
+}
+
+function shellRenderSidebarTree(chartId) {
+  const tree = document.querySelector('.mc-side-tree[data-chart-id="' + CSS.escape(chartId) + '"]');
+  const stats = shellStats[chartId];
+  if (!tree) return;
+
+  tree.innerHTML = "";
+
+  const groups = (stats && stats.groups) || [];
+  const open = shellSideTreeOpenSet();
+
+  groups.forEach((group) => {
+    const key = chartId + ":" + group.id;
+    const isOpen = open.has(key);
+
+    const head = document.createElement("button");
+    head.type = "button";
+    head.className = "mc-side-cat";
+    head.setAttribute("aria-expanded", String(isOpen));
+    head.title = group.name + (isOpen ? " 접기" : " 펼치기");
+
+    const caret = document.createElement("span");
+    caret.className = "mc-side-caret";
+    caret.setAttribute("aria-hidden", "true");
+    caret.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l10 7-10 7z"></path></svg>';
+    head.appendChild(caret);
+
     const dot = document.createElement("span");
-    dot.className = "mc-legend-dot";
-    dot.style.background = cat.color;
-    item.appendChild(dot);
-    item.appendChild(document.createTextNode(cat.name));
-    list.appendChild(item);
+    dot.className = "mc-side-cat-dot";
+    dot.style.background = group.color;
+    head.appendChild(dot);
+
+    const name = document.createElement("span");
+    name.className = "mc-side-cat-name";
+    name.textContent = group.name;
+    head.appendChild(name);
+
+    const count = document.createElement("span");
+    count.className = "mc-side-cat-count";
+    count.textContent = String(group.tasks.length);
+    head.appendChild(count);
+
+    head.addEventListener("click", () => {
+      const set = shellSideTreeOpenSet();
+      if (set.has(key)) set.delete(key); else set.add(key);
+      shellSaveSideTreeOpenSet(set);
+      shellRenderSidebarTree(chartId);
+    });
+
+    tree.appendChild(head);
+
+    if (!isOpen) return;
+
+    const list = document.createElement("div");
+    list.className = "mc-side-tasks";
+
+    if (!group.tasks.length) {
+      const empty = document.createElement("span");
+      empty.className = "mc-side-task-empty";
+      empty.textContent = "작업 없음";
+      list.appendChild(empty);
+    }
+
+    group.tasks.forEach((task, index) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "mc-side-task";
+      item.title = task.name;
+
+      const num = document.createElement("span");
+      num.className = "mc-side-task-num";
+      num.textContent = (index + 1) + ".";
+      item.appendChild(num);
+
+      const title = document.createElement("span");
+      title.className = "mc-side-task-name";
+      title.textContent = task.name;
+      item.appendChild(title);
+
+      item.addEventListener("click", () => shellOpenTaskFromSidebar(chartId, task.id));
+      list.appendChild(item);
+    });
+
+    tree.appendChild(list);
   });
-  wrap.classList.toggle("hidden", !categories.length);
+}
+
+/* 사이드바 작업 → 그 차트 박스를 펼치고(접혀 있으면) 상세창을 연다.
+   상세창이 열리면 iframe 쪽에서 그 창이 보이도록 화면을 옮긴다. */
+function shellOpenTaskFromSidebar(chartId, taskId) {
+  const box = document.getElementById("mc-chart-anchor-" + chartId);
+  if (!box) return;
+
+  const wasCollapsed = box.classList.contains("mc-chart-box-collapsed");
+  if (wasCollapsed) {
+    box.classList.remove("mc-chart-box-collapsed");
+    const toggle = box.querySelector(".mc-chart-toggle");
+    if (toggle) toggle.setAttribute("aria-expanded", "true");
+  }
+
+  setTimeout(() => shellSendCommand(box, { cmd: "openTask", taskId }), wasCollapsed ? 80 : 0);
 }
 
 /* "총 N개 · 마지막 저장 …" */
@@ -6180,7 +6315,6 @@ function shellRenderList() {
 
   shellRenderSidebar(visible); /* (사이드바 추가분) */
   visible.forEach((chart) => shellApplyStats(chart.id));
-  shellRenderLegend();
   shellUpdatePageSub();
 
   shellApplySearch();
@@ -6200,7 +6334,7 @@ function shellApplySearch() {
 
   document.querySelectorAll("#shellView .mc-sidebar-list .mc-sidebar-item").forEach((item) => {
     const match = !query || String(item.title || "").toLowerCase().includes(query);
-    item.classList.toggle("mc-search-miss", !match);
+    (item.closest(".mc-sidebar-entry") || item).classList.toggle("mc-search-miss", !match);
   });
 }
 
@@ -6266,7 +6400,6 @@ function shellRenderSidebar(visible) {
       shellActiveChartId = chart.id;
       document.querySelectorAll(".mc-sidebar-item.active").forEach((el) => el.classList.remove("active"));
       item.classList.add("active");
-      shellRenderLegend();
 
       const target = document.getElementById("mc-chart-anchor-" + chart.id);
       if (!target) return;
@@ -6278,7 +6411,17 @@ function shellRenderSidebar(visible) {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
-    (received && sharedList ? sharedList : list).appendChild(item);
+    /* (요청사항) 차트 이름 아래에 그 차트의 카테고리 목록 */
+    const entry = document.createElement("div");
+    entry.className = "mc-sidebar-entry";
+    entry.appendChild(item);
+
+    const tree = document.createElement("div");
+    tree.className = "mc-side-tree";
+    tree.dataset.chartId = chart.id;
+    entry.appendChild(tree);
+
+    (received && sharedList ? sharedList : list).appendChild(entry);
   });
 }
 
@@ -6918,6 +7061,13 @@ function handleParentCommand(data) {
     case "full": click("fullBtn"); break;
     case "today": click("todayBtn"); break;
     case "capture": click("captureBtn"); break;
+    case "openTask": {
+      /* (요청사항) 사이드바에서 작업을 누르면 막대를 누른 것과 같은 상세창 */
+      if (state.tasks.some(task => task.id === data.taskId)) {
+        showTaskDetail(data.taskId);
+      }
+      break;
+    }
     case "setRange": {
       const startInput = document.getElementById("chartRangeStart");
       const endInput = document.getElementById("chartRangeEnd");
