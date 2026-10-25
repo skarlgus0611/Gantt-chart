@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v52";
+  --css-version: "2026-10-24-design-v54";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -9930,4 +9930,257 @@ body:has(.gantt-resize.dragging) {
 
 .mc-share-pane-foot .mc-btn {
   margin-left: auto;
+}
+
+
+/* =========================================================
+   (요청사항) 카드 머리·차트 왼쪽 위 버튼 다시 배치
+   - 날짜 알약: [기간 | 오늘 · 전체 | 새로고침 · 캡처 · 캘린더]
+   - 오른쪽: [담당자별 보기] [업로드 | 다운로드 | 공유]
+   - 차트 왼쪽 위 빈칸: [작업 | 카테고리] 추가 알약 (아래쪽 버튼 줄은 숨김)
+   ========================================================= */
+.mc-chart-box .mc-date-pill .mc-btn-group.mc-tools-extra {
+  margin-left: 6px;
+}
+
+/* 담당자별 보기: 흰 알약, 높이는 오른쪽 초록 알약과 같게 */
+.mc-chart-box .mc-chart-box-actions .mc-owner-btn {
+  align-self: stretch;
+  height: auto;
+  margin-right: 6px;
+  padding: 0 14px 0 12px;
+  gap: 7px;
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px #c3dfd7 inset;
+  color: #27272a;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-owner-btn svg {
+  color: #0f766e;
+  flex-shrink: 0;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-owner-btn:hover:not(:disabled) {
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-owner-btn.active {
+  padding-left: 5px;
+  padding-right: 8px;
+  background: #f0fdfa;
+  box-shadow: 0 0 0 1.5px #99f6e4 inset;
+  color: #0f766e;
+}
+
+.mc-owner-avatar {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mc-owner-avatar-none {
+  background: #e4e4e7;
+  color: #71717a;
+}
+
+.mc-chart-box .mc-owner-btn .owner-filter-clear {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-chart-box .mc-owner-btn .owner-filter-clear:hover {
+  background: #ccfbf1;
+}
+
+/* 업로드 | 다운로드 | 공유: 알약 하나, 왼쪽 여백 살짝 넓게 */
+.mc-chart-box .mc-chart-box-actions .mc-csv-group .mc-btn:first-child {
+  padding-left: 14px;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-csv-group .mc-share-btn {
+  padding: 0 14px 0 10px;
+  gap: 7px;
+  background: transparent;
+  border: 0;
+}
+
+.mc-chart-box .mc-chart-box-actions .mc-csv-group .mc-share-btn .mc-avatar {
+  box-shadow: 0 0 0 2px #0f766e;
+}
+
+/* 공유 중이면 이 알약이 은은하게 빛남 */
+.mc-chart-box .mc-chart-box-actions .mc-csv-group.mc-share-glow {
+  box-shadow: 0 0 0 3px rgba(94, 234, 212, .45), 0 0 14px 2px rgba(45, 212, 191, .55);
+  animation: mc-share-glow 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-chart-box .mc-chart-box-actions .mc-csv-group.mc-share-glow {
+    animation: none;
+  }
+}
+
+/* 접힌 카드: 업로드·다운로드는 숨기고 공유만 남김 */
+.mc-chart-box.mc-chart-box-collapsed .mc-csv-group .mc-btn:not(.mc-share-btn) {
+  display: none;
+}
+
+.mc-chart-box.mc-chart-box-collapsed .mc-csv-group .mc-share-btn::before {
+  display: none;
+}
+
+.mc-chart-box.mc-chart-box-collapsed .mc-csv-group .mc-share-btn {
+  padding-left: 6px;
+}
+
+/* 차트 왼쪽 위: [작업 | 카테고리] 추가 알약 */
+html.is-embedded .add-actions {
+  display: none;
+}
+
+html.is-embedded .task-header {
+  padding: 0 8px 0 4px;
+}
+
+.task-add-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #0f766e;
+  box-shadow: 0 2px 6px -2px rgba(15, 118, 110, .45);
+  letter-spacing: 0;
+}
+
+.task-add-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+.task-add-pill-btn:hover {
+  background: rgba(255, 255, 255, .16);
+}
+
+.task-add-pill-btn svg {
+  flex-shrink: 0;
+}
+
+.task-add-pill-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, .35);
+}
+
+body.shared-viewer-readonly .task-add-pill,
+.gantt.capturing .task-add-pill {
+  display: none;
+}
+
+/* 좁은 화면: 글자는 숨기고 아이콘만 */
+@media (max-width: 720px) {
+  .task-add-pill-btn span {
+    display: none;
+  }
+
+  .task-add-pill-btn {
+    padding: 0 8px;
+  }
+
+  .mc-chart-box .mc-chart-box-actions .mc-owner-btn > span:not(.mc-owner-avatar):not(.owner-filter-clear) {
+    display: none;
+  }
+}
+
+/* 날짜 알약 안 아이콘 버튼: 마우스를 올리면 바로 뜨는 이름표 */
+.mc-chart-box .mc-date-pill .mc-btn[data-tip] {
+  position: relative;
+}
+
+.mc-chart-box .mc-date-pill .mc-btn[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 30;
+  transform: translate(-50%, -2px);
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: #18181b;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .12s ease, transform .12s ease;
+}
+
+.mc-chart-box .mc-date-pill .mc-btn[data-tip]:hover::after,
+.mc-chart-box .mc-date-pill .mc-btn[data-tip]:focus-visible::after,
+.mc-chart-box .mc-date-pill .mc-btn[data-tip].mc-touched::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* (요청사항) 날짜 알약 안 세로선 두 개를 같은 길이·같은 높이로 */
+.mc-chart-box .mc-chart-box-headinfo .mc-date-pill .mc-btn-group.mc-date-tools {
+  position: relative;
+  border-left: 0;
+  padding-left: 7px;
+}
+
+.mc-chart-box .mc-chart-box-headinfo .mc-date-pill .mc-btn-group.mc-date-tools::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 20px;
+  margin-top: -10px;
+  background: #cfe5df;
+}
+
+/* (요청사항) 세로선 때문에 버튼 간격이 들쭉날쭉하던 것:
+   버튼 사이 간격을 모두 6px 로 같게 하고, 세로선은 그 간격 한가운데에만 둔다 */
+.mc-chart-box .mc-chart-box-headinfo .mc-date-pill .mc-btn-group.mc-date-tools {
+  gap: 6px;
+  margin-left: 0;
+  padding-left: 6px;
+}
+
+.mc-chart-box .mc-chart-box-headinfo .mc-date-pill .mc-btn-group.mc-date-tools::before {
+  left: 2.5px;
 }
