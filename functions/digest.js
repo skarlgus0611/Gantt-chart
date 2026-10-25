@@ -97,6 +97,10 @@ function dColor(left) {
   return left < 0 ? "#dc2626" : left === 0 ? "#ea580c" : left === 1 ? "#d97706" : left === 7 ? "#0f766e" : "#64748b";
 }
 
+function dTint(left) {
+  return left < 0 ? "#fee2e2" : left === 0 ? "#ffedd5" : left === 1 ? "#fef3c7" : left === 7 ? "#dcf1ea" : "#eef1f5";
+}
+
 function shortDate(key) {
   const m = String(key).match(/^\d{4}-(\d{2})-(\d{2})$/);
   return m ? m[1] + "." + m[2] : String(key);
@@ -129,12 +133,16 @@ function renderMail(notice, siteUrl) {
     ).join("")
   ).join("");
 
-  const stats = counts.map((g) =>
-    '<span style="display:inline-block;margin:6px 14px 0 0;white-space:nowrap;font-size:19px;font-weight:800;color:' + dColor(g.left) + '">' + g.short +
-    ' <span style="font-size:12px;font-weight:700">' + g.n + "건</span></span>").join("");
+  /* 맨 위: 단계별 타일 — 색 바탕에 큰 숫자, 아래 작은 D-표시 */
+  const stats = '<table role="presentation" style="width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed"><tr>' +
+    counts.map((g, k) =>
+      '<td style="padding:0 ' + (k === counts.length - 1 ? 0 : 6) + 'px 0 0"><div style="padding:10px 4px 8px;border-radius:12px;background:' + dTint(g.left) + ';text-align:center">' +
+        '<div style="font-size:24px;line-height:1;font-weight:800;color:' + dColor(g.left) + '">' + g.n + "</div>" +
+        '<div style="margin-top:5px;font-size:12px;font-weight:700;color:' + dColor(g.left) + '">' + g.short + "</div></div></td>").join("") +
+    "</tr></table>";
   const html =
     '<div style="max-width:560px;margin:0 auto;padding:16px;' + font + 'color:#27272a">' +
-      '<div style="padding-bottom:12px;border-bottom:2px solid #18181b"><div style="font-size:13px;font-weight:700;color:#0f766e">간트차트 마감 알림</div>' + stats + "</div>" +
+      '<div style="padding-bottom:14px;border-bottom:1px solid #e4e4e7"><div style="font-size:13px;font-weight:700;color:#0f766e">간트차트 마감 알림</div>' + stats + "</div>" +
       '<table role="presentation" style="width:100%;border-collapse:collapse">' + rows + "</table>" +
       '<p style="margin:20px 0 8px"><a href="' + escapeHtml(siteUrl) + '" style="display:inline-block;padding:9px 18px;border-radius:999px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700;font-size:13px">간트차트 열기</a></p>' +
       '<p style="margin:0;font-size:11px;color:#a1a1aa">완료하거나 [지연 확인]을 누르면 그만 보내요 · 메일 끄기: 종 버튼 → 설정</p></div>';
