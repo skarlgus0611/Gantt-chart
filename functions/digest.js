@@ -2,15 +2,15 @@
    Firestore·발송과 떨어진 순수 함수라 test-digest.js 로 바로 확인할 수 있다.
 
    언제 (진행률 100% 이거나 "지연 확인"(overdueAck)을 누른 작업은 보내지 않음)
-   - 마감 전: D-7 · D-1 · 당일
-   - 지연   : 1 · 3 · 7일째, 그 뒤로는 일주일마다(14 · 21 · 28 …일째)
+   - 마감 전: D-15 · D-7 · D-1 · 당일
+   - 지연   : 1 · 4 · 7일째, 그 뒤로는 일주일마다(14 · 21 · 28 …일째)
    사이트 안 알림(종 버튼)은 사이트가 직접 계산하므로 여기서는 다루지 않는다.
 
    누구에게: 담당자가 정해져 있고(이메일) 이 사이트에 가입한(users 문서) 경우 그 담당자만.
    그 밖의 경우(담당자 없음 · 이메일 없음 · 미가입), notify.email 을 끈 사람에게는 보내지 않는다. */
 
-const MAIL_DAYS_BEFORE = [7, 1, 0];
-const MAIL_OVERDUE_DAYS = [1, 3, 7];
+const MAIL_DAYS_BEFORE = [15, 7, 1, 0];
+const MAIL_OVERDUE_DAYS = [1, 4, 7];
 
 /* 오늘(남은 날 left, 음수는 지연) 메일을 보내는 날인가 */
 function isMailDay(left, overdueAck) {
@@ -98,7 +98,8 @@ function renderMail(notice, siteUrl) {
     ["지연", (i) => i.left < 0, "#b91c1c", "#fee2e2"],
     ["오늘 마감", (i) => i.left === 0, "#c2410c", "#ffedd5"],
     ["내일 마감", (i) => i.left === 1, "#b45309", "#fef3c7"],
-    ["일주일 뒤 마감", (i) => i.left === 7, "#0f766e", "#e3f2ed"]
+    ["일주일 뒤 마감", (i) => i.left === 7, "#0f766e", "#e3f2ed"],
+    ["15일 뒤 마감", (i) => i.left === 15, "#52665f", "#eef2f1"]
   ];
   const summary = groups.map(([label, test]) => [label, notice.items.filter(test).length]).filter(([, n]) => n).map(([label, n]) => label + " " + n + "건").join(" · ");
   const subject = "[간트차트] " + summary;
@@ -119,7 +120,7 @@ function renderMail(notice, siteUrl) {
         '<div style="margin-top:4px;font-size:13px;opacity:.85">' + hello + escapeHtml(summary) + "</div></div>" +
       sections +
       '<p style="margin-top:22px"><a href="' + escapeHtml(siteUrl) + '" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700;font-size:13px">간트차트 열기</a></p>' +
-      '<p style="font-size:11.5px;color:#a1a1aa">마감 7일 전 · 1일 전 · 당일, 지연되면 1 · 3 · 7일째와 그 뒤 매주 보내요. 완료하거나 [지연 확인]을 누르면 그만 보내요. 그만 받으려면 사이트 오른쪽 위 종 버튼 설정에서 메일을 끄세요.</p></div>';
+      '<p style="font-size:11.5px;color:#a1a1aa">마감 15일 전 · 7일 전 · 1일 전 · 당일, 지연되면 1 · 4 · 7일째와 그 뒤 매주 보내요. 완료하거나 [지연 확인]을 누르면 그만 보내요. 그만 받으려면 사이트 오른쪽 위 종 버튼 설정에서 메일을 끄세요.</p></div>';
   const text = summary + "\n\n" +
     notice.items.map((i) => "- [" + chipText(i.left) + "] " + i.name + " (" + i.chartName + ", 종료일 " + i.end + ", " + i.progress + "%)").join("\n") + "\n\n" + siteUrl;
   return { subject, html, text };
