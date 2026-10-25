@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v70";
+  --css-version: "2026-10-24-design-v71";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -11415,4 +11415,21 @@ html.is-embedded .task-header {
 
 .mc-bell-who {
   color: rgba(17, 24, 39, .72);
+}
+
+/* "+242일 / 지연" 이 한 줄씩 들어가게 타일을 조금 넓게 */
+.mc-bell-tile {
+  width: auto;
+  min-width: 52px;
+  padding: 0 6px;
+}
+
+.mc-bell-tile b {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.mc-bell-tile i {
+  margin-top: 1px;
+  font-size: 10.5px;
 }
