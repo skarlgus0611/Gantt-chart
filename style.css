@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v55";
+  --css-version: "2026-10-24-design-v58";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -10227,4 +10227,58 @@ html.is-embedded .task-header {
   height: 20px;
   margin: 0;
   background: #ececef;
+}
+
+/* (요청사항) 두 칸을 색으로만 살짝 구분: 작업은 아주 연한 초록, 카테고리는 아주 연한 회색 */
+.task-add-pill-btn:first-child {
+  background: #f1f8f6;
+}
+
+.task-add-pill-btn:last-child {
+  background: #f7f8f8;
+}
+
+.task-add-pill-btn:hover {
+  background: #e2f1ec;
+  color: #0f766e;
+}
+
+.task-add-pill-sep {
+  display: none;
+}
+
+/* (요청사항) 구분이 약하다 → 한 단계 진하게 */
+.task-add-pill-btn:first-child {
+  background: #e3f2ed;
+}
+
+.task-add-pill-btn:last-child {
+  background: #eef0f1;
+}
+
+.task-add-pill-btn:hover {
+  background: #cfe8e0;
+  color: #0f766e;
+}
+
+/* (요청사항) 두 칸 같은 연초록 + 가운데 세로선 하나 */
+.task-add-pill {
+  background: #e3f2ed;
+}
+
+.task-add-pill-btn:first-child,
+.task-add-pill-btn:last-child {
+  background: transparent;
+}
+
+.task-add-pill-btn:hover {
+  background: #cfe8e0;
+}
+
+.task-add-pill-sep {
+  display: block;
+  flex-shrink: 0;
+  width: 1px;
+  height: 20px;
+  background: #b9d9cf;
 }
