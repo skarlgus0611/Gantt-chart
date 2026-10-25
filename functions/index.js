@@ -1,6 +1,6 @@
 /* (요청사항) 마감 알림 — 매일 오전 9시(서울)에 한 번 돈다
-   - D-7: 메일 한 번 (Gmail 앱 비밀번호로 발송: 비밀값 SMTP_USER, SMTP_PASS)
-   - D-2·D-1·당일, 지연(확인 전까지 하루 한 번): 웹 푸시 (Firebase Cloud Messaging)
+   - 메일: D-7 · D-1 · 지연 첫날 (Gmail 앱 비밀번호로 발송: 비밀값 SMTP_USER, SMTP_PASS)
+   - 웹 푸시: D-1 · 지연(완료·지연 확인 전까지 매일) (Firebase Cloud Messaging)
    - Firebase Cloud Functions(2세대) 예약 작업이라 요금제가 Blaze(종량제)여야 배포할 수 있다
    - 배포 방법은 functions/README.md 참고 */
 const { onSchedule } = require("firebase-functions/v2/scheduler");
@@ -33,7 +33,7 @@ exports.dailyDueNotices = onSchedule(
     const { mails, pushes } = buildNotices({ users, charts, tasksByChart, todayKey: seoulTodayKey() });
     const siteUrl = SITE_URL.value();
 
-    /* D-7 메일 */
+    /* 메일 */
     if (mails.length) {
       const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: SMTP_USER.value(), pass: SMTP_PASS.value() } });
       let sent = 0;
@@ -49,7 +49,7 @@ exports.dailyDueNotices = onSchedule(
           logger.error("메일 발송 실패", notice.email, error);
         }
       }
-      logger.info("D-7 메일 " + sent + "/" + mails.length + "통");
+      logger.info("메일 " + sent + "/" + mails.length + "통");
     }
 
     /* 웹 푸시: 사람마다 한 통으로 묶어서, 끊긴 토큰은 지운다 */
