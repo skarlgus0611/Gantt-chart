@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v38";
+  --css-version: "2026-10-24-design-v39";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9628,4 +9628,19 @@ body:has(.gantt-resize.dragging) {
 /* (요청사항) 차트와 가로 띠 사이 여백 더: 12 → 20px */
 :root {
   --rail-gap: 20px;
+}
+
+
+/* (요청사항) 세로 띠도 차트와 같은 여백(20px)을 두고 떨어지게.
+   가로 띠는 차트 오른쪽 끝에서 끝나고, 그 아래 모서리 조각이 세로 띠까지 이어 준다. */
+.row-range {
+  margin-left: var(--rail-gap);
+}
+
+.h-rail {
+  padding-right: calc(var(--rail-col) + var(--rail-gap));
+}
+
+.h-rail::before {
+  width: calc(var(--rail-col) + var(--rail-gap) + 4px);
 }
