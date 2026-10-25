@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v63";
+  --css-version: "2026-10-24-design-v64";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -10868,5 +10868,57 @@ html.is-embedded .task-header {
 
 .mc-bell-mail-off {
   color: #a1a1aa;
+  cursor: default;
+}
+
+/* (요청사항) 알림 단계: 다가오는 마감(D-15~3) · 지연 확인됨 */
+.due-chip-upcoming {
+  background: #eef2f1;
+  color: #52665f;
+}
+
+.due-chip-overdue-ack {
+  background: #f4f4f5;
+  color: #a1a1aa;
+}
+
+.mc-bell-sec-title.mc-bell-upcoming {
+  color: #52665f;
+}
+
+.mc-bell-settings {
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid #f0f0f2;
+}
+
+.mc-bell-settings .mc-bell-mail {
+  margin-top: 0;
+  padding: 6px 8px;
+  border-top: 0;
+}
+
+/* 작업 수정: 지연 확인 · 완료 */
+.detail-actions .detail-ack,
+.detail-actions .detail-complete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-actions .detail-ack {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.detail-actions .detail-complete {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.detail-actions .detail-complete:disabled {
+  opacity: .6;
   cursor: default;
 }

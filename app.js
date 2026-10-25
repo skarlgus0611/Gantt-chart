@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v63";
+const APP_VERSION = "2026-10-24-design-v64";
 
 
 /* =========================================================
@@ -420,6 +420,7 @@ function resolveTasksAndCats(bucket) {
       target: t.target || "",
       owner: t.owner || "",
       ownerEmail: t.ownerEmail || "",
+      overdueAck: !!t.overdueAck,
       updated: t.updated || ""
     };
   });
@@ -502,6 +503,14 @@ function applyTaskFields(base, data, cats) {
   }
   if (!String(t.owner || "").trim()) {
     t.ownerEmail = "";
+  }
+
+  /* (요청사항) 지연 확인: 누르면 그 작업의 지연 알림을 멈춘다. 종료일을 바꾸면 다시 알린다 */
+  t.overdueAck = !!base.overdueAck;
+  if (has("overdueAck")) {
+    t.overdueAck = !!data.overdueAck;
+  } else if (t.end !== base.end) {
+    t.overdueAck = false;
   }
 
   return t;
@@ -591,61 +600,6 @@ async function calUpdateEvent(calendarId, eventId, task) {
   );
 }
 
-/* (요청사항) 마감 알림: 작업 일정은 시작일~종료일로 이어져 있어서 그 일정의 알림은
-   시작일 기준으로만 온다. 그래서 종료일 하루짜리 "[마감]" 일정을 따로 넣고,
-   전날 오전 9시에 팝업·메일 알림이 오게 한다. 끝난 작업(100%)은 지운다. */
-const CAL_DUE_REMINDER_MINUTES = 15 * 60; // 하루 일정 0시 기준 15시간 전 = 전날 오전 9시
-
-function calDueEventBody(task) {
-  return {
-    summary: "[마감] " + task.name,
-    description: calEventDescription(task),
-    start: { date: task.end },
-    end: { date: addOneDay(task.end) },
-    colorId: "11",
-    reminders: {
-      useDefault: false,
-      overrides: [
-        { method: "popup", minutes: CAL_DUE_REMINDER_MINUTES },
-        { method: "email", minutes: CAL_DUE_REMINDER_MINUTES }
-      ]
-    }
-  };
-}
-
-function taskNeedsDueEvent(task) {
-  return !!task.end && normProgress(task.progress) < 100;
-}
-
-async function calCreateDueEvent(calendarId, task) {
-  const res = await googleFetch(
-    CALENDAR_BASE + "/calendars/" + encodeURIComponent(calendarId) + "/events",
-    { method: "POST", body: JSON.stringify(calDueEventBody(task)) }
-  );
-  return res.id;
-}
-
-/* 작업 상태에 맞춰 마감 일정을 만들거나 고치거나 지운다. 바뀐 id(없으면 "")를 돌려준다 */
-async function calSyncDueEvent(calendarId, task) {
-  const current = task.calendarDueEventId || "";
-  if (!taskNeedsDueEvent(task)) {
-    if (current) await calDeleteEvent(calendarId, current);
-    return "";
-  }
-  if (current) {
-    try {
-      await googleFetch(
-        CALENDAR_BASE + "/calendars/" + encodeURIComponent(calendarId) + "/events/" + encodeURIComponent(current),
-        { method: "PATCH", body: JSON.stringify(calDueEventBody(task)) }
-      );
-      return current;
-    } catch (error) {
-      if (error.status !== 404 && error.status !== 410) throw error;
-    }
-  }
-  return calCreateDueEvent(calendarId, task);
-}
-
 async function calDeleteEvent(calendarId, eventId) {
   try {
     await googleFetch(
@@ -669,8 +623,7 @@ async function syncCalendarOnCreate(chart, chartId, taskId, task) {
   }
   try {
     const eventId = await calCreateEvent(chart.calendarId, task);
-    const dueId = await calSyncDueEvent(chart.calendarId, task);
-    await fb.updateTask(chartId, taskId, { calendarEventId: eventId, calendarDueEventId: dueId });
+    await fb.updateTask(chartId, taskId, { calendarEventId: eventId });
   } catch (error) {
     console.error(error);
   }
@@ -681,15 +634,11 @@ async function syncCalendarOnUpdate(chart, chartId, taskId, task) {
     return;
   }
   try {
-    let eventId = task.calendarEventId;
-    if (eventId) {
-      await calUpdateEvent(chart.calendarId, eventId, task);
+    if (task.calendarEventId) {
+      await calUpdateEvent(chart.calendarId, task.calendarEventId, task);
     } else {
-      eventId = await calCreateEvent(chart.calendarId, task);
-    }
-    const dueId = await calSyncDueEvent(chart.calendarId, task);
-    if (eventId !== task.calendarEventId || dueId !== (task.calendarDueEventId || "")) {
-      await fb.updateTask(chartId, taskId, { calendarEventId: eventId, calendarDueEventId: dueId });
+      const eventId = await calCreateEvent(chart.calendarId, task);
+      await fb.updateTask(chartId, taskId, { calendarEventId: eventId });
     }
   } catch (error) {
     console.error(error);
@@ -697,12 +646,11 @@ async function syncCalendarOnUpdate(chart, chartId, taskId, task) {
 }
 
 async function syncCalendarOnDelete(chart, task) {
-  if (!chart || !chart.calendarId || !task || !(task.calendarEventId || task.calendarDueEventId)) {
+  if (!chart || !chart.calendarId || !task || !task.calendarEventId) {
     return;
   }
   try {
-    if (task.calendarEventId) await calDeleteEvent(chart.calendarId, task.calendarEventId);
-    if (task.calendarDueEventId) await calDeleteEvent(chart.calendarId, task.calendarDueEventId);
+    await calDeleteEvent(chart.calendarId, task.calendarEventId);
   } catch (error) {
     console.error(error);
   }
@@ -1020,7 +968,7 @@ async function coreApiPost(action, chartId, body = {}) {
       }
       const t = applyTaskFields(task, data, cats);
       await fb.updateTask(chartId, task.id, t);
-      await syncCalendarOnUpdate(chart, chartId, task.id, { ...t, calendarEventId: task.calendarEventId, calendarDueEventId: task.calendarDueEventId || "" });
+      await syncCalendarOnUpdate(chart, chartId, task.id, { ...t, calendarEventId: task.calendarEventId });
       return { ok: true, result: null };
     }
 
@@ -1204,8 +1152,7 @@ async function coreApiPost(action, chartId, body = {}) {
       for (const task of tasks) {
         try {
           const eventId = await calCreateEvent(calendarId, task);
-          const dueId = await calSyncDueEvent(calendarId, { ...task, calendarDueEventId: "" });
-          await fb.updateTask(chartId, task.id, { calendarEventId: eventId, calendarDueEventId: dueId });
+          await fb.updateTask(chartId, task.id, { calendarEventId: eventId });
         } catch (error) {
           console.error(error);
         }
@@ -1238,8 +1185,8 @@ async function coreApiPost(action, chartId, body = {}) {
       invalidateChartMetaCache(chartId);
       const tasks = await fb.getTasksOnce(chartId);
       for (const task of tasks) {
-        if (task.calendarEventId || task.calendarDueEventId) {
-          await fb.updateTask(chartId, task.id, { calendarEventId: "", calendarDueEventId: "" });
+        if (task.calendarEventId) {
+          await fb.updateTask(chartId, task.id, { calendarEventId: "" });
         }
       }
       return { ok: true, result: { missing: false } };
@@ -1793,7 +1740,7 @@ function postStatsToParent() {
       ownerFilter: state.ownerFilter || null,
       taskCount: tasks.length,
       /* (요청사항) 마감 알림: 지연·임박 작업 */
-      dueTasks: tasks.map((t) => ({ t, due: taskDueStatus(t) })).filter((x) => x.due).map(({ t, due }) => ({
+      dueTasks: tasks.map((t) => ({ t, due: taskDueStatus(t) })).filter((x) => x.due && x.due.kind !== "overdue-ack").map(({ t, due }) => ({
         id: t.id, name: t.name, end: t.end, progress: normProgress(t.progress),
         owner: t.owner || "", ownerEmail: t.ownerEmail || "", kind: due.kind, days: due.days, label: due.label
       }))
@@ -3593,7 +3540,9 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
  *  - 지연: 종료일이 지났는데 진행률이 100% 가 아님
  *  - 임박: 오늘부터 3일 안에 끝나야 하는데 아직 100% 가 아님
  * ========================================================= */
-const DUE_SOON_DAYS = 3;
+/* (요청사항) 알림 단계: D-15 부터 사이트 안 알림, D-7 메일, D-2·1·0 과 지연은 웹 푸시(서버 예약 작업) */
+const DUE_NOTICE_DAYS = 15;
+const DUE_SOON_DAYS = 2;
 
 function daysBetweenKeys(fromKey, toKey) {
   const a = dateObj(fromKey);
@@ -3606,8 +3555,13 @@ function taskDueStatus(task) {
   if (!task || !task.end || normProgress(task.progress) >= 100) return null;
   const left = daysBetweenKeys(dateKey(new Date()), task.end);
   if (left === null) return null;
-  if (left < 0) return { kind: "overdue", days: -left, label: "지연 " + (-left) + "일" };
+  if (left < 0) {
+    return task.overdueAck
+      ? { kind: "overdue-ack", days: -left, label: "지연 확인됨" }
+      : { kind: "overdue", days: -left, label: "지연 " + (-left) + "일" };
+  }
   if (left <= DUE_SOON_DAYS) return { kind: "due-soon", days: left, label: left === 0 ? "오늘 마감" : "D-" + left };
+  if (left <= DUE_NOTICE_DAYS) return { kind: "upcoming", days: left, label: "D-" + left };
   return null;
 }
 
@@ -3670,7 +3624,7 @@ function renderTaskBar(
   const bar = document.createElement("div");
 
   const due = taskDueStatus(task);
-  bar.className = "task-bar" + (due ? " is-" + due.kind : "");
+  bar.className = "task-bar" + (due && (due.kind === "overdue" || due.kind === "due-soon") ? " is-" + due.kind : "");
 
   /* (디자인 변경) 막대는 줄 가운데에 놓인 얇은 알약 모양이다. */
   applyBarGeometry(bar, rowHeight || TASK_ROW_HEIGHT);
@@ -4091,6 +4045,12 @@ function showTaskDetail(id) {
 
       <span class="detail-actions-spacer"></span>
 
+      ${taskDueStatus(task) && taskDueStatus(task).kind === "overdue"
+        ? `<button id="ackOverdueBtn" type="button" class="detail-ack" title="확인하면 이 작업의 지연 알림을 멈춰요">${icon('<path d="M12 8v5M12 16h.01"></path><circle cx="12" cy="12" r="9"></circle>')}지연 확인</button>`
+        : ""}
+
+      <button id="completeTaskBtn" type="button" class="detail-complete" ${normProgress(task.progress) >= 100 ? "disabled" : ""} title="진행률을 100%로 바꾸고 알림을 멈춰요">${icon('<path d="m5 12 5 5 9-10"></path>')}${normProgress(task.progress) >= 100 ? "완료됨" : "완료"}</button>
+
       <button id="cancelDetailBtn" type="button">취소</button>
 
       <button id="saveDetailBtn" class="primary" type="button">저장</button>
@@ -4199,6 +4159,33 @@ function showTaskDetail(id) {
 
   if (deleteButton) {
     deleteButton.onclick = () => deleteTask(task.id);
+  }
+
+  /* (요청사항) 완료: 진행률 100% 로 저장 → 이 작업 알림은 더 없음 */
+  const completeButton = document.getElementById("completeTaskBtn");
+
+  if (completeButton) {
+    completeButton.onclick = () => {
+      const progressInput = document.getElementById("detailProgress");
+      if (progressInput) progressInput.value = 100;
+      saveTaskDetail(task.id);
+    };
+  }
+
+  /* (요청사항) 지연 확인: 지연 알림만 멈춘다(작업 내용은 그대로) */
+  const ackButton = document.getElementById("ackOverdueBtn");
+
+  if (ackButton) {
+    ackButton.onclick = () => withBusy(ackButton, "확인 중…", async () => {
+      try {
+        await apiPost("update", { data: { id: task.id, overdueAck: true } });
+        await loadData(false);
+        showTaskDetail(task.id);
+        showToast("지연을 확인했어요. 이 작업의 지연 알림을 멈춥니다.");
+      } catch (error) {
+        alert("저장 실패\n" + error.message);
+      }
+    });
   }
 
   /* 화면 아래쪽에 열리므로 보이는 위치로 스크롤한다. */
@@ -11083,7 +11070,6 @@ async function shellHandleSharedCalendarAdd(chartId) {
     for (const t of data.tasks || []) {
       try {
         eventMap[t.id] = await calCreateEvent(calendarId, t);
-        if (taskNeedsDueEvent(t)) await calCreateDueEvent(calendarId, t); /* (요청사항) 마감 알림 일정 */
       } catch (error) {
         console.error(error);
       }
@@ -11728,8 +11714,9 @@ function bellCollect() {
     const stats = shellStats[chart.id];
     ((stats && stats.dueTasks) || []).forEach((task) => items.push({ ...task, chartId: chart.id, chartName: chart.name }));
   });
+  const order = { overdue: 0, "due-soon": 1, upcoming: 2 };
   return items.sort((a, b) => {
-    if (a.kind !== b.kind) return a.kind === "overdue" ? -1 : 1;
+    if (a.kind !== b.kind) return (order[a.kind] ?? 3) - (order[b.kind] ?? 3);
     return a.kind === "overdue" ? b.days - a.days : a.days - b.days;
   });
 }
@@ -11772,7 +11759,8 @@ function shellRenderBellMenu() {
   const all = bellCollect();
   const items = bellMineOnly ? all.filter(bellIsMine) : all;
   const overdue = items.filter((t) => t.kind === "overdue");
-  const soon = items.filter((t) => t.kind !== "overdue");
+  const soon = items.filter((t) => t.kind === "due-soon");
+  const upcoming = items.filter((t) => t.kind === "upcoming");
 
   const section = (title, list, kind) => !list.length ? "" :
     '<div class="mc-bell-sec"><div class="mc-bell-sec-title mc-bell-' + kind + '">' + title + " " + list.length + "</div>" +
@@ -11783,11 +11771,18 @@ function shellRenderBellMenu() {
         "<span>" + escapeHtml(t.chartName) + " · " + escapeHtml(t.owner || "담당자 없음") + " · " + t.progress + "%</span></span>" +
       "</button>").join("") + "</div>";
 
-  const emailOn = !(bellProfile && bellProfile.notify && bellProfile.notify.email === false);
+  const notify = (bellProfile && bellProfile.notify) || {};
+  const emailOn = notify.email !== false;
+  const pushOn = notify.push === true;
+  const off = bellProfileState !== "ready" ? " disabled" : "";
   const mailRow = bellProfileState === "error"
-    ? '<div class="mc-bell-mail mc-bell-mail-off">메일 알림 설정을 불러오지 못했어요. (보안 규칙 확인 필요)</div>'
-    : '<label class="mc-bell-mail"><input type="checkbox" id="mcBellMail"' + (emailOn ? " checked" : "") +
-      (bellProfileState !== "ready" ? " disabled" : "") + "><span>매일 아침 8시에 <b>내 담당</b> 마감 알림을 메일로 받기</span></label>";
+    ? '<div class="mc-bell-mail mc-bell-mail-off">알림 설정을 불러오지 못했어요. (보안 규칙 확인 필요)</div>'
+    : '<div class="mc-bell-settings">' +
+        '<label class="mc-bell-mail"><input type="checkbox" id="mcBellMail"' + (emailOn ? " checked" : "") + off +
+          "><span><b>D-7</b>에 내 담당 작업을 메일로 한 번 받기</span></label>" +
+        '<label class="mc-bell-mail"><input type="checkbox" id="mcBellPush"' + (pushOn ? " checked" : "") + off +
+          "><span><b>D-2 · D-1 · 당일</b>과 <b>지연</b>(확인 전까지 하루 한 번)을 푸시로 받기</span></label>" +
+      "</div>";
 
   menu.innerHTML =
     '<div class="mc-bell-head"><b>마감 알림</b>' +
@@ -11795,8 +11790,8 @@ function shellRenderBellMenu() {
       '<button type="button" data-bell-scope="mine" class="' + (bellMineOnly ? "on" : "") + '">내 담당</button></div></div>' +
     '<div class="mc-bell-list">' +
       (items.length
-        ? section("지연", overdue, "overdue") + section("마감 임박 (3일 이내)", soon, "soon")
-        : '<div class="mc-bell-empty">지연되거나 3일 안에 마감인 작업이 없어요.</div>') +
+        ? section("지연", overdue, "overdue") + section("마감 임박", soon, "soon") + section("다가오는 마감 (15일 이내)", upcoming, "upcoming")
+        : '<div class="mc-bell-empty">지연되거나 15일 안에 마감인 작업이 없어요.</div>') +
     "</div>" + mailRow;
 }
 
@@ -11828,15 +11823,29 @@ function shellOpenBellMenu(button) {
     if (item) shellOpenTaskFromNotice(item.dataset.chart, item.dataset.task);
   });
   menu.addEventListener("change", async (event) => {
-    if (event.target.id !== "mcBellMail" || !fbUser) return;
-    const on = event.target.checked;
+    if (!fbUser) return;
+    const input = event.target;
+    const on = input.checked;
+    const setNotify = (fields) => {
+      bellProfile = { ...(bellProfile || {}), notify: { ...((bellProfile && bellProfile.notify) || {}), ...fields } };
+    };
     try {
-      await fb.mergeUserProfile(fbUser.uid, { notify: { email: on } });
-      bellProfile = { ...(bellProfile || {}), notify: { email: on } };
-      showToast(on ? "매일 아침 메일로 마감 알림을 보내 드릴게요." : "마감 알림 메일을 끕니다.");
+      if (input.id === "mcBellMail") {
+        await fb.mergeUserProfile(fbUser.uid, { notify: { email: on } });
+        setNotify({ email: on });
+        showToast(on ? "마감 7일 전에 메일로 알려 드릴게요." : "마감 알림 메일을 끕니다.");
+      } else if (input.id === "mcBellPush") {
+        input.disabled = true;
+        if (on) await fb.enablePush(fbUser.uid);
+        else await fb.disablePush(fbUser.uid);
+        setNotify({ push: on });
+        showToast(on ? "마감 2일 전부터와 지연 작업을 푸시로 알려 드릴게요." : "푸시 알림을 끕니다.");
+      }
     } catch (error) {
-      event.target.checked = !on;
-      showToast("설정을 저장하지 못했어요.", true);
+      input.checked = !on;
+      showToast(error.message || "설정을 저장하지 못했어요.", true, 0);
+    } finally {
+      input.disabled = false;
     }
   });
 }
@@ -11849,7 +11858,7 @@ async function shellInitBellProfile() {
   try {
     const profile = typeof fb.getUserProfile === "function" ? await fb.getUserProfile(fbUser.uid) : null;
     const fields = { email: String(fbUser.email || "").toLowerCase(), name: fbUser.displayName || "" };
-    if (!profile || !profile.notify) fields.notify = { email: true };
+    if (!profile || !profile.notify || profile.notify.email === undefined) fields.notify = { email: true };
     await fb.mergeUserProfile(fbUser.uid, fields);
     bellProfile = { ...(profile || {}), ...fields };
     bellProfileState = "ready";

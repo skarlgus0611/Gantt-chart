@@ -30,6 +30,7 @@ import {
   getDoc, getDocs, onSnapshot, query, where, serverTimestamp, arrayUnion, arrayRemove,
   writeBatch, FieldPath, deleteField
 } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js";
+import { getMessaging, getToken, isSupported as isMessagingSupported } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-messaging.js";
 
 /* (당신 콘솔에서 받은 설정값 그대로) */
 const firebaseConfig = {
@@ -615,4 +616,33 @@ export function mergeUserOnboarding(uid, flags) {
 /* ----- (요청사항) 마감 알림 메일: 받는 사람 목록과 수신 설정 ----- */
 export function mergeUserProfile(uid, fields) {
   return setDoc(doc(db, "users", uid), { ...fields, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/* ----- (요청사항) 웹 푸시 알림: D-2·1·0 과 지연 작업 -----
+   Firebase 콘솔 → 프로젝트 설정 → 클라우드 메시징 → 웹 푸시 인증서 → "키 쌍 생성"으로
+   만든 공개 키를 아래에 넣어야 켜진다(비어 있으면 푸시 켜기 버튼이 안내만 한다). */
+export const FCM_VAPID_KEY = "";
+
+export async function pushSupported() {
+  try {
+    return !!FCM_VAPID_KEY && "serviceWorker" in navigator && "Notification" in window && await isMessagingSupported();
+  } catch (error) {
+    return false;
+  }
+}
+
+/* 알림 권한을 묻고, 이 브라우저의 푸시 토큰을 users/{uid}.pushTokens 에 더해 둔다 */
+export async function enablePush(uid) {
+  if (!(await pushSupported())) throw new Error("이 브라우저에서는 푸시 알림을 쓸 수 없어요.");
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") throw new Error("브라우저 알림이 허용되지 않았어요. 주소창 왼쪽 자물쇠에서 알림을 허용해 주세요.");
+  const registration = await navigator.serviceWorker.register("firebase-messaging-sw.js");
+  const token = await getToken(getMessaging(app), { vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: registration });
+  if (!token) throw new Error("푸시 토큰을 받지 못했어요.");
+  await setDoc(doc(db, "users", uid), { pushTokens: arrayUnion(token), notify: { push: true }, updatedAt: serverTimestamp() }, { merge: true });
+  return token;
+}
+
+export function disablePush(uid) {
+  return setDoc(doc(db, "users", uid), { notify: { push: false }, updatedAt: serverTimestamp() }, { merge: true });
 }
