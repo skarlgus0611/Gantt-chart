@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v67";
+  --css-version: "2026-10-24-design-v68";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -11012,4 +11012,63 @@ html.is-embedded .task-header {
 .detail-actions .detail-pill-main button:hover:not(:disabled) {
   background: rgba(255, 255, 255, .14);
   color: #ffffff;
+}
+
+/* (요청사항) 알림함: 항목마다 [확인], 위에 [모두 확인] */
+.mc-bell-head .mc-bell-ack-all {
+  margin-left: auto;
+  margin-right: 8px;
+  border: 0;
+  background: none;
+  color: #0f766e;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mc-bell-item {
+  padding: 0;
+  cursor: default;
+}
+
+.mc-bell-item:hover {
+  background: transparent;
+}
+
+.mc-bell-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-bell-open:hover {
+  background: #f6faf9;
+}
+
+.mc-bell-ack {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: #e3f2ed;
+  color: #0f766e;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mc-bell-ack:hover {
+  background: #cfe8e0;
 }
