@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v66"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v67"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v66";
+const APP_VERSION = "2026-10-24-design-v67";
 
 
 /* =========================================================
@@ -3540,7 +3540,8 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
  *  - 지연: 종료일이 지났는데 진행률이 100% 가 아님
  *  - 임박: 오늘부터 3일 안에 끝나야 하는데 아직 100% 가 아님
  * ========================================================= */
-/* (요청사항) 알림 단계: D-15 부터 사이트 안 알림, D-7 메일, D-2·1·0 과 지연은 웹 푸시(서버 예약 작업) */
+/* (요청사항) 알림은 "그날 하루만": D-15 사이트 안, D-7 메일, D-2·1·0 사이트 안 + 웹 푸시.
+   지연은 [지연 확인] 전까지 사이트 안 + 하루 한 번 웹 푸시(서버 예약 작업) */
 const DUE_NOTICE_DAYS = 15;
 const DUE_SOON_DAYS = 2;
 
@@ -3561,12 +3562,13 @@ function taskDueStatus(task) {
       : { kind: "overdue", days: -left, label: "지연 " + (-left) + "일" };
   }
   if (left <= DUE_SOON_DAYS) return { kind: "due-soon", days: left, label: left === 0 ? "오늘 마감" : "D-" + left };
-  if (left <= DUE_NOTICE_DAYS) return { kind: "upcoming", days: left, label: "D-" + left };
+  if (left === DUE_NOTICE_DAYS) return { kind: "upcoming", days: left, label: "D-" + left };
   return null;
 }
 
 function dueChipHtml(task) {
   const due = taskDueStatus(task);
+  if (due && due.kind === "upcoming") return ""; /* D-15 는 종 버튼에서만 */
   return due ? '<span class="due-chip due-chip-' + due.kind + '" title="종료일 ' + escapeHtml(task.end) + '">' + escapeHtml(due.label) + "</span>" : "";
 }
 
@@ -11725,6 +11727,28 @@ function bellCollect() {
   });
 }
 
+/* 종 버튼 배지는 "아직 안 본 오늘 알림" 개수. 목록을 열면 본 것으로 (이 브라우저에 오늘 날짜와 함께 기록) */
+function bellNoticeKey(task) {
+  return task.chartId + ":" + task.id + ":" + task.kind + ":" + task.days;
+}
+
+function bellSeenKeys() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("ganttBellSeen:" + (fbUser ? fbUser.uid : "")) || "null");
+    return saved && saved.day === dateKey(new Date()) ? new Set(saved.keys || []) : new Set();
+  } catch (error) {
+    return new Set();
+  }
+}
+
+function bellMarkSeen(items) {
+  const keys = bellSeenKeys();
+  items.forEach((t) => keys.add(bellNoticeKey(t)));
+  try {
+    localStorage.setItem("ganttBellSeen:" + (fbUser ? fbUser.uid : ""), JSON.stringify({ day: dateKey(new Date()), keys: Array.from(keys) }));
+  } catch (error) { /* 무시 */ }
+}
+
 function shellRefreshBell() {
   if (!IS_SHELL_MODE) return;
   const button = document.getElementById("mcBellBtn");
@@ -11732,7 +11756,8 @@ function shellRefreshBell() {
   if (!button || !badge) return;
   button.classList.toggle("hidden", !fbUser);
   const items = bellCollect();
-  const counted = bellMineOnly ? items.filter(bellIsMine) : items;
+  const seen = bellSeenKeys();
+  const counted = (bellMineOnly ? items.filter(bellIsMine) : items).filter((t) => !seen.has(bellNoticeKey(t)));
   badge.textContent = counted.length > 99 ? "99+" : String(counted.length);
   badge.classList.toggle("hidden", !counted.length);
   badge.classList.toggle("mc-bell-badge-soon", !counted.some((t) => t.kind === "overdue"));
@@ -11794,8 +11819,8 @@ function shellRenderBellMenu() {
       '<button type="button" data-bell-scope="mine" class="' + (bellMineOnly ? "on" : "") + '">내 담당</button></div></div>' +
     '<div class="mc-bell-list">' +
       (items.length
-        ? section("지연", overdue, "overdue") + section("마감 임박", soon, "soon") + section("다가오는 마감 (15일 이내)", upcoming, "upcoming")
-        : '<div class="mc-bell-empty">지연되거나 15일 안에 마감인 작업이 없어요.</div>') +
+        ? section("지연", overdue, "overdue") + section("마감 임박", soon, "soon") + section("15일 뒤 마감", upcoming, "upcoming")
+        : '<div class="mc-bell-empty">오늘 알릴 마감이 없어요.</div>') +
     "</div>" + mailRow;
 }
 
@@ -11811,6 +11836,8 @@ function shellOpenBellMenu(button) {
   bellMenu = menu;
   shellRenderBellMenu();
   document.body.appendChild(menu);
+  bellMarkSeen(bellCollect());
+  shellRefreshBell();
   const rect = button.getBoundingClientRect();
   menu.style.top = rect.bottom + 8 + "px";
   menu.style.left = Math.max(8, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8)) + "px";
