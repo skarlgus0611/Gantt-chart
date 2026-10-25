@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v62";
+  --css-version: "2026-10-24-design-v65";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -10650,4 +10650,366 @@ html.is-embedded .task-header {
 
 .ob-tip.ob-tip-side::before {
   display: none;
+}
+
+
+/* =========================================================
+   (요청사항) 지연 작업 · 마감 임박 표시
+   ========================================================= */
+.due-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+
+.due-chip-overdue {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.due-chip-due-soon {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.task-card .due-chip {
+  margin-left: auto;
+}
+
+.task-bar.is-overdue {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #ef4444;
+}
+
+.task-bar.is-due-soon {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #f59e0b;
+}
+
+.gantt.capturing .task-bar.is-overdue,
+.gantt.capturing .task-bar.is-due-soon {
+  box-shadow: none;
+}
+
+/* 종 버튼 + 개수 */
+.mc-bell-btn {
+  position: relative;
+}
+
+.mc-bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.mc-bell-badge.mc-bell-badge-soon {
+  background: #f59e0b;
+}
+
+.mc-bell-menu {
+  position: fixed;
+  z-index: 1300;
+  width: 380px;
+  max-width: calc(100vw - 16px);
+  padding: 12px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #ececef;
+  box-shadow: 0 20px 48px rgba(24, 24, 27, .18);
+}
+
+.mc-bell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 10px;
+}
+
+.mc-bell-head b {
+  font-size: 15px;
+  color: #18181b;
+}
+
+.mc-bell-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #f4f4f5;
+}
+
+.mc-bell-seg button {
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #71717a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mc-bell-seg button.on {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.mc-bell-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.mc-bell-sec + .mc-bell-sec {
+  margin-top: 8px;
+}
+
+.mc-bell-sec-title {
+  padding: 6px 6px 4px;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+.mc-bell-sec-title.mc-bell-overdue {
+  color: #b91c1c;
+}
+
+.mc-bell-sec-title.mc-bell-soon {
+  color: #b45309;
+}
+
+.mc-bell-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-bell-item:hover {
+  background: #f6faf9;
+}
+
+.mc-bell-item .due-chip {
+  min-width: 58px;
+  justify-content: center;
+}
+
+.mc-bell-item-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-bell-item-text b {
+  overflow: hidden;
+  font-size: 13px;
+  color: #18181b;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-bell-item-text span {
+  overflow: hidden;
+  font-size: 11.5px;
+  color: #a1a1aa;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-bell-empty {
+  padding: 22px 8px;
+  font-size: 13px;
+  color: #a1a1aa;
+  text-align: center;
+}
+
+.mc-bell-mail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 8px 2px;
+  border-top: 1px solid #f0f0f2;
+  font-size: 12.5px;
+  color: #52525b;
+  cursor: pointer;
+}
+
+.mc-bell-mail input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #0f766e;
+}
+
+.mc-bell-mail-off {
+  color: #a1a1aa;
+  cursor: default;
+}
+
+/* (요청사항) 알림 단계: 다가오는 마감(D-15~3) · 지연 확인됨 */
+.due-chip-upcoming {
+  background: #eef2f1;
+  color: #52665f;
+}
+
+.due-chip-overdue-ack {
+  background: #f4f4f5;
+  color: #a1a1aa;
+}
+
+.mc-bell-sec-title.mc-bell-upcoming {
+  color: #52665f;
+}
+
+.mc-bell-settings {
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid #f0f0f2;
+}
+
+.mc-bell-settings .mc-bell-mail {
+  margin-top: 0;
+  padding: 6px 8px;
+  border-top: 0;
+}
+
+/* 작업 수정: 지연 확인 · 완료 */
+.detail-actions .detail-ack,
+.detail-actions .detail-complete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-actions .detail-ack {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.detail-actions .detail-complete {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+  color: #0f766e;
+}
+
+.detail-actions .detail-complete:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
+/* (요청사항) 작업 수정 창 아래 버튼: [지연 확인 | 완료] · [취소 | 저장] 을 각각 한 알약으로 */
+.detail-actions .detail-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 3px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.detail-actions .detail-pill + .detail-pill {
+  margin-left: 8px;
+}
+
+.detail-actions .detail-pill button {
+  position: relative;
+  height: 34px;
+  margin: 0;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 13.5px;
+  font-weight: 700;
+  transition: background .15s ease, color .15s ease;
+}
+
+.detail-actions .detail-pill button + button::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 9px;
+  bottom: 9px;
+  width: 1px;
+}
+
+/* 상태 알약: 흰 바탕 + 연한 초록 테두리. 지연 확인은 빨간 글씨, 완료는 초록 글씨 */
+.detail-actions .detail-pill-status {
+  background: #ffffff;
+  box-shadow: 0 0 0 1px #c3dfd7 inset;
+}
+
+.detail-actions .detail-pill-status button + button::before {
+  background: #d4e6e0;
+}
+
+.detail-actions .detail-pill-status .detail-ack {
+  color: #c2410c;
+}
+
+.detail-actions .detail-pill-status .detail-ack:hover:not(:disabled) {
+  background: #fff1e8;
+}
+
+.detail-actions .detail-pill-status .detail-complete {
+  color: #0f766e;
+}
+
+.detail-actions .detail-pill-status .detail-complete:hover:not(:disabled) {
+  background: #e3f2ed;
+}
+
+.detail-actions .detail-pill-status .detail-complete:disabled {
+  color: #a1a1aa;
+  opacity: 1;
+}
+
+/* 저장 알약: 테마색 바탕 + 흰 글씨, 취소는 살짝 옅게 */
+.detail-actions .detail-pill-main {
+  background: #0f766e;
+  box-shadow: 0 6px 14px -8px rgba(15, 118, 110, .7);
+}
+
+.detail-actions .detail-pill-main button {
+  color: #ffffff;
+}
+
+.detail-actions .detail-pill-main #cancelDetailBtn {
+  color: rgba(255, 255, 255, .78);
+}
+
+.detail-actions .detail-pill-main button + button::before {
+  background: rgba(255, 255, 255, .35);
+}
+
+.detail-actions .detail-pill-main button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .14);
+  color: #ffffff;
 }
