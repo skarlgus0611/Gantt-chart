@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v31";
+  --css-version: "2026-10-24-design-v32";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9479,4 +9479,40 @@ body:has(.gantt-resize.dragging) {
 
 .zoom-head {
   margin-bottom: 0;
+}
+
+
+/* (요청사항) 띠 전체를 더 얇게: 22 → 14px */
+:root {
+  --rail-w: 14px;
+  --rail-col: 18px;
+  --rail-gap: 5px;
+}
+
+.row-range::before {
+  border-radius: 7px 7px 0 0;
+}
+
+.h-rail::before,
+.h-rail::after {
+  border-radius: 0 0 7px 0;
+}
+
+.range-slider .range-handle,
+.range-slider .range-handle:hover,
+.range-slider .range-handle:focus-visible {
+  width: 18px;
+  background-size: 10px;
+}
+
+.row-range .range-handle,
+.row-range .range-handle:hover,
+.row-range .range-handle:focus-visible {
+  height: 18px;
+  background-size: 10px;
+}
+
+.range-month {
+  font-size: 8.5px;
+  line-height: 1;
 }
