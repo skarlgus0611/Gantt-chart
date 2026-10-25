@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v26";
+const APP_VERSION = "2026-10-24-design-v28";
 
 
 /* =========================================================
@@ -5856,6 +5856,11 @@ if (heightHandle) {
 
     event.preventDefault();
 
+    /* (요청사항) 행 높이 슬라이더 대신 이 손잡이로 높이를 조절한다.
+       차트 박스(iframe) 밖으로 마우스가 나가도 계속 따라오게 붙잡는다. */
+    try { heightHandle.setPointerCapture(event.pointerId); } catch (error) { /* 무시 */ }
+    heightHandle.classList.add("dragging");
+
     const startY = event.clientY;
     const startHeight = state.chartHeight;
 
@@ -5863,9 +5868,10 @@ if (heightHandle) {
 
     function move(e2) {
 
+      /* 행 높이 슬라이더와 같은 범위: 줄이 가장 넓을 때까지만 늘린다 */
       state.chartHeight = Math.max(
         MIN_CHART_HEIGHT,
-        Math.min(MAX_CHART_HEIGHT, startHeight + (e2.clientY - startY))
+        Math.min(rowHeightSliderMax(), startHeight + (e2.clientY - startY))
       );
 
       applyGanttHeight();
@@ -5876,12 +5882,15 @@ if (heightHandle) {
     }
 
     function up() {
+      heightHandle.classList.remove("dragging");
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
     }
 
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   });
 }
 
@@ -6469,7 +6478,6 @@ function shellOpenMoreMenu(chart, box, anchor) {
 
   if (shellCanEdit(chart)) {
     add("이름 바꾸기", () => shellStartRename(chart, box));
-    add("표시 기간 설정", () => shellOpenRangePopover(chart, box, box.querySelector(".mc-chart-box-range")));
   }
 
   if (chart.shared && (chart.role === "owner" || chart.role === "admin")) {

@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v26";
+  --css-version: "2026-10-24-design-v28";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9090,4 +9090,148 @@ button.primary {
 
 .mc-ov-foot {
   padding-bottom: 2px;
+}
+
+
+/* =========================================================
+   (요청사항) 표시 기간 띠 · 차트 높이 손잡이 정리
+   1) 표시 기간 띠 높이를 낮춤 (36 → 26px)
+   2) 고른 구간 양 끝 손잡이 = 알약 윤곽을 그대로 따라가는 두꺼운 반원
+      → "끝을 잡고 좌우로 끄는 것"이 바로 보이게
+   3) 행 높이 칸은 없애고 표시 기간 띠를 끝까지 늘림
+   4) 차트 아래 구분선을 또렷한 민트색으로, 가운데 손잡이를 끌어 차트 높이 조절
+   ========================================================= */
+.zoom-area {
+  gap: 0;
+}
+
+.zoom-col-h {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.zoom-head {
+  min-height: 20px;
+  margin-bottom: 5px;
+}
+
+.range-slider {
+  height: 26px;
+}
+
+.range-slider .range-bar {
+  border-width: 2px;
+}
+
+.range-slider .range-handle,
+.range-slider .range-handle:hover,
+.range-slider .range-handle:focus-visible {
+  width: 14px;
+  height: 100%;
+  top: 0;
+  border: 4px solid #0f766e;
+  background: rgba(15, 118, 110, .12);
+  box-shadow: none;
+  box-sizing: border-box;
+  cursor: ew-resize;
+}
+
+/* 왼쪽 끝: 오른쪽이 열린 반원 */
+.range-slider .range-handle-a,
+.range-slider .range-handle-a:hover,
+.range-slider .range-handle-a:focus-visible {
+  transform: none;
+  border-right: 0;
+  border-radius: 999px 0 0 999px;
+}
+
+/* 오른쪽 끝: 왼쪽이 열린 반원 */
+.range-slider .range-handle-b,
+.range-slider .range-handle-b:hover,
+.range-slider .range-handle-b:focus-visible {
+  transform: translateX(-100%);
+  border-left: 0;
+  border-radius: 0 999px 999px 0;
+}
+
+.range-slider .range-handle:hover,
+.range-slider .range-handle:focus-visible,
+.range-slider .range-handle:active {
+  border-color: #0b5b55;
+  background: rgba(15, 118, 110, .26);
+  outline: none;
+}
+
+/* 차트 아래 구분선 + 높이 손잡이 (iframe 안에서도 보이게) */
+html.is-embedded .gantt-resize,
+.gantt-resize {
+  visibility: visible;
+  position: relative;
+  height: 20px;
+  margin: 4px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.gantt-resize::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 2px;
+  background: #c8ebe1;
+  transition: background .15s ease;
+}
+
+.gantt-resize .gantt-resize-grip {
+  position: relative;
+  width: 56px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1.5px solid #9fdccb;
+  background: #ecf8f4;
+  color: #0f766e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(15, 118, 110, .15);
+  transition: background .15s ease, color .15s ease, border-color .15s ease, transform .15s ease;
+}
+
+.gantt-resize:hover::before,
+.gantt-resize.dragging::before {
+  background: #5eead4;
+}
+
+.gantt-resize:hover .gantt-resize-grip,
+.gantt-resize.dragging .gantt-resize-grip {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
+  transform: scale(1.06);
+}
+
+body:has(.gantt-resize.dragging) {
+  cursor: ns-resize;
+  user-select: none;
+}
+
+
+/* (요청사항) 차트 아래 구분선 색: 민트 대신 차분한 초록빛 회색(#D4EAE3).
+   마우스를 올려도 선 색은 그대로 두고 손잡이만 바뀐다. */
+.gantt-resize::before,
+.gantt-resize:hover::before,
+.gantt-resize.dragging::before {
+  background: #d4eae3;
+}
+
+.gantt-resize .gantt-resize-grip {
+  border-color: #bcdcd2;
+  background: #eef6f3;
 }
