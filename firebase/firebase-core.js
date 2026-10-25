@@ -97,11 +97,27 @@ export function currentUser() {
   return auth.currentUser;
 }
 
+/* (버그 수정) 공유에 쓰는 이메일은 항상 소문자로 저장·비교한다(보안 규칙도 소문자로 비교). */
+function lowerEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+/* 멤버가 바뀐 뒤 작업 문서의 복사값을 맞추는 일은 편집 권한이 있어야 성공한다.
+   뷰어 본인이 수락하거나 나갈 때는 실패하는데, 읽기 권한은 이제 보안 규칙이
+   차트 문서로 확인하므로 실패해도 안전하다 → 오류로 멈추지 않고 넘어간다. */
+async function restampQuietly(chartId, ownerId, memberEmails) {
+  try {
+    await restampChartAcl(chartId, ownerId, memberEmails);
+  } catch (error) {
+    console.warn("작업 복사값 맞추기를 건너뜀(권한 없음):", error && error.code);
+  }
+}
+
 /* ----- 차트 ----- */
 
 export function createChart(ownerId, ownerEmail, name) {
   return addDoc(collection(db, "charts"), {
-    ownerId, ownerEmail,
+    ownerId, ownerEmail: lowerEmail(ownerEmail),
     name: name || "새 차트",
     rangeStart: "", rangeEnd: "",
     hidden: false, order: 0, calendarId: "",
@@ -132,6 +148,7 @@ export function deleteChart(chartId) {
    버그가 생겼다. FieldPath를 쓰면 이메일 문자열 전체를 "한 단계"로
    정확히 취급한다. */
 export function inviteMember(chartId, email, role) {
+  email = lowerEmail(email);
   return updateDoc(doc(db, "charts", chartId),
     new FieldPath("members", email), { role, status: "pending" },
     "pendingEmails", arrayUnion(email)
@@ -139,6 +156,7 @@ export function inviteMember(chartId, email, role) {
 }
 
 export async function respondInvite(chartId, email, accept) {
+  email = lowerEmail(email);
   const chartRef = doc(db, "charts", chartId);
   if (!accept) {
     return updateDoc(chartRef,
@@ -159,27 +177,35 @@ export async function respondInvite(chartId, email, accept) {
   );
   /* (성능/Rules 수정) memberEmails가 실제로 바뀌는 시점(수락)이라
      이 차트의 작업/카테고리 복사값도 같이 맞춰준다. */
-  await restampChartAcl(chartId, data.ownerId, newMemberEmails);
+  await restampQuietly(chartId, data.ownerId, newMemberEmails);
 }
 
 export function setMemberRole(chartId, email, role) {
+  email = lowerEmail(email);
   return updateDoc(doc(db, "charts", chartId), new FieldPath("members", email, "role"), role);
 }
 
 export async function removeMember(chartId, email) {
+  const raw = String(email || "").trim();
+  email = lowerEmail(raw);
   const chartRef = doc(db, "charts", chartId);
   const snap = await getDoc(chartRef);
   const data = snap.data() || {};
-  const newMemberEmails = (data.memberEmails || []).filter((e) => e !== email);
-  await updateDoc(chartRef,
+  const newMemberEmails = (data.memberEmails || []).filter((e) => e !== email && e !== raw);
+  /* 예전에 대문자 섞인 이메일로 저장된 항목도 같이 지운다 */
+  const fields = [
     new FieldPath("members", email), null,
-    "memberEmails", arrayRemove(email),
-    "pendingEmails", arrayRemove(email)
-  );
+    "memberEmails", arrayRemove(email, raw),
+    "pendingEmails", arrayRemove(email, raw)
+  ];
+  if (raw && raw !== email) fields.push(new FieldPath("members", raw), null);
+  await updateDoc(chartRef, ...fields);
   /* (성능/Rules 수정) memberEmails가 줄어드는 시점이라 작업/카테고리
      복사값도 같이 맞춰준다 — 안 하면 제거된 사람이 작업 문서에 남아있는
-     옛 복사값 때문에 계속 읽을 수 있게 되는 보안 구멍이 생긴다. */
-  await restampChartAcl(chartId, data.ownerId, newMemberEmails);
+     옛 복사값 때문에 계속 읽을 수 있게 되는 보안 구멍이 생긴다.
+     (보안 수정 이후로는 읽기 권한을 차트 문서로 확인하므로, 뷰어 본인이 나갈 때
+     이 단계가 권한 때문에 실패해도 안전하다) */
+  await restampQuietly(chartId, data.ownerId, newMemberEmails);
 }
 
 export async function revokeAllSharing(chartId) {
@@ -192,6 +218,7 @@ export async function revokeAllSharing(chartId) {
 
 /* 내 초대함: 아직 수락 안 한 초대가 있는 차트 목록 */
 export function listenMyInvites(email, callback) {
+  email = lowerEmail(email);
   return onSnapshot(
     query(collection(db, "charts"), where("pendingEmails", "array-contains", email)),
     (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
@@ -199,6 +226,7 @@ export function listenMyInvites(email, callback) {
 }
 
 export async function getInvitesOnce(email) {
+  email = lowerEmail(email);
   const snap = await getDocs(query(collection(db, "charts"), where("pendingEmails", "array-contains", email)));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
@@ -206,6 +234,7 @@ export async function getInvitesOnce(email) {
 /* 내가 소유한 차트 + 내가 멤버로 등록된 차트, 두 번 구독해서 합친다
    (Firestore가 "A이거나 B" 조건을 한 쿼리로 못 하므로). */
 export function listenMyCharts(uid, email, callback) {
+  email = lowerEmail(email);
   let owned = [];
   let shared = [];
 
@@ -352,6 +381,7 @@ export async function reorderCategories(chartId, orderedIds) {
 }
 
 export async function getChartsOnce(uid, email) {
+  email = lowerEmail(email);
   const [ownedSnap, sharedSnap] = await Promise.all([
     getDocs(query(collection(db, "charts"), where("ownerId", "==", uid))),
     getDocs(query(collection(db, "charts"), where("memberEmails", "array-contains", email)))

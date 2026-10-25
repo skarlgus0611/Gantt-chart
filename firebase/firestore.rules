@@ -2,7 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() { return request.auth != null; }
-    function myEmail() { return request.auth.token.email; }
+    /* (버그 수정) 이메일은 항상 소문자로 비교한다. 앱도 저장할 때 소문자로 맞춘다.
+       (구글 계정 이메일에 대문자가 섞여 있으면 초대 수락이 막히던 문제) */
+    function myEmail() { return request.auth.token.email.lower(); }
     function chartDoc(chartId) {
       return get(/databases/$(database)/documents/charts/$(chartId)).data;
     }
@@ -27,6 +29,9 @@ service cloud.firestore {
     }
     /* (조직 관리 2단계) 조직을 통한 접근도 더한다 — 아래 orgChartRoleIn 참고 */
     function canRead(c) { return isOwner(c) || isAcceptedMember(c) || isPendingMember(c)
+      || orgChartRoleIn(c, ["viewer", "editor", "admin"]); }
+    /* 작업·카테고리(내용)는 수락한 사람만. 초대 대기 중인 사람은 차트 이름만 볼 수 있다. */
+    function canReadContent(c) { return isOwner(c) || isAcceptedMember(c)
       || orgChartRoleIn(c, ["viewer", "editor", "admin"]); }
     function canEdit(c) { return isOwner(c) || myRole(c) in ["admin", "editor"]
       || orgChartRoleIn(c, ["editor", "admin"]); }
@@ -58,7 +63,8 @@ service cloud.firestore {
       allow update: if isOwner(resource.data) || myRole(resource.data) == "admin"
         || orgChartRoleIn(resource.data, ["admin"])
         || isModifyingOwnMembership(resource.data, request.resource.data);
-      allow delete: if isOwner(resource.data) || myRole(resource.data) == "admin";
+      // (요청사항) 차트 삭제는 소유자만. 관리자도 삭제는 못 한다.
+      allow delete: if isOwner(resource.data);
 
       // ---------------------------------------------------------------
       // 성능 수정: tasks/categories는 더 이상 읽을 때 get()으로 부모
@@ -85,12 +91,14 @@ service cloud.firestore {
       // 같이 둔다(진짜 권한은 canEdit(chartDoc)이 이미 확인하므로 안전).
       // ---------------------------------------------------------------
       match /tasks/{taskId} {
+        /* (보안 수정) 예전엔 작업 문서에 복사해 둔 memberEmails 만 보고도 읽기를
+           허용했다. 그런데 뷰어가 "공유 차트 나가기"를 하면 그 복사값을 고칠 권한이
+           없어서 이메일이 남았고, 나간 뒤에도 작업을 읽을 수 있었다.
+           이제 소유자(복사된 ownerId, 바뀌지 않음)가 아니면 항상 지금의 차트 문서로
+           권한을 확인한다. 목록 조회는 차트 문서 한 번만 확인하므로 느려지지 않는다. */
         allow read: if isSignedIn() && (
           (request.auth.uid == resource.data.get('ownerId', null)) ||
-          (myEmail() in resource.data.get('memberEmails', [])) ||
-          (!('ownerId' in resource.data) && canRead(chartDoc(chartId))) ||
-          // (조직 관리 2단계) 조직을 통한 접근은 작업 문서에 복사해 두지 않는다
-          orgChartRoleIn(chartDoc(chartId), ["viewer", "editor", "admin"])
+          canReadContent(chartDoc(chartId))
         );
 
         allow create: if isSignedIn() && canEdit(chartDoc(chartId))
@@ -108,12 +116,14 @@ service cloud.firestore {
       }
 
       match /categories/{categoryId} {
+        /* (보안 수정) 예전엔 작업 문서에 복사해 둔 memberEmails 만 보고도 읽기를
+           허용했다. 그런데 뷰어가 "공유 차트 나가기"를 하면 그 복사값을 고칠 권한이
+           없어서 이메일이 남았고, 나간 뒤에도 작업을 읽을 수 있었다.
+           이제 소유자(복사된 ownerId, 바뀌지 않음)가 아니면 항상 지금의 차트 문서로
+           권한을 확인한다. 목록 조회는 차트 문서 한 번만 확인하므로 느려지지 않는다. */
         allow read: if isSignedIn() && (
           (request.auth.uid == resource.data.get('ownerId', null)) ||
-          (myEmail() in resource.data.get('memberEmails', [])) ||
-          (!('ownerId' in resource.data) && canRead(chartDoc(chartId))) ||
-          // (조직 관리 2단계) 조직을 통한 접근은 작업 문서에 복사해 두지 않는다
-          orgChartRoleIn(chartDoc(chartId), ["viewer", "editor", "admin"])
+          canReadContent(chartDoc(chartId))
         );
 
         allow create: if isSignedIn() && canEdit(chartDoc(chartId))
