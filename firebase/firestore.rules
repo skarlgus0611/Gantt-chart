@@ -57,6 +57,14 @@ service cloud.firestore {
         );
     }
 
+    /* (요청사항) 알림 받는 사람 판정용: 가입한 이메일 표시.
+       본인 것만 쓰고, 다른 사람은 "있는지"만 확인(get)할 수 있다 — 목록 조회(list)는 막는다 */
+    match /registeredEmails/{email} {
+      allow get: if isSignedIn();
+      allow create, update: if isSignedIn() && email == myEmail()
+        && request.resource.data.uid == request.auth.uid;
+    }
+
     /* (요청사항) 첫 화면 안내: 본인 문서만 읽고 쓸 수 있다 */
     match /users/{uid} {
       allow read, create, update: if request.auth != null && request.auth.uid == uid;
@@ -110,14 +118,37 @@ service cloud.firestore {
           && request.resource.data.ownerId == chartDoc(chartId).ownerId
           && request.resource.data.memberEmails == chartDoc(chartId).memberEmails;
 
-        allow update: if isSignedIn() && canEdit(chartDoc(chartId)) && (
-          (request.resource.data.get('ownerId', null) == resource.data.get('ownerId', null)
-            && request.resource.data.get('memberEmails', []) == resource.data.get('memberEmails', [])) ||
-          (request.resource.data.get('ownerId', null) == chartDoc(chartId).ownerId
-            && request.resource.data.get('memberEmails', []) == chartDoc(chartId).memberEmails)
+        allow update: if isSignedIn() && (
+          (canEdit(chartDoc(chartId)) && (
+            (request.resource.data.get('ownerId', null) == resource.data.get('ownerId', null)
+              && request.resource.data.get('memberEmails', []) == resource.data.get('memberEmails', [])) ||
+            (request.resource.data.get('ownerId', null) == chartDoc(chartId).ownerId
+              && request.resource.data.get('memberEmails', []) == chartDoc(chartId).memberEmails)
+          ))
+          || (canReadContent(chartDoc(chartId)) && taskSelfAssign())
+          || (canReadContent(chartDoc(chartId)) && taskAssigneeFinish())
         );
 
         allow delete: if isSignedIn() && canEdit(chartDoc(chartId));
+      }
+
+      /* (요청사항) 뷰어도 "내가 할게요": 담당자가 비었거나 외부인(이메일 없음)인 작업을 자기로 바꾸거나,
+         자기 담당이면 비우기만. 남(이메일 있는 담당자)의 작업을 가져가지는 못한다 */
+      function taskSelfAssign() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['owner', 'ownerEmail', 'overdueAck', 'updatedAt'])
+          && (
+            (request.resource.data.get('ownerEmail', '') == myEmail()
+              && resource.data.get('ownerEmail', '') in ['', myEmail()]) ||
+            (resource.data.get('ownerEmail', '') == myEmail() && request.resource.data.get('ownerEmail', '') == '')
+          );
+      }
+
+      /* (요청사항) 담당자 본인은 권한과 상관없이 [완료](100%)·[지연 확인]만 */
+      function taskAssigneeFinish() {
+        return resource.data.get('ownerEmail', '') == myEmail()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress', 'overdueAck', 'updatedAt'])
+          && (request.resource.data.get('progress', 0) == 100
+            || request.resource.data.get('progress', 0) == resource.data.get('progress', 0));
       }
 
       match /categories/{categoryId} {

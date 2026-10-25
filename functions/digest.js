@@ -7,11 +7,9 @@
    - D-2, D-1, 당일 : 웹 푸시
    - 지연    : "지연 확인"(overdueAck)을 누르기 전까지 하루 한 번 웹 푸시
 
-   받는 사람
-   - 담당자를 조직원 목록에서 고른 작업(ownerEmail 있음) → 그 담당자
-   - 담당자가 없거나 이름만 적은 작업 → 차트 소유자
-   - 이 사이트에 로그인한 적이 있는 사람(users 문서)만. 메일은 notify.email 을 끄지 않은 사람,
-     푸시는 notify.push 를 켜고 푸시 토큰이 있는 사람 */
+   받는 사람: 담당자가 정해져 있고(이메일) 이 사이트에 가입한(users 문서) 경우 그 담당자만.
+   그 밖의 경우(담당자 없음 · 이메일 없음 · 미가입)는 아무에게도 보내지 않는다.
+   메일은 notify.email 을 끄지 않은 사람, 푸시는 notify.push 를 켜고 푸시 토큰이 있는 사람 */
 
 const MAIL_DAYS_BEFORE = 7;
 const PUSH_DAYS_BEFORE = [2, 1, 0];
@@ -61,10 +59,14 @@ function buildNotices({ users, charts, tasksByChart, todayKey }) {
       if (progress >= 100 || !task.end) return;
       const left = daysBetween(todayKey, task.end);
       if (left === null) return;
-      const to = lower(task.ownerEmail) || lower(chart.ownerEmail);
-      const user = byEmail.get(to);
-      if (!user) return;
+      const isMailDay = left === MAIL_DAYS_BEFORE;
+      const isPushDay = PUSH_DAYS_BEFORE.includes(left) || (left < 0 && !task.overdueAck);
+      if (!isMailDay && !isPushDay) return;
 
+      /* 담당자가 정해져 있고 가입한 사람일 때만 */
+      const email = lower(task.ownerEmail);
+      const user = email && byEmail.get(email);
+      if (!user) return;
       const item = {
         chartName: chart.name || "이름 없는 차트",
         name: task.name || "이름 없는 작업",
@@ -73,14 +75,9 @@ function buildNotices({ users, charts, tasksByChart, todayKey }) {
         owner: task.owner || "",
         left
       };
-
-      if (left === MAIL_DAYS_BEFORE && !(user.notify && user.notify.email === false)) {
-        add(mails, to, item);
-      }
+      if (isMailDay && !(user.notify && user.notify.email === false)) add(mails, email, item);
       const wantsPush = user.notify && user.notify.push === true && Array.isArray(user.pushTokens) && user.pushTokens.length;
-      if (wantsPush && (PUSH_DAYS_BEFORE.includes(left) || (left < 0 && !task.overdueAck))) {
-        add(pushes, to, item);
-      }
+      if (isPushDay && wantsPush) add(pushes, email, item);
     });
   });
 

@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-24-design-v71">
+  <meta name="app-version" content="2026-10-24-design-v73">
 
   <title>간트차트</title>
 
@@ -27,7 +27,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-24-design-v71"
+    href="style.css?v=2026-10-24-design-v73"
   >
 </head>
 
@@ -695,7 +695,9 @@
           <label class="detail-prop">
             <span class="detail-prop-key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20a7 7 0 0 1 14 0"></path></svg>담당자</span>
             <span class="detail-prop-val">
-              <input id="taskOwner" type="text" placeholder="비어 있음">
+              <input id="taskOwner" type="text" placeholder="이름">
+              <input id="taskOwnerEmail" class="assignee-email" type="email" placeholder="이메일 (알림 받으려면 입력)" data-auto="0">
+              <span class="assignee-status" id="taskOwnerStatus"></span>
             </span>
           </label>
 
@@ -846,7 +848,7 @@
        JS
   ========================= -->
 
-  <script type="module" src="app.js?v=2026-10-24-design-v71"></script>
+  <script type="module" src="app.js?v=2026-10-24-design-v73"></script>
 
 </body>
 </html>
