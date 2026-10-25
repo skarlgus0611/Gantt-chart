@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v28";
+  --css-version: "2026-10-24-design-v29";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9234,4 +9234,27 @@ body:has(.gantt-resize.dragging) {
 .gantt-resize .gantt-resize-grip {
   border-color: #bcdcd2;
   background: #eef6f3;
+}
+
+
+/* (요청사항) 표시 기간 띠를 더 얇게, 달 이름은 작게 "1月" 식으로 */
+.range-slider {
+  height: 20px;
+}
+
+.range-slider .range-bar {
+  border-width: 1.5px;
+}
+
+.range-slider .range-handle,
+.range-slider .range-handle:hover,
+.range-slider .range-handle:focus-visible {
+  width: 11px;
+  border-width: 3px;
+}
+
+.range-month {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0;
 }

@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v28";
+const APP_VERSION = "2026-10-24-design-v29";
 
 
 /* =========================================================
@@ -5842,7 +5842,7 @@ function renderRangeMonths() {
 
   layer.innerHTML = windowMonths().map(({ year, month, days }) => {
     const current = year === now.getFullYear() && month === now.getMonth();
-    return `<span class="range-month${current ? " current" : ""}" style="flex-grow:${days}">${month + 1}월</span>`;
+    return `<span class="range-month${current ? " current" : ""}" style="flex-grow:${days}">${month + 1}月</span>`;
   }).join("");
 }
 
