@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v58";
+const APP_VERSION = "2026-10-24-design-v59";
 
 
 /* =========================================================
@@ -3333,7 +3333,12 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
 
   const monthColumns = [];
 
-  monthSegments().forEach(({ month, year, from, to }) => {
+  /* (요청사항) 기간이 해를 넘어가면 1월 칸에 연도를 붙이고 경계선을 긋는다 */
+  const segments = monthSegments();
+  const segYear = (y) => (y === undefined ? state.year : y);
+  const multiYear = segments.length > 0 && segYear(segments[0].year) !== segYear(segments[segments.length - 1].year);
+
+  segments.forEach(({ month, year, from, to }, index) => {
 
     const width = (to - from + 1) * dayWidth;
 
@@ -3349,11 +3354,25 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
     cell.title =
       `${year === undefined ? state.year : year}-${String(month + 1).padStart(2, "0")}`;
 
-    /* 칸이 좁으면 '9월' 대신 '9', 더 좁으면 글자를 생략 */
+    /* 칸이 좁으면 '9월' 대신 '9', 더 좁으면 글자를 생략.
+       (요청사항) 양 끝의 잘린 달은 '7'처럼 반쪽 글자가 어색해서, 좁으면 아예 비운다 */
+    const isEdge = index === 0 || index === segments.length - 1;
     cell.textContent =
       width >= 40 ? `${month + 1}월`
-      : width >= 14 ? String(month + 1)
+      : width >= 14 && !isEdge ? String(month + 1)
       : "";
+
+    if (multiYear && month === 0 && index > 0) {
+      cell.classList.add("year-start");
+      const y = segYear(year);
+      /* 넓으면 "2027년 1월", 보통이면 "’27 1월", 좁으면 연도만 "’27" */
+      const yearLabel = width >= 84 ? y + "년" : "’" + String(y).slice(2);
+      if (width >= 56) {
+        cell.innerHTML = '<span class="month-year">' + yearLabel + "</span>" + (month + 1) + "월";
+      } else if (width >= 26) {
+        cell.innerHTML = '<span class="month-year month-year-only">' + yearLabel + "</span>";
+      }
+    }
 
     monthRow.appendChild(cell);
 
@@ -6045,9 +6064,15 @@ function renderRangeMonths() {
 
   const now = new Date();
 
-  layer.innerHTML = windowMonths().map(({ year, month, days }) => {
+  /* (요청사항) 양 끝 잘린 달은 글자를 숨기고, 해가 바뀌는 1월은 연도로 표시 */
+  const months = windowMonths();
+  const multiYear = months.length > 0 && months[0].year !== months[months.length - 1].year;
+  layer.innerHTML = months.map(({ year, month, days }, index) => {
     const current = year === now.getFullYear() && month === now.getMonth();
-    return `<span class="range-month${current ? " current" : ""}" style="flex-grow:${days}">${month + 1}月</span>`;
+    const isEdge = index === 0 || index === months.length - 1;
+    const yearStart = multiYear && month === 0 && index > 0;
+    const label = isEdge && days < 12 ? "" : yearStart ? "’" + String(year).slice(2) : (month + 1) + "月";
+    return `<span class="range-month${current ? " current" : ""}${yearStart ? " year-start" : ""}" style="flex-grow:${days}">${label}</span>`;
   }).join("");
 
   markCoveredMonths();
@@ -7412,13 +7437,27 @@ function shellSharedStateKey(chart) {
 const shellStats = {};
 let shellActiveChartId = "";
 
+/* (요청사항) 기간 글자를 짧게: 같은 해면 "2026. 1.1 – 12.31", 해를 넘으면 "26.7.20 – 28.1.27".
+   며칠인지는 마우스를 올리면 뜨는 설명(title)으로 */
+function shellShortRange(start, end) {
+  const parse = (key) => {
+    const m = String(key || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? { y: m[1], m: Number(m[2]), d: Number(m[3]) } : null;
+  };
+  const a = parse(start);
+  const b = parse(end);
+  if (!a || !b) return (start || "") + " ~ " + (end || "");
+  if (a.y === b.y) return a.y + ". " + a.m + "." + a.d + " – " + b.m + "." + b.d;
+  return a.y.slice(2) + "." + a.m + "." + a.d + " – " + b.y.slice(2) + "." + b.m + "." + b.d;
+}
+
 function shellRangeLabel(chart) {
   const stats = shellStats[chart.id];
   if (stats && stats.windowStart) {
-    return stats.windowStart + " ~ " + stats.windowEnd + " · " + stats.windowDays + "일";
+    return shellShortRange(stats.windowStart, stats.windowEnd);
   }
   if (chart.rangeStart && chart.rangeEnd) {
-    return chart.rangeStart + " ~ " + chart.rangeEnd;
+    return shellShortRange(chart.rangeStart, chart.rangeEnd);
   }
   return "";
 }
@@ -7430,7 +7469,11 @@ function shellApplyStats(chartId) {
   if (!chart || !stats) return;
 
   if (box) {
-    box.querySelector(".mc-chart-box-range").textContent = shellRangeLabel(chart);
+    const rangeBtn = box.querySelector(".mc-chart-box-range");
+    rangeBtn.textContent = shellRangeLabel(chart);
+    rangeBtn.title = stats.windowStart
+      ? stats.windowStart + " ~ " + stats.windowEnd + " · " + stats.windowDays + "일 (눌러서 연도·표시 기간 설정)"
+      : "연도·표시 기간 설정";
     const avg = box.querySelector(".mc-chart-box-avg");
     avg.textContent = stats.avgProgress === null ? "" : "평균 진행률 " + stats.avgProgress + "%";
     box.classList.toggle("mc-chart-box-readonly", !shellCanEdit(chart));
