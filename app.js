@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v48";
+const APP_VERSION = "2026-10-24-design-v50";
 
 
 /* =========================================================
@@ -1557,6 +1557,29 @@ function isLightColor(hex) {
 
   // 흰 글자 대비가 3:1 미만이면 밝은 색으로 본다.
   return 1.05 / (luminance + 0.05) < 3;
+}
+
+
+/* (요청사항) 막대 위 글씨가 바탕색에 묻히지 않게: 흰 글씨와 진한 글씨 중
+   실제 바탕과 명암 대비가 더 큰 쪽을 고른다(WCAG 대비 계산). */
+function relativeLuminance(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const channel = value => {
+    const c = value / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel((n >> 16) & 255) + 0.7152 * channel((n >> 8) & 255) + 0.0722 * channel(n & 255);
+}
+
+function barTextStyle(backgroundHex) {
+  const bg = validHex(backgroundHex) || DEFAULT_COLOR;
+  const lum = relativeLuminance(bg);
+  const dark = "#111827";
+  const whiteContrast = 1.05 / (lum + 0.05);
+  const darkContrast = (lum + 0.05) / (relativeLuminance(dark) + 0.05);
+  return whiteContrast >= darkContrast
+    ? "color:#ffffff;text-shadow:0 1px 2px rgba(0,0,0,.35)"
+    : "color:" + dark + ";text-shadow:0 1px 0 rgba(255,255,255,.35)";
 }
 
 
@@ -3446,13 +3469,19 @@ function renderTaskBar(
   const progress =
     Math.max(0, Math.min(100, Number(task.progress) || 0));
 
+  /* % 글씨는 막대 오른쪽 끝에 놓인다. 진행률이 거의 다 찼으면 그 자리는
+     흰빛이 덧씌워진 부분이라, 실제로 글씨 뒤에 깔리는 색으로 대비를 계산한다. */
+  const textBackground = progress >= 85
+    ? mixHex(color, "#ffffff", isLightColor(color) ? 0.5 : 0.7)
+    : color;
+
   bar.innerHTML = `
     <div
       class="task-progress"
       style="width:${progress}%"
     ></div>
 
-    <div class="task-bar-text">
+    <div class="task-bar-text" style="${barTextStyle(textBackground)}">
       <span class="task-bar-name">${escapeHtml(task.name)}</span>
       <span class="task-bar-pct">${progress}%</span>
     </div>
@@ -5768,6 +5797,7 @@ function refreshCategorySheet() {
   const name = document.getElementById("categoryName").value.trim();
 
   applyCategoryTint(document.getElementById("categoryPreview"), color);
+  applyCategoryTint(document.getElementById("categoryPreviewBarRow"), color);
   document.getElementById("categoryPreviewName").textContent = name || "새 카테고리";
 
   markSelectedSwatch(modal, color);

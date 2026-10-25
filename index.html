@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-24-design-v48">
+  <meta name="app-version" content="2026-10-24-design-v50">
 
   <title>간트차트</title>
 
@@ -18,9 +18,16 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 
+  <!-- (버그 수정) Pretendard 글꼴: 예전엔 fonts/ 파일이 저장소에 없어서 맑은 고딕으로
+       대신 보였다. 필요한 글자 묶음만 그때그때 받는 가변 글꼴(SIL OFL 1.1). -->
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-24-design-v48"
+    href="fonts/pretendard.css?v=1.3.9"
+  >
+
+  <link
+    rel="stylesheet"
+    href="style.css?v=2026-10-24-design-v50"
   >
 </head>
 
@@ -765,18 +772,22 @@
       <div class="sheet-body">
 
         <!-- (디자인 추가분) 고른 이름·색이 실제 카테고리 줄에서 어떻게 보이는지 미리보기 -->
-        <div class="category-preview" id="categoryPreview" aria-hidden="true">
-          <span class="category-preview-name" id="categoryPreviewName">새 카테고리</span>
-          <span class="category-preview-bar"></span>
+        <!-- (요청사항) 이름 입력칸을 카테고리 줄 미리보기 자리에 바로 넣고,
+             색 미리보기 막대는 그 아래로 -->
+        <div class="category-preview" id="categoryPreview">
+          <input
+            id="categoryName"
+            class="category-preview-input"
+            type="text"
+            placeholder="카테고리명을 입력하세요"
+            aria-label="카테고리명"
+          >
+          <span class="category-preview-name" id="categoryPreviewName" hidden></span>
         </div>
 
-        <input
-          id="categoryName"
-          class="sheet-title-input"
-          type="text"
-          placeholder="카테고리명을 입력하세요"
-          aria-label="카테고리명"
-        >
+        <div class="category-preview-barrow" id="categoryPreviewBarRow" aria-hidden="true">
+          <span class="category-preview-bar"></span>
+        </div>
 
         <div class="detail-props">
           <div class="detail-prop">
@@ -832,7 +843,7 @@
        JS
   ========================= -->
 
-  <script type="module" src="app.js?v=2026-10-24-design-v48"></script>
+  <script type="module" src="app.js?v=2026-10-24-design-v50"></script>
 
 </body>
 </html>
