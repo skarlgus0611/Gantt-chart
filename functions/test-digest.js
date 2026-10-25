@@ -33,14 +33,14 @@ const tasksByChart = {
 const { mails, pushes } = buildNotices({ users, charts, tasksByChart, todayKey: "2026-10-25" });
 const names = (list, email) => (list.find((x) => x.email === email) || { items: [] }).items.map((i) => i.name);
 assert.deepStrictEqual(mails.map((m) => m.email).sort(), ["ji@example.com", "me@example.com"]);
-assert.deepStrictEqual(names(mails, "me@example.com"), ["D+1 지연 첫날", "D-1", "D-7"], "메일: D-7 · D-1 · 지연 첫날만");
+assert.deepStrictEqual(names(mails, "me@example.com"), ["D+1 지연 첫날", "당일", "D-1", "D-7"], "메일: D-7 · D-1 · 당일 · 지연 첫날만");
 assert.deepStrictEqual(names(mails, "ji@example.com"), ["D-7 지수"]);
 assert.deepStrictEqual(pushes.map((p) => p.email), ["me@example.com"], "푸시는 켠 사람만");
-assert.deepStrictEqual(names(pushes, "me@example.com"), ["D+2 지연", "D+1 지연 첫날", "D-1"], "푸시: D-1 · 지연(확인 전) 매일");
+assert.deepStrictEqual(names(pushes, "me@example.com"), ["D+2 지연", "D+1 지연 첫날", "당일", "D-1"], "푸시: D-1 · 당일 · 지연(확인 전) 매일");
 
 const push = renderPush(pushes[0]);
-assert.strictEqual(push.title, "마감 알림 · 지연 2 · 곧 마감 1");
+assert.strictEqual(push.title, "마감 알림 · 지연 2 · 오늘 마감 1 · 곧 마감 1");
 const mail = renderMail(mails.find((m) => m.email === "me@example.com"), "https://example.com/");
-assert.strictEqual(mail.subject, "[간트차트] 지연 1건 · 내일 마감 1건 · 일주일 뒤 마감 1건");
+assert.strictEqual(mail.subject, "[간트차트] 지연 1건 · 오늘 마감 1건 · 내일 마감 1건 · 일주일 뒤 마감 1건");
 assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(seoulTodayKey()));
 console.log("ok —", push.title, "|", mail.subject);

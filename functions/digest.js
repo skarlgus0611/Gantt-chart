@@ -5,6 +5,7 @@
    - D-15 : 사이트 안 — 여기서는 다루지 않음
    - D-7  : 사이트 안 + 메일
    - D-1  : 사이트 안 + 메일 + 웹 푸시
+   - 당일 : 사이트 안 + 메일 + 웹 푸시
    - D+1  : 사이트 안 + 메일 + 웹 푸시 (지연 첫날)
    - D+2~ : 사이트 안 + 웹 푸시 매일 — "지연 확인"(overdueAck) 또는 완료 전까지
 
@@ -13,8 +14,8 @@
    메일은 notify.email 을 끄지 않은 사람, 푸시는 notify.push 를 켜고 푸시 토큰이 있는 사람 */
 
 /* 남은 날(종료일 - 오늘). 음수는 지연 */
-const MAIL_DAYS = [7, 1, -1];
-const PUSH_DAYS = [1];
+const MAIL_DAYS = [7, 1, 0, -1];
+const PUSH_DAYS = [1, 0];
 
 function keyToUtc(key) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ""));
@@ -106,6 +107,7 @@ function escapeHtml(value) {
 function renderMail(notice, siteUrl) {
   const groups = [
     ["지연", (i) => i.left < 0, "#b91c1c", "#fee2e2"],
+    ["오늘 마감", (i) => i.left === 0, "#c2410c", "#ffedd5"],
     ["내일 마감", (i) => i.left === 1, "#b45309", "#fef3c7"],
     ["일주일 뒤 마감", (i) => i.left === 7, "#0f766e", "#e3f2ed"]
   ];
@@ -128,7 +130,7 @@ function renderMail(notice, siteUrl) {
         '<div style="margin-top:4px;font-size:13px;opacity:.85">' + hello + escapeHtml(summary) + "</div></div>" +
       sections +
       '<p style="margin-top:22px"><a href="' + escapeHtml(siteUrl) + '" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700;font-size:13px">간트차트 열기</a></p>' +
-      '<p style="font-size:11.5px;color:#a1a1aa">마감 7일 전 · 1일 전 · 지연 첫날에만 보내요. 그만 받으려면 사이트 오른쪽 위 종 버튼 설정에서 메일을 끄세요.</p></div>';
+      '<p style="font-size:11.5px;color:#a1a1aa">마감 7일 전 · 1일 전 · 당일 · 지연 첫날에만 보내요. 그만 받으려면 사이트 오른쪽 위 종 버튼 설정에서 메일을 끄세요.</p></div>';
   const text = summary + "\n\n" +
     notice.items.map((i) => "- [" + chipText(i.left) + "] " + i.name + " (" + i.chartName + ", 종료일 " + i.end + ", " + i.progress + "%)").join("\n") + "\n\n" + siteUrl;
   return { subject, html, text };
