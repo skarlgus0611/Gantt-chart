@@ -1,4 +1,4 @@
-# (요청사항) 마감 알림을 GitHub 가 매일 오전 9시(서울)에 보낸다 — Firebase 무료 요금제로 가능.
+# (요청사항) 마감 알림을 GitHub 가 매일 오전 8시(서울)에 한 번에 확인해서 보낸다 — Firebase 무료 요금제로 가능.
 # 필요한 비밀값 (저장소 Settings → Secrets and variables → Actions):
 #   FIREBASE_SERVICE_ACCOUNT : Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → "새 비공개 키 생성" JSON 내용 통째로
 #   SMTP_USER                : 알림 메일을 보낼 Gmail 주소        (없으면 메일만 건너뜀)
@@ -9,7 +9,7 @@ name: Daily due notices
 
 on:
   schedule:
-    - cron: "0 0 * * *" # 매일 00:00 UTC = 오전 9시 서울 (GitHub 사정으로 수십 분 늦을 수 있음)
+    - cron: "0 23 * * *" # 매일 23:00 UTC = 다음 날 오전 8시 서울 (GitHub 사정으로 수십 분 늦을 수 있음)
   workflow_dispatch:
     inputs:
       dry_run:

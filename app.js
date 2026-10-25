@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v76"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v77"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v76";
+const APP_VERSION = "2026-10-24-design-v77";
 
 
 /* =========================================================
@@ -3648,10 +3648,43 @@ function canFinishTask(task) {
   return canEditChartHere() || isMyTask(task);
 }
 
+/* (요청사항) 끝나지 않은 모든 작업에 남은 날 칩: 지연(빨강) · D-2~당일(주황) · D-15~3(초록빛 회색) · 그 뒤(옅은 회색) */
 function dueChipHtml(task) {
-  const due = taskDueStatus(task);
-  if (due && due.kind === "upcoming") return ""; /* D-15 는 종 버튼에서만 */
-  return due ? '<span class="due-chip due-chip-' + due.kind + '" title="종료일 ' + escapeHtml(task.end) + '">' + escapeHtml(due.label) + "</span>" : "";
+  if (!task || !task.end || normProgress(task.progress) >= 100) return "";
+  const left = daysBetweenKeys(dateKey(new Date()), task.end);
+  if (left === null) return "";
+  let kind;
+  let label;
+  if (left < 0) {
+    kind = task.overdueAck ? "overdue-ack" : "overdue";
+    label = task.overdueAck ? "지연 확인됨" : "지연 " + (-left) + "일";
+  } else if (left <= DUE_SOON_DAYS) {
+    kind = "due-soon";
+    label = left === 0 ? "오늘 마감" : "D-" + left;
+  } else {
+    kind = left <= DUE_NOTICE_DAYS ? "upcoming" : "later";
+    label = "D-" + left;
+  }
+  const title = "종료일 " + task.end + (left < 0 ? " · " + (-left) + "일 지남" : left === 0 ? " · 오늘 마감" : " · " + left + "일 남음");
+  return '<span class="due-chip due-chip-' + kind + '" title="' + escapeHtml(title) + '">' + escapeHtml(label) + "</span>";
+}
+
+/* (요청사항) 남은 날은 "오늘" 기준이라, 사이트를 켜 둔 채 날짜가 바뀌면 다시 그린다
+   (1분마다 확인 + 탭으로 돌아왔을 때). 다시 그리면 카드 머리 종 버튼에도 바로 전해진다 */
+let dueDayShown = dateKey(new Date());
+
+function refreshIfDayChanged() {
+  const today = dateKey(new Date());
+  if (today === dueDayShown) return;
+  dueDayShown = today;
+  if (!IS_SHELL_MODE && (state.tasks || []).length) render();
+}
+
+if (!IS_SHELL_MODE) {
+  setInterval(refreshIfDayChanged, 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshIfDayChanged();
+  });
 }
 
 function renderTaskBar(
