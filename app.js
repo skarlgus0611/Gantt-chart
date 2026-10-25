@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v53";
+const APP_VERSION = "2026-10-24-design-v54";
 
 
 /* =========================================================
@@ -1665,7 +1665,11 @@ function postStatsToParent() {
       custom: !!state.customStart,
       year: state.year,
       taskYears: taskYearsList(),
-      readonly: document.body.classList.contains("shared-viewer-readonly")
+      readonly: document.body.classList.contains("shared-viewer-readonly"),
+      /* (요청사항) 담당자별 보기 버튼을 카드 머리로 옮겨서, 목록·고른 사람도 함께 보낸다 */
+      ownerPeople: ownerFilterPeople().map(p => ({ kind: p.kind, value: p.value, label: p.label, count: p.count, me: !!p.me })),
+      ownerFilter: state.ownerFilter || null,
+      taskCount: tasks.length
     }, window.location.origin);
   } catch (error) {
     // 교차 출처 등 예외적인 경우만 조용히 무시.
@@ -2143,6 +2147,13 @@ function renderTaskColumn() {
 
   header.className = "task-header";
   header.textContent = "작업";
+
+  /* (요청사항) 카드 안 차트에서는 왼쪽 위 빈칸에 [작업 | 카테고리] 추가 알약.
+     원래 버튼(#addTaskBtn·#addCategoryBtn)을 눌러 기존 동작을 그대로 쓴다. */
+  if (isEmbeddedChart()) {
+    header.textContent = "";
+    header.appendChild(buildTaskAddPill());
+  }
 
   column.appendChild(header);
 
@@ -2787,13 +2798,18 @@ function closeOwnerFilterMenu() {
   ownerFilterMenu = null;
 }
 
-function openOwnerFilterMenu(button) {
+/* opts 는 카드 머리(셸)에서 열 때만: iframe 이 보내 준 목록·고른 사람과, 고르면 할 일 */
+function openOwnerFilterMenu(button, opts = {}) {
   if (ownerFilterMenu) {
     closeOwnerFilterMenu();
     return;
   }
-  const people = ownerFilterPeople();
-  const filter = state.ownerFilter;
+  const people = opts.people || ownerFilterPeople();
+  const filter = "filter" in opts ? opts.filter : state.ownerFilter;
+  const total = "total" in opts ? opts.total : (state.tasks || []).length;
+  const pick = opts.onPick
+    ? (value) => { closeOwnerFilterMenu(); opts.onPick(value); }
+    : setOwnerFilter;
 
   const menu = document.createElement("div");
   menu.className = "owner-filter-menu";
@@ -2814,7 +2830,7 @@ function openOwnerFilterMenu(button) {
     menu.appendChild(item);
   };
 
-  addItem("전체", "모든 담당자", (state.tasks || []).length, !filter, () => setOwnerFilter(null),
+  addItem("전체", "모든 담당자", total, !filter, () => pick(null),
     '<span class="assignee-avatar owner-filter-all">' + OWNER_FILTER_ICON + "</span>");
 
   if (people.length) menu.appendChild(Object.assign(document.createElement("div"), { className: "owner-filter-sep" }));
@@ -2827,7 +2843,7 @@ function openOwnerFilterMenu(button) {
         escapeHtml(Array.from(person.label)[0] || "?") + "</span>";
     const sub = person.kind === "email" ? person.value : (person.kind === "name" ? "직접 적은 이름" : "");
     addItem(person.label + (person.me ? " (나)" : ""), sub, person.count, isActive,
-      () => setOwnerFilter({ kind: person.kind, value: person.value, label: person.label }), avatar);
+      () => pick({ kind: person.kind, value: person.value, label: person.label }), avatar);
   });
 
   document.body.appendChild(menu);
@@ -2840,7 +2856,33 @@ function openOwnerFilterMenu(button) {
   ownerFilterMenu = menu;
 }
 
+const TASK_ADD_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M4 12h6M4 18h9"></path><path d="M18 9v8M14 13h8"></path></svg>';
+const CATEGORY_ADD_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2.5h7.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"></path><path d="M12 11v6M9 14h6"></path></svg>';
+
+function buildTaskAddPill() {
+  const pill = document.createElement("div");
+  pill.className = "task-add-pill";
+  const add = (icon, label, title, targetId) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "task-add-pill-btn";
+    button.title = title;
+    button.innerHTML = icon + "<span>" + label + "</span>";
+    button.addEventListener("click", () => {
+      const target = document.getElementById(targetId);
+      if (target) target.click();
+    });
+    return button;
+  };
+  pill.appendChild(add(TASK_ADD_ICON, "작업", "작업 추가", "addTaskBtn"));
+  pill.appendChild(Object.assign(document.createElement("span"), { className: "task-add-pill-sep" }));
+  pill.appendChild(add(CATEGORY_ADD_ICON, "카테고리", "카테고리 추가", "addCategoryBtn"));
+  return pill;
+}
+
 function initOwnerFilter() {
+  /* (요청사항) 카드 안 차트에서는 담당자별 보기 버튼이 카드 머리(셸)에 있다 */
+  if (isEmbeddedChart()) return;
   const actions = document.querySelector(".add-actions");
   if (!actions || document.getElementById("ownerFilterBtn")) return;
   const button = document.createElement("button");
@@ -2867,6 +2909,9 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeOwnerFilterMenu();
 });
 window.addEventListener("resize", closeOwnerFilterMenu);
+window.addEventListener("scroll", (event) => {
+  if (ownerFilterMenu && !ownerFilterMenu.contains(event.target)) closeOwnerFilterMenu();
+}, true);
 
 
 /* =========================================================
@@ -6380,8 +6425,10 @@ const MC_ICONS = {
   users: '<circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M16 4.5a3 3 0 0 1 0 6M21 20a5 5 0 0 0-3.5-4.8"></path>',
   leave: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"></path><path d="M10 17l-5-5 5-5M5 12h11"></path>',
   reload: '<path d="M3 12a9 9 0 0 1 15.3-6.4L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"></path><path d="M3 21v-5h5"></path>',
-  full: '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"></path>',
-  today: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17"></path><circle cx="12" cy="15" r="1.6" fill="currentColor" stroke="none"></circle>',
+  /* (요청사항) 전체 보기: 양쪽 끝까지 펼치기 |← →| */
+  full: '<path d="M3.5 5v14M20.5 5v14"></path><path d="M7.5 12h9"></path><path d="m10 9-3 3 3 3M14 9l3 3-3 3"></path>',
+  /* (요청사항) 오늘 전후 보기: 오늘 선을 가운데 두고 앞뒤로 */
+  today: '<path d="M12 3.5v17"></path><circle cx="12" cy="3.5" r="1.4" fill="currentColor" stroke="none"></circle><path d="m7.5 9-3.5 3 3.5 3M16.5 9l3.5 3-3.5 3"></path>',
   capture: '<path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-1.8h7l1 1.8h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"></path><circle cx="12" cy="12.5" r="3.4"></circle>',
   more: '<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"></circle><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"></circle>',
   check: '<path d="m5 12 5 5 9-10"></path>',
@@ -6884,7 +6931,9 @@ function shellBuildActionsEl(chart, box) {
     captureBtn,
     calBtn
   ]);
-  toolGroup.classList.add("mc-chart-tools", "mc-tools-white");
+  /* (요청사항) 새로고침·캡처·캘린더는 날짜 알약 안, 세로선 뒤로 */
+  toolGroup.classList.add("mc-chart-tools", "mc-date-tools", "mc-tools-extra");
+  shellUseQuickTips(toolGroup);
   /* 폰에서 살짝 누르면 잠깐 초록색으로 (마우스는 :hover 로 처리) */
   toolGroup.addEventListener("pointerdown", (event) => {
     const btn = event.target.closest(".mc-btn");
@@ -6892,7 +6941,28 @@ function shellBuildActionsEl(chart, box) {
     btn.classList.add("mc-touched");
     setTimeout(() => btn.classList.remove("mc-touched"), 450);
   });
-  actions.appendChild(toolGroup);
+  actions.toolGroup = toolGroup;
+
+  /* (요청사항) 담당자별 보기: 차트 안 왼쪽 위에서 카드 머리로 */
+  const ownerBtn = document.createElement("button");
+  ownerBtn.type = "button";
+  ownerBtn.className = "mc-btn mc-chart-tools mc-owner-btn";
+  ownerBtn.title = "담당자별로 작업 보기";
+  ownerBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const stats = shellStats[chart.id] || {};
+    if (event.target.closest(".owner-filter-clear")) {
+      shellSendCommand(box, { cmd: "setOwnerFilter", filter: null });
+      return;
+    }
+    openOwnerFilterMenu(ownerBtn, {
+      people: stats.ownerPeople || [],
+      filter: stats.ownerFilter || null,
+      total: stats.taskCount || 0,
+      onPick: (filter) => shellSendCommand(box, { cmd: "setOwnerFilter", filter })
+    });
+  });
+  actions.appendChild(ownerBtn);
 
   /* CSV 업로드 | 다운로드 (한 알약 안에 따로) */
   const uploadBtn = mcActionButton("upload", "업로드", false);
@@ -6906,8 +6976,9 @@ function shellBuildActionsEl(chart, box) {
     ? shellHandleSharedExportCsv(chart.chartId, box)
     : shellHandleExportCsv(chart.id, box));
 
+  /* (요청사항) 업로드 | 다운로드 | 공유 를 알약 하나로, 세로선으로 구분 */
   const csvGroup = mcButtonGroup([uploadBtn, downloadBtn]);
-  csvGroup.classList.add("mc-chart-tools", "mc-btn-group-text", "mc-csv-group");
+  csvGroup.classList.add("mc-btn-group-text", "mc-csv-group");
   actions.appendChild(csvGroup);
 
   const shareBtn = document.createElement("button");
@@ -6924,13 +6995,48 @@ function shellBuildActionsEl(chart, box) {
     shareBtn.title = "공유 중 — 공유 구성원 보기";
     shareBtn.addEventListener("click", () => shellOpenMembersModal(chart.chartId));
   }
-  actions.appendChild(shareBtn);
+  csvGroup.appendChild(shareBtn);
+  csvGroup.classList.toggle("mc-share-glow", !!chart.shared);
 
   setTimeout(shellRefreshCalButtons, 0);
+  setTimeout(() => shellRefreshOwnerButton(chart.id), 0);
   return actions;
 }
 
 /* 제목 옆 기간 알약 바로 뒤: 오늘 전후 보기 · 전체 보기 (흰색) */
+/* 카드 머리 담당자 버튼 모양: iframe 이 알려 준 "고른 사람"에 맞춘다 */
+function shellRefreshOwnerButton(chartId) {
+  const box = document.getElementById("mc-chart-anchor-" + chartId);
+  const button = box && box.querySelector(".mc-owner-btn");
+  if (!button) return;
+  const filter = (shellStats[chartId] || {}).ownerFilter || null;
+  const key = filter ? filter.kind + ":" + filter.value : "";
+  if (button.dataset.filterKey === key && button.childElementCount) return;
+  button.dataset.filterKey = key;
+  button.classList.toggle("active", !!filter);
+  if (filter) {
+    const label = filter.kind === "none" ? "담당자 없음" : filter.label;
+    const avatar = filter.kind === "none"
+      ? '<span class="mc-owner-avatar mc-owner-avatar-none">–</span>'
+      : '<span class="mc-owner-avatar" style="background:' + mcPersonColor(filter.kind === "email" ? filter.value : filter.label) + '">' +
+        escapeHtml(Array.from(label)[0] || "?") + "</span>";
+    button.innerHTML = avatar + "<span>담당자: " + escapeHtml(label) + "</span>" +
+      '<span class="owner-filter-clear" role="button" aria-label="전체 보기" title="전체 보기">' +
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></span>';
+  } else {
+    button.innerHTML = OWNER_FILTER_ICON + "<span>담당자별 보기</span>" + OWNER_FILTER_CARET;
+  }
+}
+
+/* (요청사항) 아이콘만 있는 버튼은 마우스를 올리면 바로 이름표가 뜨게
+   (브라우저 기본 title 은 늦게 뜨고 작아서 data-tip 으로 바꾼다) */
+function shellUseQuickTips(group) {
+  group.querySelectorAll(".mc-btn").forEach((btn) => {
+    btn.dataset.tip = btn.getAttribute("aria-label") || btn.title || "";
+    btn.removeAttribute("title");
+  });
+}
+
 function shellBuildDateToolsEl(box) {
   const tool = (icon, label, cmd) => {
     const btn = mcActionButton(icon, label, true);
@@ -6944,6 +7050,7 @@ function shellBuildDateToolsEl(box) {
   todayBtn.classList.add("mc-btn-active");
   const group = mcButtonGroup([todayBtn, tool("full", "전체 보기", "full")]);
   group.classList.add("mc-chart-tools", "mc-date-tools");
+  shellUseQuickTips(group);
   group.addEventListener("pointerdown", (event) => {
     const btn = event.target.closest(".mc-btn");
     if (!btn || event.pointerType === "mouse") return;
@@ -6971,9 +7078,8 @@ function shellRefreshCalButtons() {
     const label = has ? "캘린더에서 삭제" : "캘린더에 추가";
     btn.innerHTML = mcIconSvg(has ? "calRemove" : "calAdd");
     btn.setAttribute("aria-label", label);
-    btn.title = has
-      ? "캘린더에서 삭제 — 이 차트 전용 구글 캘린더를 삭제합니다"
-      : "캘린더에 추가 — 이 차트 전용 구글 캘린더를 만들어 작업을 넣습니다";
+    btn.removeAttribute("title");
+    btn.dataset.tip = has ? "구글 캘린더에서 삭제" : "구글 캘린더에 추가";
     btn.classList.toggle("mc-cal-on", has);
   });
 }
@@ -7328,6 +7434,7 @@ function shellApplyStats(chartId) {
     const avg = box.querySelector(".mc-chart-box-avg");
     avg.textContent = stats.avgProgress === null ? "" : "평균 진행률 " + stats.avgProgress + "%";
     box.classList.toggle("mc-chart-box-readonly", !shellCanEdit(chart));
+    shellRefreshOwnerButton(chartId);
   }
 
   const pct = document.querySelector('.mc-sidebar-item[data-chart-id="' + CSS.escape(chartId) + '"] .mc-sidebar-item-pct');
@@ -7552,6 +7659,7 @@ function shellRenderList() {
       head.appendChild(headInfo);
 
       const actions = shellBuildActionsEl(chart, box);
+      datePill.appendChild(actions.toolGroup);
       head.appendChild(actions);
 
       box.appendChild(head);
@@ -7585,6 +7693,8 @@ function shellRenderList() {
       box.classList.toggle("mc-chart-box-shared", !!chart.shared);
       const oldActions = box.querySelector(".mc-chart-box-actions");
       const newActions = shellBuildActionsEl(chart, box);
+      const oldTools = box.querySelector(".mc-tools-extra");
+      if (oldTools) oldTools.replaceWith(newActions.toolGroup);
       if (oldActions) {
         oldActions.replaceWith(newActions);
       } else {
@@ -9631,6 +9741,11 @@ function handleParentCommand(data) {
     case "full": click("fullBtn"); break;
     case "today": click("todayBtn"); break;
     case "capture": click("captureBtn"); break;
+    case "setOwnerFilter": {
+      const f = data.filter;
+      setOwnerFilter(f && f.kind ? { kind: String(f.kind), value: String(f.value || ""), label: String(f.label || "") } : null);
+      break;
+    }
     case "openTask": {
       /* (요청사항) 사이드바에서 작업을 누르면 막대를 누른 것과 같은 상세창 */
       if (state.tasks.some(task => task.id === data.taskId)) {
