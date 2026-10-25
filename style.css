@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v64";
+  --css-version: "2026-10-24-design-v65";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -10921,4 +10921,95 @@ html.is-embedded .task-header {
 .detail-actions .detail-complete:disabled {
   opacity: .6;
   cursor: default;
+}
+
+/* (요청사항) 작업 수정 창 아래 버튼: [지연 확인 | 완료] · [취소 | 저장] 을 각각 한 알약으로 */
+.detail-actions .detail-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 3px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.detail-actions .detail-pill + .detail-pill {
+  margin-left: 8px;
+}
+
+.detail-actions .detail-pill button {
+  position: relative;
+  height: 34px;
+  margin: 0;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 13.5px;
+  font-weight: 700;
+  transition: background .15s ease, color .15s ease;
+}
+
+.detail-actions .detail-pill button + button::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 9px;
+  bottom: 9px;
+  width: 1px;
+}
+
+/* 상태 알약: 흰 바탕 + 연한 초록 테두리. 지연 확인은 빨간 글씨, 완료는 초록 글씨 */
+.detail-actions .detail-pill-status {
+  background: #ffffff;
+  box-shadow: 0 0 0 1px #c3dfd7 inset;
+}
+
+.detail-actions .detail-pill-status button + button::before {
+  background: #d4e6e0;
+}
+
+.detail-actions .detail-pill-status .detail-ack {
+  color: #c2410c;
+}
+
+.detail-actions .detail-pill-status .detail-ack:hover:not(:disabled) {
+  background: #fff1e8;
+}
+
+.detail-actions .detail-pill-status .detail-complete {
+  color: #0f766e;
+}
+
+.detail-actions .detail-pill-status .detail-complete:hover:not(:disabled) {
+  background: #e3f2ed;
+}
+
+.detail-actions .detail-pill-status .detail-complete:disabled {
+  color: #a1a1aa;
+  opacity: 1;
+}
+
+/* 저장 알약: 테마색 바탕 + 흰 글씨, 취소는 살짝 옅게 */
+.detail-actions .detail-pill-main {
+  background: #0f766e;
+  box-shadow: 0 6px 14px -8px rgba(15, 118, 110, .7);
+}
+
+.detail-actions .detail-pill-main button {
+  color: #ffffff;
+}
+
+.detail-actions .detail-pill-main #cancelDetailBtn {
+  color: rgba(255, 255, 255, .78);
+}
+
+.detail-actions .detail-pill-main button + button::before {
+  background: rgba(255, 255, 255, .35);
+}
+
+.detail-actions .detail-pill-main button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .14);
+  color: #ffffff;
 }

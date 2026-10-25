@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v64";
+const APP_VERSION = "2026-10-24-design-v65";
 
 
 /* =========================================================
@@ -4045,15 +4045,19 @@ function showTaskDetail(id) {
 
       <span class="detail-actions-spacer"></span>
 
-      ${taskDueStatus(task) && taskDueStatus(task).kind === "overdue"
-        ? `<button id="ackOverdueBtn" type="button" class="detail-ack" title="확인하면 이 작업의 지연 알림을 멈춰요">${icon('<path d="M12 8v5M12 16h.01"></path><circle cx="12" cy="12" r="9"></circle>')}지연 확인</button>`
-        : ""}
+      <!-- (요청사항) [지연 확인 | 완료] 한 알약 — 지연 확인은 지연된 작업에만 -->
+      <div class="detail-pill detail-pill-status">
+        ${taskDueStatus(task) && taskDueStatus(task).kind === "overdue"
+          ? `<button id="ackOverdueBtn" type="button" class="detail-ack" title="확인하면 이 작업의 지연 알림을 멈춰요">${icon('<path d="M12 8v5M12 16h.01"></path><circle cx="12" cy="12" r="9"></circle>')}지연 확인</button>`
+          : ""}
+        <button id="completeTaskBtn" type="button" class="detail-complete" ${normProgress(task.progress) >= 100 ? "disabled" : ""} title="진행률을 100%로 바꾸고 알림을 멈춰요">${icon('<path d="m5 12 5 5 9-10"></path>')}${normProgress(task.progress) >= 100 ? "완료됨" : "완료"}</button>
+      </div>
 
-      <button id="completeTaskBtn" type="button" class="detail-complete" ${normProgress(task.progress) >= 100 ? "disabled" : ""} title="진행률을 100%로 바꾸고 알림을 멈춰요">${icon('<path d="m5 12 5 5 9-10"></path>')}${normProgress(task.progress) >= 100 ? "완료됨" : "완료"}</button>
-
-      <button id="cancelDetailBtn" type="button">취소</button>
-
-      <button id="saveDetailBtn" class="primary" type="button">저장</button>
+      <!-- (요청사항) [취소 | 저장] 한 알약 -->
+      <div class="detail-pill detail-pill-main">
+        <button id="cancelDetailBtn" type="button">취소</button>
+        <button id="saveDetailBtn" class="primary" type="button">저장</button>
+      </div>
 
     </div>
 
