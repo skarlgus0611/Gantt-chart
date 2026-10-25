@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v27";
+  --css-version: "2026-10-24-design-v28";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9220,4 +9220,18 @@ html.is-embedded .gantt-resize,
 body:has(.gantt-resize.dragging) {
   cursor: ns-resize;
   user-select: none;
+}
+
+
+/* (요청사항) 차트 아래 구분선 색: 민트 대신 차분한 초록빛 회색(#D4EAE3).
+   마우스를 올려도 선 색은 그대로 두고 손잡이만 바뀐다. */
+.gantt-resize::before,
+.gantt-resize:hover::before,
+.gantt-resize.dragging::before {
+  background: #d4eae3;
+}
+
+.gantt-resize .gantt-resize-grip {
+  border-color: #bcdcd2;
+  background: #eef6f3;
 }
