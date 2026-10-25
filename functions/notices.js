@@ -1,6 +1,6 @@
 /* (요청사항) 마감 알림 한 번 돌리기 — Firestore 를 읽어 오늘 보낼 메일·웹 푸시를 보낸다.
    두 곳에서 같은 코드를 쓴다
-   - run-daily.js : GitHub Actions 가 매일 오전 9시(서울)에 실행 (Firebase 무료 요금제로 가능)
+   - run-daily.js : GitHub Actions 가 매일 오전 8시(서울)에 실행 (Firebase 무료 요금제로 가능)
    - index.js     : Firebase Cloud Functions 예약 작업 (Blaze 요금제일 때)
    dryRun 이면 실제로 보내지 않고 무엇을 보낼지만 기록한다. */
 const nodemailer = require("nodemailer");

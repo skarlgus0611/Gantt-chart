@@ -1,4 +1,4 @@
-/* (요청사항) GitHub Actions 가 매일 실행하는 마감 알림 — Firebase 무료 요금제(Spark)로도 된다.
+/* (요청사항) GitHub Actions 가 매일 오전 8시(서울)에 실행하는 마감 알림 — Firebase 무료 요금제(Spark)로도 된다.
    환경 변수
      FIREBASE_SERVICE_ACCOUNT : Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → "새 비공개 키 생성" JSON 내용
      SMTP_USER, SMTP_PASS     : 알림 메일을 보낼 메일 주소와 앱 비밀번호 (없으면 메일만 건너뜀)
