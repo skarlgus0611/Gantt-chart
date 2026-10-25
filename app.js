@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v79"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v80"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v79";
+const APP_VERSION = "2026-10-24-design-v80";
 
 
 /* =========================================================
@@ -6712,6 +6712,7 @@ async function shellLoadCharts() {
     obInitShell((invites || []).length); /* (요청사항) 처음 로그인한 회원에게만 첫 화면 안내 */
     shellInitBellProfile(); /* (요청사항) 마감 알림 메일 받는 사람 목록 */
     shellRefreshBell();
+    bellFetchTasks(true);
     shellOrgRefreshBadge(); /* (조직 관리 1단계) 받은 조직 초대 수 배지 — 실패해도 다른 기능에 영향 없음 */
     shellRefreshCalButtons(); /* 캘린더 추가/삭제 버튼 상태 */
   } catch (error) {
@@ -10162,6 +10163,7 @@ if (IS_SHELL_MODE) {
       shellStats[event.data.chartId] = event.data;
       shellApplyStats(event.data.chartId);
       shellRefreshBell();
+      bellRefetchChart(event.data.chartId);
     }
   });
   /* (디자인 추가분) iframe에서 저장하면 "마지막 저장" 시각을 바로 바꾼다. */
@@ -11858,11 +11860,67 @@ function bellIsMine(task) {
   return !!fbUser && isMyTask(task);
 }
 
+/* (버그 수정) 종 버튼이 카드 안 차트가 보내 주는 요약값에만 기대면, 그 전달이 빠졌을 때
+   차트에는 "오늘 마감·D-1" 칩이 보여도 종 버튼에는 안 떴다.
+   → 종 버튼이 Firestore 에서 작업을 직접 읽어 계산하고(5분마다 · 종 버튼을 열 때),
+     차트가 보내 주는 최신 값이 있으면 그걸 우선 쓴다 */
+const bellTaskCache = {};
+let bellFetching = null;
+let bellFetchedAt = 0;
+
+function bellDueOf(task) {
+  const due = taskNoticeStage(task);
+  return due ? {
+    id: task.id, name: task.name || "", end: task.end, progress: normProgress(task.progress),
+    owner: task.owner || "", ownerEmail: String(task.ownerEmail || "").toLowerCase(),
+    stage: due.stage, kind: due.kind, days: due.days, label: due.label
+  } : null;
+}
+
+function bellFetchTasks(force) {
+  if (!IS_SHELL_MODE || !fbUser || typeof fb.getTasksOnce !== "function") return Promise.resolve();
+  if (bellFetching) return bellFetching;
+  if (!force && Date.now() - bellFetchedAt < 5 * 60 * 1000) return Promise.resolve();
+  bellFetching = (async () => {
+    for (const chart of shellChartsCache || []) {
+      try {
+        const tasks = await fb.getTasksOnce(chart.id);
+        bellTaskCache[chart.id] = tasks.map(bellDueOf).filter(Boolean);
+      } catch (error) {
+        /* 내용을 볼 수 없는 차트(초대 대기 등)는 건너뛴다 */
+      }
+    }
+    bellFetchedAt = Date.now();
+  })().finally(() => {
+    bellFetching = null;
+    shellRefreshBell();
+  });
+  return bellFetching;
+}
+
+/* 차트가 바뀌었다고 알려 오면(요약값 도착) 그 차트만 잠시 뒤 다시 읽어, 완료·수정이 바로 반영되게 */
+const bellChartTimers = {};
+
+function bellRefetchChart(chartId) {
+  if (!IS_SHELL_MODE || !fbUser || typeof fb.getTasksOnce !== "function") return;
+  clearTimeout(bellChartTimers[chartId]);
+  bellChartTimers[chartId] = setTimeout(async () => {
+    try {
+      const tasks = await fb.getTasksOnce(chartId);
+      bellTaskCache[chartId] = tasks.map(bellDueOf).filter(Boolean);
+      shellRefreshBell();
+    } catch (error) { /* 무시 */ }
+  }, 1500);
+}
+
 function bellCollect() {
   const items = [];
   (shellChartsCache || []).forEach((chart) => {
     const stats = shellStats[chart.id];
-    ((stats && stats.dueTasks) || []).forEach((task) => items.push({ ...task, chartId: chart.id, chartName: chart.name }));
+    const fromChart = (stats && stats.dueTasks) || [];
+    const seen = new Set(fromChart.map((task) => task.id));
+    fromChart.concat((bellTaskCache[chart.id] || []).filter((task) => !seen.has(task.id)))
+      .forEach((task) => items.push({ ...task, chartId: chart.id, chartName: chart.name }));
   });
   const order = { overdue: 0, "due-soon": 1, upcoming: 2 };
   return items.sort((a, b) => {
@@ -11899,6 +11957,25 @@ function bellAck(items) {
     fb.mergeUserProfile(fbUser.uid, { noticeAcks: added }).catch((error) => console.warn("알림 확인 저장 실패:", error && error.message));
   }
   shellRefreshBell();
+}
+
+/* (요청사항) 확인을 되돌리기: 기록을 null 로 덮어 다시 "확인 안 한 알림"이 되게 */
+function bellUnack(key) {
+  if (!fbUser || !key) return;
+  const merged = { ...bellAcks(), [key]: null };
+  try { localStorage.setItem(bellAckCacheKey(), JSON.stringify(merged)); } catch (error) { /* 무시 */ }
+  bellProfile = { ...(bellProfile || {}), noticeAcks: { ...((bellProfile && bellProfile.noticeAcks) || {}), [key]: null } };
+  if (typeof fb.mergeUserProfile === "function") {
+    fb.mergeUserProfile(fbUser.uid, { noticeAcks: { [key]: null } }).catch((error) => console.warn("알림 되돌리기 저장 실패:", error && error.message));
+  }
+  shellRefreshBell();
+}
+
+/* 이미 확인한 알림 (지금 단계 그대로인 것만 — 단계가 바뀌면 새 알림이 된다) */
+function bellAckedItems(mineOnly = bellMineOnly) {
+  const acks = bellAcks();
+  const items = bellCollect().filter((t) => acks[bellNoticeKey(t)]);
+  return mineOnly ? items.filter(bellIsMine) : items;
 }
 
 /* 확인하지 않은 알림 (전체 / 내 담당) */
@@ -11950,6 +12027,7 @@ const BELL_ICON = {
   done: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg>'
 };
 let bellSettingsOpen = false;
+let bellAckedOpen = false;
 
 /* (요청사항) 글자 위주였던 알림창을 그림 위주로:
    왼쪽 색 타일에 남은 날(크게) · 이름 한 줄 · 아래 줄은 담당자 동그라미 + 차트 + 진행률 막대 ·
@@ -11958,11 +12036,13 @@ function shellRenderBellMenu() {
   const menu = bellMenu;
   if (!menu) return;
   const items = bellOpenItems();
+  /* (요청사항) 지연이 많아도 급한 마감이 먼저 보이게: 마감 임박 → 다가오는 마감 → 지연 */
   const groups = [
-    ["overdue", "지연", BELL_ICON.alert],
     ["due-soon", "마감 임박", BELL_ICON.clock],
-    ["upcoming", "다가오는 마감", BELL_ICON.cal]
+    ["upcoming", "다가오는 마감", BELL_ICON.cal],
+    ["overdue", "지연", BELL_ICON.alert]
   ];
+  const acked = bellAckedItems();
 
   const tile = (t) => {
     const big = t.kind === "overdue" ? "+" + t.days + "일" : t.days === 0 ? "오늘" : "D-" + t.days;
@@ -11980,17 +12060,27 @@ function shellRenderBellMenu() {
     const rows = items.filter((t) => t.kind === kind);
     if (!rows.length) return "";
     return '<div class="mc-bell-sec"><div class="mc-bell-sec-title mc-bell-' + kind + '">' + icon + "<span>" + title + "</span><em>" + rows.length + "</em></div>" +
-      rows.map((t) =>
-        '<div class="mc-bell-item">' +
+      rows.map((t) => bellRow(t, false)).join("") + "</div>";
+  }).join("");
+
+  /* 확인한 알림: 맨 아래에 접어 두고, 펼치면 되돌리기 */
+  const ackedList = !acked.length ? "" :
+    '<details class="mc-bell-acked"' + (bellAckedOpen ? " open" : "") + '><summary>확인한 알림 ' + acked.length + "</summary>" +
+      acked.map((t) => bellRow(t, true)).join("") + "</details>";
+
+  function bellRow(t, isAcked) {
+    return '<div class="mc-bell-item' + (isAcked ? " mc-bell-item-acked" : "") + '">' +
           '<button type="button" class="mc-bell-open" data-chart="' + escapeHtml(t.chartId) + '" data-task="' + escapeHtml(t.id) + '">' +
             tile(t) +
             '<span class="mc-bell-item-text"><b>' + escapeHtml(t.name) + "</b>" +
               '<span class="mc-bell-meta">' + who(t) + '<span class="mc-bell-chart">' + escapeHtml(t.chartName) + "</span>" +
                 '<span class="mc-bell-prog" title="진행률 ' + t.progress + '%"><i style="width:' + t.progress + '%"></i></span></span></span>' +
           "</button>" +
-          '<button type="button" class="mc-bell-ack" data-key="' + escapeHtml(bellNoticeKey(t)) + '" aria-label="확인" title="확인 (알림에서 지우기)">' + BELL_ICON.check + "</button>" +
-        "</div>").join("") + "</div>";
-  }).join("");
+          (isAcked
+            ? '<button type="button" class="mc-bell-unack" data-unack="' + escapeHtml(bellNoticeKey(t)) + '" title="다시 알림으로">되돌리기</button>'
+            : '<button type="button" class="mc-bell-ack" data-key="' + escapeHtml(bellNoticeKey(t)) + '" aria-label="확인" title="확인 (알림에서 지우기)">' + BELL_ICON.check + "</button>") +
+        "</div>";
+  }
 
   const notify = (bellProfile && bellProfile.notify) || {};
   const emailOn = notify.email !== false;
@@ -12013,6 +12103,7 @@ function shellRenderBellMenu() {
     settings +
     '<div class="mc-bell-list">' +
       (items.length ? list : '<div class="mc-bell-empty">' + BELL_ICON.done + "<span>확인할 알림이 없어요</span></div>") +
+      ackedList +
     "</div>" +
     (items.length ? '<button type="button" class="mc-bell-ack-all">' + BELL_ICON.check + "모두 확인</button>" : "");
 }
@@ -12029,6 +12120,7 @@ function shellOpenBellMenu(button) {
   bellMenu = menu;
   shellRenderBellMenu();
   document.body.appendChild(menu);
+  bellFetchTasks(false);
   const rect = button.getBoundingClientRect();
   menu.style.top = rect.bottom + 8 + "px";
   menu.style.left = Math.max(8, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8)) + "px";
@@ -12052,8 +12144,23 @@ function shellOpenBellMenu(button) {
       shellRenderBellMenu();
       return;
     }
+    const unack = event.target.closest("[data-unack]");
+    if (unack) {
+      bellUnack(unack.dataset.unack);
+      return;
+    }
+    if (event.target.closest(".mc-bell-acked > summary")) {
+      setTimeout(() => {
+        const box = bellMenu && bellMenu.querySelector(".mc-bell-acked");
+        bellAckedOpen = !!(box && box.open);
+      }, 0);
+      return;
+    }
     if (event.target.closest(".mc-bell-ack-all")) {
-      bellAck(bellOpenItems());
+      const open = bellOpenItems();
+      /* (요청사항) 안 보이던 알림까지 지워지지 않게 한 번 더 묻는다 */
+      if (!confirm("알림 " + open.length + "개를 모두 확인할까요?\n(확인한 알림은 맨 아래 \"확인한 알림\"에서 되돌릴 수 있어요)")) return;
+      bellAck(open);
       return;
     }
     const item = event.target.closest(".mc-bell-open");
@@ -12129,4 +12236,5 @@ if (IS_SHELL_MODE) {
     if (event.key === "Escape") shellCloseBellMenu();
   });
   window.addEventListener("resize", shellCloseBellMenu);
+  setInterval(() => bellFetchTasks(false), 5 * 60 * 1000);
 }
