@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v36";
+  --css-version: "2026-10-24-design-v37";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9583,4 +9583,43 @@ body:has(.gantt-resize.dragging) {
   height: var(--fillet);
   background: radial-gradient(circle at 0 0, transparent calc(var(--fillet) - .5px), var(--rail-bg) var(--fillet));
   pointer-events: none;
+}
+
+
+/* (요청사항) 차트와 가로 띠 사이 여백을 넉넉하게 */
+:root {
+  --rail-gap: 12px;
+}
+
+/* (요청사항) 평소 상태를 반투명으로: 가운데 막대는 옅은 초록, 양 끝 마개만 진하게.
+   가운데에 마우스를 올리거나 끄는 중에는 조금 진해져 "잡았다"가 보인다. */
+.range-slider .range-bar,
+.row-range .range-bar {
+  background: rgba(15, 118, 110, .22);
+}
+
+.range-slider .range-bar:hover,
+.range-slider.is-moving .range-bar,
+.row-range .range-bar:hover,
+.row-range.is-moving .range-bar {
+  background: rgba(15, 118, 110, .34);
+}
+
+.range-slider:has(.range-handle:hover) .range-bar,
+.range-slider.is-resizing .range-bar,
+.row-range:has(.range-handle:hover) .range-bar,
+.row-range.is-resizing .range-bar {
+  background: rgba(15, 118, 110, .16);
+}
+
+/* 막대 아래 달 이름: 흰 글씨 대신 진한 초록 */
+.range-month.covered,
+.range-slider:has(.range-handle:hover) .range-month.covered,
+.range-slider.is-resizing .range-month.covered {
+  color: #0f766e;
+  border-left-color: rgba(15, 118, 110, .14);
+}
+
+.range-month.covered.current {
+  color: #0b5b55;
 }
