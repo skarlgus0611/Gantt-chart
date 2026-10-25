@@ -3,7 +3,7 @@
     {
       "source": "functions",
       "codebase": "default",
-      "ignore": ["node_modules", "test-digest.js"]
+      "ignore": ["node_modules", "test-digest.js", "run-daily.js"]
     }
   ]
 }
