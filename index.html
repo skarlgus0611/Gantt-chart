@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-24-design-v26">
+  <meta name="app-version" content="2026-10-24-design-v27">
 
   <title>간트차트</title>
 
@@ -20,7 +20,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-24-design-v26"
+    href="style.css?v=2026-10-24-design-v27"
   >
 </head>
 
@@ -501,7 +501,7 @@
       aria-orientation="horizontal"
       aria-label="차트 높이 조절"
       title="끌어서 차트 높이 조절"
-    ><span></span></div>
+    ><span class="gantt-resize-grip" aria-hidden="true"><svg width="16" height="10" viewBox="0 0 16 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 3h12M2 7h12"></path></svg></span></div>
 
 
     <!-- =========================
@@ -523,31 +523,6 @@
 
         <!-- 손잡이·막대는 app.js 가 채운다 -->
         <div class="range-slider" id="hRangeSlider" aria-label="표시 기간"></div>
-
-      </div>
-
-      <!-- 행 높이: 차트 전체 높이 손잡이와 같은 값(state.chartHeight)을 조절 -->
-      <div class="zoom-col zoom-col-v">
-
-        <div class="zoom-head">
-          <label class="zoom-label" for="rowHeightSlider">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"></path></svg>
-            행 높이
-          </label>
-        </div>
-
-        <div class="row-height-wrap">
-          <svg class="row-height-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"></path></svg>
-          <input
-            id="rowHeightSlider"
-            class="row-height-slider"
-            type="range"
-            min="0"
-            max="100"
-            value="40"
-          >
-          <svg class="row-height-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"></path></svg>
-        </div>
 
       </div>
 
@@ -849,7 +824,7 @@
        JS
   ========================= -->
 
-  <script type="module" src="app.js?v=2026-10-24-design-v26"></script>
+  <script type="module" src="app.js?v=2026-10-24-design-v27"></script>
 
 </body>
 </html>
