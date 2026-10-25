@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v68";
+  --css-version: "2026-10-24-design-v69";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -11071,4 +11071,23 @@ html.is-embedded .task-header {
 
 .mc-bell-ack:hover {
   background: #cfe8e0;
+}
+
+/* (요청사항) 알림함 [확인]은 회색: 작업을 바꾸는 [지연 확인]·[완료]와 헷갈리지 않게 */
+.mc-bell-ack {
+  background: #f4f4f5;
+  color: #52525b;
+}
+
+.mc-bell-ack:hover {
+  background: #e4e4e7;
+  color: #27272a;
+}
+
+.mc-bell-head .mc-bell-ack-all {
+  color: #71717a;
+}
+
+.mc-bell-head .mc-bell-ack-all:hover {
+  color: #27272a;
 }
