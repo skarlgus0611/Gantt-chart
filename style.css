@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v69";
+  --css-version: "2026-10-24-design-v70";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -11090,4 +11090,329 @@ html.is-embedded .task-header {
 
 .mc-bell-head .mc-bell-ack-all:hover {
   color: #27272a;
+}
+
+
+/* =========================================================
+   (요청사항) 알림창: 글자 대신 그림 위주
+   ========================================================= */
+.mc-bell-menu {
+  width: 360px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.mc-bell-head {
+  gap: 8px;
+  padding: 14px 14px 10px;
+}
+
+.mc-bell-head > b {
+  margin-right: auto;
+}
+
+.mc-bell-gear {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #71717a;
+  cursor: pointer;
+}
+
+.mc-bell-gear:hover,
+.mc-bell-gear.on {
+  background: #f4f4f5;
+  color: #27272a;
+}
+
+.mc-bell-list {
+  max-height: 380px;
+  padding: 0 10px 10px;
+}
+
+.mc-bell-sec-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px 6px;
+}
+
+.mc-bell-sec-title svg {
+  width: 15px;
+  height: 15px;
+}
+
+.mc-bell-sec-title em {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  background: currentColor;
+}
+
+.mc-bell-sec-title em {
+  color: #ffffff;
+}
+
+.mc-bell-sec-title.mc-bell-overdue em { background: #ef4444; }
+.mc-bell-sec-title.mc-bell-due-soon { color: #b45309; }
+.mc-bell-sec-title.mc-bell-due-soon em { background: #f59e0b; }
+.mc-bell-sec-title.mc-bell-upcoming em { background: #8aa39b; }
+
+.mc-bell-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  background: #fafafa;
+}
+
+.mc-bell-open {
+  gap: 12px;
+  padding: 8px;
+  border-radius: 14px;
+}
+
+.mc-bell-open:hover {
+  background: #f0f7f5;
+}
+
+/* 남은 날 타일 */
+.mc-bell-tile {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+}
+
+.mc-bell-tile b {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.mc-bell-tile i {
+  font-style: normal;
+  font-size: 9.5px;
+  font-weight: 700;
+  opacity: .85;
+}
+
+.mc-bell-tile-overdue { background: #fee2e2; color: #b91c1c; }
+.mc-bell-tile-due-soon { background: #fef3c7; color: #b45309; }
+.mc-bell-tile-upcoming { background: #e3f2ed; color: #0f766e; }
+
+.mc-bell-item-text {
+  gap: 5px;
+}
+
+.mc-bell-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mc-bell-who {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+.mc-bell-who.mc-bell-who-none {
+  background: #e4e4e7;
+  color: #a1a1aa;
+}
+
+.mc-bell-meta .mc-bell-chart {
+  overflow: hidden;
+  font-size: 11.5px;
+  color: #a1a1aa;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mc-bell-prog {
+  width: 44px;
+  height: 5px;
+  flex-shrink: 0;
+  margin-left: auto;
+  border-radius: 999px;
+  background: #e4e4e7;
+  overflow: hidden;
+}
+
+.mc-bell-prog i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #0f766e;
+}
+
+/* 확인: 회색 동그라미 체크 */
+.mc-bell-ack {
+  width: 32px;
+  height: 32px;
+  margin-right: 8px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-bell-ack-all {
+  width: 100%;
+  height: 42px;
+  border: 0;
+  border-top: 1px solid #f0f0f2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #ffffff;
+  color: #71717a;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mc-bell-ack-all:hover {
+  background: #fafafa;
+  color: #27272a;
+}
+
+.mc-bell-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 26px 8px 22px;
+}
+
+.mc-bell-empty svg {
+  color: #99c9bd;
+}
+
+/* 설정: 톱니 안, 스위치 두 개 */
+.mc-bell-settings {
+  margin: 0 10px 8px;
+  padding: 4px;
+  border: 0;
+  border-radius: 14px;
+  background: #f6faf9;
+}
+
+.mc-bell-settings.mc-bell-mail-off {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.mc-bell-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.mc-bell-switch-ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  color: #0f766e;
+  box-shadow: 0 0 0 1px #d7ece6 inset;
+}
+
+.mc-bell-switch-text {
+  display: flex;
+  flex-direction: column;
+  margin-right: auto;
+}
+
+.mc-bell-switch-text b {
+  font-size: 13px;
+  color: #18181b;
+}
+
+.mc-bell-switch-text i {
+  font-style: normal;
+  font-size: 11px;
+  color: #71717a;
+}
+
+.mc-bell-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  border-radius: 999px;
+  background: #d4d4d8;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+.mc-bell-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+  transition: transform .15s ease;
+}
+
+.mc-bell-switch:checked {
+  background: #0f766e;
+}
+
+.mc-bell-switch:checked::after {
+  transform: translateX(16px);
+}
+
+.mc-bell-switch:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.mc-bell-gear svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.mc-bell-who {
+  color: rgba(17, 24, 39, .72);
 }

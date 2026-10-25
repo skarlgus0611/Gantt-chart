@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v69"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v70"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v69";
+const APP_VERSION = "2026-10-24-design-v70";
 
 
 /* =========================================================
@@ -11806,49 +11806,84 @@ function shellOpenTaskFromNotice(chartId, taskId) {
   setTimeout(() => shellSendCommand(box, { cmd: "openTask", taskId }), 450);
 }
 
+const BELL_ICON = {
+  alert: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v5M12 16h.01"></path><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>',
+  clock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>',
+  cal: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M8 3v3M16 3v3"></path></svg>',
+  check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>',
+  gear: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>',
+  mail: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="m4 7 8 6 8-6"></path></svg>',
+  bell: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>',
+  done: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg>'
+};
+let bellSettingsOpen = false;
+
+/* (요청사항) 글자 위주였던 알림창을 그림 위주로:
+   왼쪽 색 타일에 남은 날(크게) · 이름 한 줄 · 아래 줄은 담당자 동그라미 + 차트 + 진행률 막대 ·
+   오른쪽 회색 체크 = 확인. 메일·푸시 설정은 톱니 버튼 안으로 */
 function shellRenderBellMenu() {
   const menu = bellMenu;
   if (!menu) return;
   const items = bellOpenItems();
-  const overdue = items.filter((t) => t.kind === "overdue");
-  const soon = items.filter((t) => t.kind === "due-soon");
-  const upcoming = items.filter((t) => t.kind === "upcoming");
+  const groups = [
+    ["overdue", "지연", BELL_ICON.alert],
+    ["due-soon", "마감 임박", BELL_ICON.clock],
+    ["upcoming", "다가오는 마감", BELL_ICON.cal]
+  ];
 
-  const section = (title, list, kind) => !list.length ? "" :
-    '<div class="mc-bell-sec"><div class="mc-bell-sec-title mc-bell-' + kind + '">' + title + " " + list.length + "</div>" +
-    list.map((t) =>
-      '<div class="mc-bell-item">' +
-        '<button type="button" class="mc-bell-open" data-chart="' + escapeHtml(t.chartId) + '" data-task="' + escapeHtml(t.id) + '">' +
-          '<span class="due-chip due-chip-' + t.kind + '">' + escapeHtml(t.label) + "</span>" +
-          '<span class="mc-bell-item-text"><b>' + escapeHtml(t.name) + "</b>" +
-          "<span>" + escapeHtml(t.chartName) + " · " + escapeHtml(t.owner || "담당자 없음") + " · " + t.progress + "%</span></span>" +
-        "</button>" +
-        '<button type="button" class="mc-bell-ack" data-key="' + escapeHtml(bellNoticeKey(t)) + '">확인</button>' +
-      "</div>").join("") + "</div>";
+  const tile = (t) => {
+    const big = t.kind === "overdue" ? "+" + t.days : t.days === 0 ? "오늘" : "D-" + t.days;
+    const small = t.kind === "overdue" ? "일 지연" : t.days === 0 ? "마감" : "남음";
+    return '<span class="mc-bell-tile mc-bell-tile-' + t.kind + '"><b>' + big + "</b><i>" + small + "</i></span>";
+  };
+  const who = (t) => {
+    const name = t.owner || "";
+    return name
+      ? '<span class="mc-bell-who" style="background:' + mcPersonColor(t.ownerEmail || name) + '" title="' + escapeHtml(name) + '">' + escapeHtml(Array.from(name)[0]) + "</span>"
+      : '<span class="mc-bell-who mc-bell-who-none" title="담당자 없음">–</span>';
+  };
+
+  const list = groups.map(([kind, title, icon]) => {
+    const rows = items.filter((t) => t.kind === kind);
+    if (!rows.length) return "";
+    return '<div class="mc-bell-sec"><div class="mc-bell-sec-title mc-bell-' + kind + '">' + icon + "<span>" + title + "</span><em>" + rows.length + "</em></div>" +
+      rows.map((t) =>
+        '<div class="mc-bell-item">' +
+          '<button type="button" class="mc-bell-open" data-chart="' + escapeHtml(t.chartId) + '" data-task="' + escapeHtml(t.id) + '">' +
+            tile(t) +
+            '<span class="mc-bell-item-text"><b>' + escapeHtml(t.name) + "</b>" +
+              '<span class="mc-bell-meta">' + who(t) + '<span class="mc-bell-chart">' + escapeHtml(t.chartName) + "</span>" +
+                '<span class="mc-bell-prog" title="진행률 ' + t.progress + '%"><i style="width:' + t.progress + '%"></i></span></span></span>' +
+          "</button>" +
+          '<button type="button" class="mc-bell-ack" data-key="' + escapeHtml(bellNoticeKey(t)) + '" aria-label="확인" title="확인 (알림에서 지우기)">' + BELL_ICON.check + "</button>" +
+        "</div>").join("") + "</div>";
+  }).join("");
 
   const notify = (bellProfile && bellProfile.notify) || {};
   const emailOn = notify.email !== false;
   const pushOn = notify.push === true;
   const off = bellProfileState !== "ready" ? " disabled" : "";
-  const mailRow = bellProfileState === "error"
-    ? '<div class="mc-bell-mail mc-bell-mail-off">알림 설정을 불러오지 못했어요. (보안 규칙 확인 필요)</div>'
+  const toggle = (id, on, icon, title, sub) =>
+    '<label class="mc-bell-switch-row"><span class="mc-bell-switch-ic">' + icon + "</span>" +
+      '<span class="mc-bell-switch-text"><b>' + title + "</b><i>" + sub + "</i></span>" +
+      '<input type="checkbox" class="mc-bell-switch" id="' + id + '"' + (on ? " checked" : "") + off + "></label>";
+  const settings = !bellSettingsOpen ? "" : bellProfileState === "error"
+    ? '<div class="mc-bell-settings mc-bell-mail-off">알림 설정을 불러오지 못했어요. (보안 규칙 확인 필요)</div>'
     : '<div class="mc-bell-settings">' +
-        '<label class="mc-bell-mail"><input type="checkbox" id="mcBellMail"' + (emailOn ? " checked" : "") + off +
-          "><span><b>D-7</b>에 내 담당 작업을 메일로 한 번 받기</span></label>" +
-        '<label class="mc-bell-mail"><input type="checkbox" id="mcBellPush"' + (pushOn ? " checked" : "") + off +
-          "><span><b>D-2 · D-1 · 당일</b>과 <b>지연</b>(확인 전까지 하루 한 번)을 푸시로 받기</span></label>" +
+        toggle("mcBellMail", emailOn, BELL_ICON.mail, "메일", "D-7 · 내 담당") +
+        toggle("mcBellPush", pushOn, BELL_ICON.bell, "푸시", "D-2 · D-1 · 당일 · 지연") +
       "</div>";
 
   menu.innerHTML =
     '<div class="mc-bell-head"><b>마감 알림</b>' +
-      (items.length ? '<button type="button" class="mc-bell-ack-all">모두 확인</button>' : "") +
       '<div class="mc-bell-seg"><button type="button" data-bell-scope="all" class="' + (!bellMineOnly ? "on" : "") + '">전체</button>' +
-      '<button type="button" data-bell-scope="mine" class="' + (bellMineOnly ? "on" : "") + '">내 담당</button></div></div>' +
+      '<button type="button" data-bell-scope="mine" class="' + (bellMineOnly ? "on" : "") + '">내 담당</button></div>' +
+      '<button type="button" class="mc-bell-gear' + (bellSettingsOpen ? " on" : "") + '" aria-label="알림 설정" title="알림 설정">' + BELL_ICON.gear + "</button></div>" +
+    settings +
     '<div class="mc-bell-list">' +
-      (items.length
-        ? section("지연", overdue, "overdue") + section("마감 임박", soon, "soon") + section("다가오는 마감", upcoming, "upcoming")
-        : '<div class="mc-bell-empty">확인할 알림이 없어요.</div>') +
-    "</div>" + mailRow;
+      (items.length ? list : '<div class="mc-bell-empty">' + BELL_ICON.done + "<span>확인할 알림이 없어요</span></div>") +
+    "</div>" +
+    (items.length ? '<button type="button" class="mc-bell-ack-all">' + BELL_ICON.check + "모두 확인</button>" : "");
 }
 
 function shellOpenBellMenu(button) {
@@ -11879,6 +11914,11 @@ function shellOpenBellMenu(button) {
     if (ack) {
       const target = bellOpenItems().find((t) => bellNoticeKey(t) === ack.dataset.key);
       if (target) bellAck([target]);
+      return;
+    }
+    if (event.target.closest(".mc-bell-gear")) {
+      bellSettingsOpen = !bellSettingsOpen;
+      shellRenderBellMenu();
       return;
     }
     if (event.target.closest(".mc-bell-ack-all")) {
