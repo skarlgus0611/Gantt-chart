@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v56";
+  --css-version: "2026-10-24-design-v57";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -10245,4 +10245,18 @@ html.is-embedded .task-header {
 
 .task-add-pill-sep {
   display: none;
+}
+
+/* (요청사항) 구분이 약하다 → 한 단계 진하게 */
+.task-add-pill-btn:first-child {
+  background: #e3f2ed;
+}
+
+.task-add-pill-btn:last-child {
+  background: #eef0f1;
+}
+
+.task-add-pill-btn:hover {
+  background: #cfe8e0;
+  color: #0f766e;
 }
