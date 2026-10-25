@@ -57,6 +57,11 @@ service cloud.firestore {
         );
     }
 
+    /* (요청사항) 첫 화면 안내: 본인 문서만 읽고 쓸 수 있다 */
+    match /users/{uid} {
+      allow read, create, update: if request.auth != null && request.auth.uid == uid;
+    }
+
     match /charts/{chartId} {
       allow read: if canRead(resource.data);
       allow create: if isSignedIn() && request.auth.uid == request.resource.data.ownerId;

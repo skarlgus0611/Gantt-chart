@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v60";
+const APP_VERSION = "2026-10-24-design-v62";
 
 
 /* =========================================================
@@ -6467,6 +6467,7 @@ async function shellLoadCharts() {
     shellChartsCache = personal.concat(shared);
     shellRenderList();
     shellBroadcastRefreshToIframes();
+    obInitShell((invites || []).length); /* (요청사항) 처음 로그인한 회원에게만 첫 화면 안내 */
     shellOrgRefreshBadge(); /* (조직 관리 1단계) 받은 조직 초대 수 배지 — 실패해도 다른 기능에 영향 없음 */
     shellRefreshCalButtons(); /* 캘린더 추가/삭제 버튼 상태 */
   } catch (error) {
@@ -11078,3 +11079,518 @@ async function initSharedViewerReadonly() {
   return;
 }
 /* ▲▲▲ 공유 차트 캘린더/CSV + 뷰어 읽기전용 (추가분) 끝 ▲▲▲ */
+
+
+/* =========================================================
+ * (요청사항) 첫 화면 안내 (온보딩)
+ *  - 이 사이트에 처음 로그인한 회원에게만: 환영 창 → 6단계 짚어 주는 안내
+ *    (1 작업 추가 · 2 기간 · 3 공유 · 4 조직원 관리 · 5 캡처·구글 캘린더 · 6 CSV 업로드·다운로드)
+ *  - 그 뒤 작업 수정·공유·차트 만들기·차트 관리·조직원 관리 창을 처음 열 때 그 창에서 한 번씩 안내
+ *  - 모든 안내는 회색 "건너뛰기"로 바로 끌 수 있다
+ *  - "봤음" 표시는 Firestore users/{uid} 에 저장(다른 기기에서도 다시 안 뜸),
+ *    이 브라우저에도 같이 적어 둔다(규칙이 아직 없거나 iframe 안에서 빨리 보려고)
+ *  - 이미 차트가 있거나 받은 초대가 있는 기존 회원은 처음부터 모두 "봤음"으로 둔다
+ * ========================================================= */
+const OB_KEYS = ["welcome", "tour", "task", "share", "newChart", "manage", "org"];
+let obFlags = null;
+let obShellStarted = false;
+
+function obCacheKey() {
+  return "ganttOnboarding:" + (fbUser ? fbUser.uid : "");
+}
+
+function obReadCache() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(obCacheKey()) || "null");
+    return saved && typeof saved === "object" ? saved : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function obWriteCache(flags) {
+  try { localStorage.setItem(obCacheKey(), JSON.stringify(flags)); } catch (error) { /* 무시 */ }
+}
+
+function obFlagsNow() {
+  return obFlags || obReadCache();
+}
+
+function obSeen(key) {
+  const flags = obFlagsNow();
+  return !flags || !!flags[key]; // 표시를 모르면(로그인 전 등) 안내하지 않는다
+}
+
+function obMark(keys) {
+  if (!fbUser) return;
+  /* 셸과 카드 안 차트가 각자 적으니, 이 브라우저에 적힌 최신 값과 합친다 */
+  const flags = { ...(obFlags || {}), ...(obReadCache() || {}) };
+  [].concat(keys).forEach((key) => { flags[key] = true; });
+  obFlags = flags;
+  obWriteCache(flags);
+  if (typeof fb.mergeUserOnboarding === "function") {
+    fb.mergeUserOnboarding(fbUser.uid, flags).catch((error) => console.warn("안내 표시 저장 실패:", error && error.message));
+  }
+}
+
+function obMarkAll() {
+  obMark(OB_KEYS);
+}
+
+/* 셸: 차트 목록을 처음 받은 뒤 한 번 */
+async function obInitShell(inviteCount) {
+  if (!fbUser || obShellStarted) return;
+  obShellStarted = true;
+  let flags = obReadCache();
+  let remoteKnown = false;
+  try {
+    const profile = typeof fb.getUserProfile === "function" ? await fb.getUserProfile(fbUser.uid) : null;
+    if (profile && profile.onboarding) {
+      flags = { ...profile.onboarding, ...(flags || {}) };
+      remoteKnown = true;
+    }
+  } catch (error) {
+    console.warn("안내 표시를 읽지 못했습니다(이 브라우저 기록만 씁니다):", error && error.message);
+  }
+
+  if (!flags) {
+    const existing = (shellChartsCache || []).length > 0 || inviteCount > 0;
+    obFlags = {};
+    if (existing) {
+      obMarkAll();
+      return;
+    }
+  } else {
+    obFlags = flags;
+    obWriteCache(flags);
+    if (!remoteKnown) obMark([]); // 이 브라우저에만 있던 표시를 계정에도 올려 둔다
+  }
+
+  if (!obSeen("welcome")) obShowWelcome();
+  else if (!obSeen("tour")) obStartTour();
+}
+
+const OB_ICON = {
+  hand: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11V6.5a1.5 1.5 0 0 1 3 0V11M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V11M16 11V8.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-2.7L3.5 15a1.5 1.5 0 0 1 2.5-1.6L7 15"></path></svg>',
+  bars: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h8M7 12h10M10 18h8"></path></svg>',
+  drag: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"></path></svg>',
+  team: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 20a6 6 0 0 1 12 0"></path><path d="M16 4.5a3 3 0 0 1 0 6M21 20a5 5 0 0 0-3.5-4.8"></path></svg>',
+  info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg>'
+};
+
+function obFirstName() {
+  const name = String((fbUser && fbUser.displayName) || "").trim();
+  if (!name) return String((fbUser && fbUser.email) || "").split("@")[0];
+  /* 한글 세 글자 이름이면 성을 빼고 부른다 (남기현 → 기현) */
+  return /^[가-힣]{3}$/.test(name) ? name.slice(1) : name;
+}
+
+function obShowWelcome() {
+  if (document.getElementById("obWelcome")) return;
+  const wrap = document.createElement("div");
+  wrap.id = "obWelcome";
+  wrap.className = "ob-dim";
+  wrap.innerHTML =
+    '<div class="ob-card" role="dialog" aria-modal="true" aria-labelledby="obWelcomeTitle">' +
+      '<div class="ob-hero"><i style="left:58%;top:24px;width:150px"></i><i style="left:66%;top:52px;width:120px"></i>' +
+        '<i style="left:60%;top:80px;width:190px"></i><i style="left:76%;top:108px;width:110px"></i>' +
+        '<div class="ob-wave">' + OB_ICON.hand + "</div>" +
+        '<h2 id="obWelcomeTitle">' + escapeHtml(obFirstName()) + " 님, 반가워요!</h2>" +
+        "<p>긴 일정도 한눈에. 1분이면 첫 차트를 만들 수 있어요.</p></div>" +
+      '<div class="ob-body"><div class="ob-steps">' +
+        '<div class="ob-step"><div class="ob-step-ic">' + OB_ICON.bars + "</div><div><b>작업을 막대로 그려요</b><span>시작일·종료일만 넣으면 달력 위에 막대가 생겨요</span></div><div class=\"ob-step-n\">1</div></div>" +
+        '<div class="ob-step"><div class="ob-step-ic">' + OB_ICON.drag + "</div><div><b>끌어서 기간을 바꿔요</b><span>막대 끝을 끌면 날짜가, 가운데를 끌면 일정이 옮겨져요</span></div><div class=\"ob-step-n\">2</div></div>" +
+        '<div class="ob-step"><div class="ob-step-ic">' + OB_ICON.team + "</div><div><b>팀과 함께 봐요</b><span>이메일이나 조직으로 공유하면 실시간으로 같이 봐요</span></div><div class=\"ob-step-n\">3</div></div>" +
+      "</div>" +
+      '<div class="ob-actions"><button type="button" class="ob-btn ob-pri" data-ob="sample">예시 차트로 시작하기</button>' +
+        '<button type="button" class="ob-btn ob-sec" data-ob="blank">빈 차트로 시작</button></div>' +
+      '<button type="button" class="ob-skip" data-ob="skip">건너뛰기</button></div></div>';
+  document.body.appendChild(wrap);
+
+  wrap.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-ob]");
+    if (!button) return;
+    const kind = button.dataset.ob;
+    if (kind === "skip") {
+      obMark(["welcome", "tour"]);
+      wrap.remove();
+      return;
+    }
+    wrap.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+    button.textContent = "만드는 중…";
+    try {
+      if (kind === "sample") await obCreateSampleChart();
+      else if (!(shellChartsCache || []).some((c) => !c.shared)) {
+        const res = await apiPost("createChart", { data: { name: "내 첫 차트" } });
+        shellApplyPersonalChartsList(res.charts);
+      }
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || "차트를 만들지 못했어요.", true, 0);
+    }
+    obMark("welcome");
+    wrap.remove();
+    obStartTour();
+  });
+}
+
+/* 예시 차트: 오늘을 가운데 두고 지난 일·진행 중·앞으로 할 일이 섞이게 */
+async function obCreateSampleChart() {
+  const res = await apiPost("createChart", { data: { name: "예시 차트" } });
+  const chartId = res.result && res.result.id;
+  if (!chartId) throw new Error("예시 차트를 만들지 못했어요.");
+  const day = (offset) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offset);
+    return dateKey(d);
+  };
+  const cats = [["기획", "#0f766e"], ["디자인", "#e11d48"], ["개발", "#2563eb"]];
+  const catIds = {};
+  for (const [name, color] of cats) {
+    const r = await apiPostForChart("createCategory", chartId, { data: { name, color } });
+    catIds[name] = r.result;
+  }
+  const tasks = [
+    ["요구사항 정리", "기획", -40, -12, 100],
+    ["일정 계획 세우기", "기획", -15, 10, 60],
+    ["화면 시안 만들기", "디자인", -5, 25, 30],
+    ["기능 개발", "개발", 10, 60, 0],
+    ["테스트·출시", "개발", 55, 80, 0]
+  ];
+  for (const [name, cat, from, to, progress] of tasks) {
+    await apiPostForChart("create", chartId, {
+      data: { name, categoryId: catIds[cat] || "", start: day(from), end: day(to), progress }
+    });
+  }
+  shellApplyPersonalChartsList(res.charts);
+}
+
+/* ---------- 짚어 주는 안내 (6단계) ---------- */
+let obTourState = null;
+
+function obFirstBox() {
+  return document.querySelector("#mcChartList .mc-chart-box:not(.mc-chart-box-collapsed), .mc-chart-box:not(.mc-chart-box-collapsed)");
+}
+
+function obVisible(el) {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
+}
+
+function obTourSteps() {
+  const box = () => obFirstBox();
+  const inFrame = (selector) => () => {
+    const b = box();
+    const iframe = b && b.querySelector("iframe");
+    const doc = iframe && iframe.contentDocument;
+    const el = doc && doc.querySelector(selector);
+    return el ? { el, frame: iframe } : null;
+  };
+  const inBox = (selector) => () => {
+    const b = box();
+    const el = b && b.querySelector(selector);
+    return el ? { el } : null;
+  };
+  const byId = (id) => () => {
+    const el = document.getElementById(id);
+    return el ? { el } : null;
+  };
+  return [
+    { targets: [inFrame(".task-add-pill")], title: "여기서 작업을 추가해요",
+      text: "작업 이름과 기간을 넣으면 오른쪽 달력에 막대가 생겨요. 카테고리로 작업을 묶을 수도 있어요." },
+    { targets: [inBox(".mc-date-pill")], title: "보이는 기간을 정해요",
+      text: "날짜를 누르면 연도·기간을 고를 수 있어요. 옆 버튼으로 오늘 전후나 전체를 바로 볼 수 있어요." },
+    { targets: [inBox(".mc-share-btn")], title: "팀과 공유해요",
+      text: "공유를 누르고 이메일이나 조직을 고르면, 같은 차트를 실시간으로 함께 봐요. 뷰어·편집자·관리자 권한도 정할 수 있어요." },
+    { targets: [byId("mcSidebarOrgBtn")], title: "조직을 만들고 관리해요",
+      text: "회사·팀 단위로 조직을 만들고 조직원을 초대하세요. 차트를 조직 전체나 고른 조직원에게 한 번에 공유할 수 있고, 조직에서 나가면 바로 볼 수 없게 돼요." },
+    { targets: [inBox(".mc-btn-capture"), inBox(".mc-cal-toggle")], title: "캡처하고 구글 캘린더에 넣어요",
+      text: "카메라 버튼은 차트를 이미지로 저장해요. 달력 버튼을 누르면 이 차트 전용 구글 캘린더가 생겨서 작업이 일정으로 들어가요." },
+    { targets: [inBox(".mc-csv-upload"), () => {
+        const b = box();
+        const up = b && b.querySelector(".mc-csv-upload");
+        const el = up && up.nextElementSibling;
+        return el ? { el } : null;
+      }], title: "엑셀(CSV)로 올리고 받아요",
+      text: "업로드는 엑셀·CSV 파일의 작업을 이 차트에 추가하고, 다운로드는 작업 목록을 파일로 받아요." }
+  ];
+}
+
+function obStartTour() {
+  if (obTourState || obSeen("tour")) return;
+  let tries = 0;
+  const wait = () => {
+    const box = obFirstBox();
+    const iframe = box && box.querySelector("iframe");
+    const ready = iframe && iframe.contentDocument && iframe.contentDocument.querySelector(".task-add-pill");
+    if (ready || tries > 40) {
+      obRunTour(obTourSteps(), () => obMark("tour"));
+      return;
+    }
+    tries++;
+    setTimeout(wait, 250);
+  };
+  window.scrollTo({ top: 0 });
+  wait();
+}
+
+/* 안내 틀: steps = [{ targets: [() => ({ el, frame? })], title, text }]
+   카드 안 차트(iframe)에서 부를 때는 바깥 화면(부모)에 깔아서 화면 전체를 덮는다 */
+function obHostWindow() {
+  try {
+    if (!IS_SHELL_MODE && window.parent !== window && window.parent.document) return window.parent;
+  } catch (error) { /* 다른 출처면 자기 창 */ }
+  return window;
+}
+
+function obRunTour(steps, onEnd) {
+  if (obTourState) return;
+  const win = obHostWindow();
+  obTourState = { steps, index: 0, onEnd, win, frame: win === window ? null : window.frameElement };
+  obRenderTourStep();
+}
+
+function obEndTour() {
+  const tour = obTourState;
+  if (!tour) return;
+  obTourState = null;
+  const layer = tour.win.document.getElementById("obTour");
+  if (layer) layer.remove();
+  tour.win.removeEventListener("resize", obRenderTourStep);
+  if (tour.onEnd) tour.onEnd();
+}
+
+function obRectOf(target) {
+  const r = target.el.getBoundingClientRect();
+  const frame = target.frame || (obTourState && obTourState.frame);
+  if (!frame) return { x: r.left, y: r.top, w: r.width, h: r.height };
+  const f = frame.getBoundingClientRect();
+  return { x: f.left + r.left, y: f.top + r.top, w: r.width, h: r.height };
+}
+
+/* (요청사항) 강조 상자가 겹치거나 붙어 있으면 바깥 테두리를 하나로 합친다 */
+function obMergeRects(rects) {
+  const out = [];
+  rects.forEach((rect) => {
+    let r = { ...rect };
+    for (let i = 0; i < out.length; i++) {
+      const o = out[i];
+      const touch = r.x <= o.x + o.w + 2 && o.x <= r.x + r.w + 2 && r.y <= o.y + o.h + 2 && o.y <= r.y + r.h + 2;
+      if (touch) {
+        const x = Math.min(r.x, o.x);
+        const y = Math.min(r.y, o.y);
+        r = { x, y, w: Math.max(r.x + r.w, o.x + o.w) - x, h: Math.max(r.y + r.h, o.y + o.h) - y };
+        out.splice(i, 1);
+        i = -1;
+      }
+    }
+    out.push(r);
+  });
+  return out;
+}
+
+function obRenderTourStep() {
+  const tour = obTourState;
+  if (!tour) return;
+  const win = tour.win;
+  const hostDoc = win.document;
+  const live = (step) => step.targets.map((fn) => fn()).filter((t) => t && obVisible(t.el));
+  /* 화면에 없는 단계(폰에서 숨은 사이드바, 아직 없는 조직 등)는 건너뛴다 */
+  while (tour.index < tour.steps.length && !live(tour.steps[tour.index]).length) tour.index++;
+  if (tour.index >= tour.steps.length) {
+    obEndTour();
+    return;
+  }
+  const step = tour.steps[tour.index];
+  const targets = live(step);
+  const total = tour.steps.length;
+
+  /* 창 안에서 스크롤해야 보이는 곳이면 먼저 보이게 */
+  try { targets[0].el.scrollIntoView({ block: "nearest" }); } catch (error) { /* 무시 */ }
+  let first = obRectOf(targets[0]);
+  if (first.y < 8 || first.y + first.h > win.innerHeight - 8) {
+    win.scrollBy(0, first.y - Math.max(80, (win.innerHeight - first.h) / 2));
+  }
+
+  let layer = hostDoc.getElementById("obTour");
+  if (!layer) {
+    layer = hostDoc.createElement("div");
+    layer.id = "obTour";
+    layer.className = "ob-tour";
+    hostDoc.body.appendChild(layer);
+    layer.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-ob]");
+      const current = obTourState;
+      if (!button || !current) return;
+      if (button.dataset.ob === "skip") { obEndTour(); return; }
+      current.index++;
+      if (current.index >= current.steps.length) obEndTour();
+      else obRenderTourStep();
+    });
+    win.addEventListener("resize", obRenderTourStep);
+  }
+
+  const pad = 6;
+  const rects = obMergeRects(targets.map(obRectOf).map((r) => ({ x: r.x - pad, y: r.y - pad, w: r.w + pad * 2, h: r.h + pad * 2 })));
+  const holes = rects.map((r) => '<rect x="' + r.x + '" y="' + r.y + '" width="' + r.w + '" height="' + r.h + '" rx="14" fill="black"></rect>').join("");
+  const rings = rects.map((r) => '<div class="ob-ring" style="left:' + r.x + "px;top:" + r.y + "px;width:" + r.w + "px;height:" + r.h + 'px"></div>').join("");
+  const dots = tour.steps.map((s, i) => '<i class="' + (i === tour.index ? "on" : "") + '"></i>').join("");
+  const last = tour.index === total - 1;
+
+  layer.innerHTML =
+    '<svg class="ob-mask" width="100%" height="100%"><defs><mask id="obTourMask"><rect width="100%" height="100%" fill="white"></rect>' + holes +
+    '</mask></defs><rect width="100%" height="100%" fill="rgba(15,23,22,.45)" mask="url(#obTourMask)"></rect></svg>' + rings +
+    '<div class="ob-tip" role="dialog" aria-live="polite"><div class="ob-tip-st">' + (tour.index + 1) + " / " + total + "</div>" +
+      "<h4>" + escapeHtml(step.title) + "</h4><p>" + escapeHtml(step.text) + "</p>" +
+      '<div class="ob-tip-row"><div class="ob-dots">' + dots + "</div>" +
+      '<button type="button" class="ob-tip-skip" data-ob="skip">건너뛰기</button>' +
+      '<button type="button" class="ob-tip-next" data-ob="next">' + (last ? (step.lastLabel || "시작하기") : "다음") + "</button></div></div>";
+
+  /* 말풍선 위치: 첫 표시 아래(자리가 없으면 위, 그것도 없으면 옆), 화면 밖으로 안 나가게 */
+  const tip = layer.querySelector(".ob-tip");
+  const anchor = rects[0];
+  const tipW = tip.offsetWidth;
+  const tipH = tip.offsetHeight;
+  const fitsBelow = anchor.y + anchor.h + 14 + tipH < win.innerHeight - 8;
+  const fitsAbove = anchor.y - tipH - 14 > 8;
+  let left = Math.max(12, Math.min(anchor.x + anchor.w / 2 - 44, win.innerWidth - tipW - 12));
+  let top;
+  tip.classList.remove("ob-tip-up", "ob-tip-side");
+  if (fitsBelow) {
+    top = anchor.y + anchor.h + 14;
+  } else if (fitsAbove) {
+    top = anchor.y - tipH - 14;
+    tip.classList.add("ob-tip-up");
+  } else {
+    /* 큰 영역: 옆에, 그래도 안 되면 영역 안쪽 아래에 */
+    tip.classList.add("ob-tip-side");
+    top = Math.max(12, Math.min(anchor.y + 12, win.innerHeight - tipH - 12));
+    left = anchor.x + anchor.w + 14 + tipW < win.innerWidth ? anchor.x + anchor.w + 14
+      : anchor.x - tipW - 14 > 0 ? anchor.x - tipW - 14
+      : Math.max(12, Math.min(anchor.x + anchor.w - tipW - 12, win.innerWidth - tipW - 12));
+  }
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+  const arrowX = Math.max(18, Math.min(anchor.x + anchor.w / 2 - left - 7, tipW - 32));
+  tip.style.setProperty("--ob-arrow-x", arrowX + "px");
+}
+
+/* ---------- 작업 수정 · 조직원 관리 창: 처음 열 때 단계별 안내 ---------- */
+function obTaskSteps() {
+  const panel = document.getElementById("detailPanel");
+  const pick = (selector, closest) => () => {
+    let el = panel && panel.querySelector(selector);
+    if (el && closest) el = el.closest(closest) || el;
+    return el ? { el } : null;
+  };
+  return [
+    { targets: [pick("#detailName")], title: "작업 이름",
+      text: "제목을 눌러 바로 고칠 수 있어요. 왼쪽 동그라미는 막대 색이에요." },
+    { targets: [pick("#detailCategory", ".detail-prop")], title: "카테고리",
+      text: "작업을 어느 묶음에 넣을지 골라요. 카테고리를 바꾸면 차트에서 그 묶음 아래로 옮겨져요." },
+    { targets: [pick("#detailStart", ".detail-prop")], title: "기간",
+      text: "시작일과 종료일을 고르면 옆에 며칠인지 보여요. 차트에서 막대를 끌거나 막대 끝을 끌어도 바뀌어요." },
+    { targets: [pick("#detailOwner", ".detail-prop")], title: "담당자",
+      text: "이름을 적거나, 차트가 공유된 조직원 목록에서 골라요. 고른 사람은 '담당자별 보기'로 모아 볼 수 있어요." },
+    { targets: [pick(".detail-side")], title: "진행률과 막대 색",
+      text: "숫자를 넣거나 막대를 끌어 진행률을 정해요. 아래에서 이 작업만의 막대 색을 고를 수도 있어요." },
+    { targets: [pick("#saveDetailBtn"), pick("#cancelDetailBtn")], title: "저장",
+      text: "다 고쳤으면 저장을 눌러요. 공유된 사람들 화면에도 바로 반영돼요. 왼쪽 아래 삭제로 작업을 지울 수 있어요.", lastLabel: "알겠어요" }
+  ];
+}
+
+function obOrgSteps() {
+  const modal = document.getElementById("mcOrgModal");
+  const pick = (selector) => () => {
+    const el = modal && modal.querySelector(selector);
+    return el && el.childElementCount !== 0 || (el && el.tagName === "BUTTON") ? { el } : null;
+  };
+  return [
+    { targets: [pick("#mcOrgInvites")], title: "받은 초대",
+      text: "다른 사람이 나를 조직에 초대하면 여기에 떠요. 수락하면 그 조직에 공유된 차트를 함께 볼 수 있어요." },
+    { targets: [pick("#mcOrgNewBtn")], title: "새 조직 만들기",
+      text: "회사·팀·동아리처럼 함께 일하는 단위로 조직을 만들어요. 만든 사람이 소유자가 돼요." },
+    { targets: [pick("#mcOrgList")], title: "내 조직",
+      text: "내가 속한 조직이 모두 보여요. 눌러서 오른쪽에 조직원과 권한을 띄워요." },
+    { targets: [pick(".mc-org-head-actions")], title: "조직원 초대",
+      text: "이메일로 조직원을 초대하고 역할을 정해요. ⋯ 버튼에서 조직 이름 바꾸기·소유자 넘기기·나가기를 할 수 있어요." },
+    { targets: [pick(".mc-org-section")], title: "조직원과 역할(권한)",
+      text: "역할은 게스트·참여자·관리자예요. 차트를 조직에 공유하면 게스트는 뷰어, 참여자는 편집자, 관리자는 관리자 권한으로 보고, 차트마다 사람별로 바꿀 수도 있어요." },
+    { targets: [() => {
+        const sections = modal ? modal.querySelectorAll(".mc-org-section") : [];
+        return sections[1] ? { el: sections[1] } : null;
+      }], title: "초대 대기",
+      text: "아직 수락하지 않은 사람이에요. 수락하기 전까지는 조직에 공유된 차트를 볼 수 없어요.", lastLabel: "알겠어요" }
+  ];
+}
+
+function obStartPanelTour(key) {
+  if (obSeen(key) || obTourState) return;
+  const steps = key === "task" ? obTaskSteps() : obOrgSteps();
+  let tries = 0;
+  const wait = () => {
+    const ready = steps.some((s) => s.targets.some((fn) => { const t = fn(); return t && obVisible(t.el); }));
+    if (!ready && tries++ < 16) { setTimeout(wait, 200); return; }
+    if (!ready) return;
+    obMark(key); // 한 번만: 시작한 순간 본 것으로
+    obRunTour(steps, null);
+  };
+  setTimeout(wait, 150);
+}
+
+/* ---------- 창을 처음 열 때 한 번씩 안내 ---------- */
+const OB_INLINE_TIPS = {
+  share: { title: "공유하는 법", text: "이메일 탭은 구글 계정으로 한 명씩 초대해요. 조직원 선택·조직 전체 탭은 내 조직 사람들에게 한 번에 공유해요. 권한은 뷰어(보기만)·편집자(수정)·관리자(공유 설정까지) 중에서 고를 수 있어요." },
+  newChart: { title: "차트 만드는 법", text: "이름만 정하면 빈 차트가 생겨요. 표시 기간과 작업은 만든 뒤 차트 안에서 바로 정하면 돼요. 엑셀 파일이 있으면 만든 뒤 업로드로 작업을 한 번에 넣을 수 있어요." },
+  manage: { title: "차트 관리하는 법", text: "여기서 차트 순서를 바꾸고, 이름을 고치고, 화면에서 숨길 수 있어요. 차트 삭제는 만든 사람(소유자)만 할 수 있어요. 오른쪽 위 버튼으로 모든 차트를 엑셀로 한 번에 받을 수도 있어요." },
+};
+
+function obShowInlineTip(container, key) {
+  if (!container || obSeen(key) || container.querySelector(".ob-inline")) return;
+  const tip = OB_INLINE_TIPS[key];
+  if (!tip) return;
+  obMark(key); // 한 번만: 띄운 순간 본 것으로
+  const box = document.createElement("div");
+  box.className = "ob-inline";
+  box.innerHTML = '<div class="ob-inline-ic">' + OB_ICON.info + "</div>" +
+    '<div class="ob-inline-text"><b>' + escapeHtml(tip.title) + "</b><p>" + escapeHtml(tip.text) + "</p>" +
+    '<div class="ob-inline-row"><button type="button" class="ob-inline-ok">알겠어요</button>' +
+    '<button type="button" class="ob-inline-skip">건너뛰기</button></div></div>';
+  box.querySelector(".ob-inline-ok").addEventListener("click", () => box.remove());
+  box.querySelector(".ob-inline-skip").addEventListener("click", () => {
+    obMarkAll(); // 건너뛰기: 남은 안내도 모두 그만
+    box.remove();
+  });
+  const head = container.querySelector(":scope > .mc-modal-head, :scope > h2, :scope > .modal-header, :scope > .detail-header");
+  if (head) head.after(box);
+  else container.prepend(box);
+}
+
+function obWatchOpen(element, key, containerOf) {
+  if (!element) return;
+  const check = () => {
+    if (element.classList.contains("hidden")) return;
+    if (key === "task" || key === "org") {
+      obStartPanelTour(key);
+      return;
+    }
+    setTimeout(() => obShowInlineTip(containerOf(element), key), 0);
+  };
+  new MutationObserver(check).observe(element, { attributes: true, attributeFilter: ["class"] });
+}
+
+function obInitInlineTips() {
+  const modal = (id) => document.getElementById(id);
+  const inner = (el) => el.querySelector(".mc-modal");
+  if (IS_SHELL_MODE) {
+    obWatchOpen(modal("mcShareModal"), "share", inner);
+    obWatchOpen(modal("mcAddModal"), "newChart", inner);
+    obWatchOpen(modal("mcManageModal"), "manage", inner);
+    obWatchOpen(modal("mcOrgModal"), "org", inner);
+  } else {
+    obWatchOpen(modal("detailPanel"), "task", (el) => el.firstElementChild ? el : el);
+  }
+}
+
+obInitInlineTips();
