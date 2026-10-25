@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-24-design-v62">
+  <meta name="app-version" content="2026-10-24-design-v63">
 
   <title>간트차트</title>
 
@@ -27,7 +27,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-24-design-v62"
+    href="style.css?v=2026-10-24-design-v63"
   >
 </head>
 
@@ -101,6 +101,11 @@
             <span class="brand-sub">Yearly Progress Management</span>
           </div>
           <div class="mc-topbar-actions">
+            <!-- (요청사항) 마감 알림: 지연 · 마감 임박 작업 모아 보기 -->
+            <button id="mcBellBtn" class="mc-btn mc-btn-ghost mc-btn-icon mc-bell-btn hidden" type="button" aria-label="마감 알림" title="마감 알림">
+              <svg class="mc-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+              <span id="mcBellBadge" class="mc-bell-badge hidden"></span>
+            </button>
             <button id="mcReloadBtn" class="mc-btn mc-btn-ghost mc-btn-icon" type="button" aria-label="새로고침" title="새로고침">
               <svg class="mc-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.3-6.4L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"></path><path d="M3 21v-5h5"></path></svg>
             </button>
@@ -841,7 +846,7 @@
        JS
   ========================= -->
 
-  <script type="module" src="app.js?v=2026-10-24-design-v62"></script>
+  <script type="module" src="app.js?v=2026-10-24-design-v63"></script>
 
 </body>
 </html>

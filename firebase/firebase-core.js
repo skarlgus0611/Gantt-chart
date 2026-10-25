@@ -611,3 +611,8 @@ export async function getUserProfile(uid) {
 export function mergeUserOnboarding(uid, flags) {
   return setDoc(doc(db, "users", uid), { onboarding: flags, updatedAt: serverTimestamp() }, { merge: true });
 }
+
+/* ----- (요청사항) 마감 알림 메일: 받는 사람 목록과 수신 설정 ----- */
+export function mergeUserProfile(uid, fields) {
+  return setDoc(doc(db, "users", uid), { ...fields, updatedAt: serverTimestamp() }, { merge: true });
+}
