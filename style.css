@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v46";
+  --css-version: "2026-10-24-design-v47";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9881,4 +9881,15 @@ body:has(.gantt-resize.dragging) {
 .mc-chart-box .mc-chart-box-actions .mc-tools-white .mc-btn.mc-btn-capture:hover:not(:disabled) {
   background: #d7ece6;
   color: #0b5b55;
+}
+
+
+/* (요청사항) 날짜 알약을 오른쪽으로 살짝 더 길게 */
+.mc-date-pill {
+  padding-right: 10px;
+}
+
+.mc-chart-box .mc-chart-box-headinfo .mc-date-pill .mc-btn-group.mc-date-tools {
+  padding-left: 8px;
+  gap: 4px;
 }
