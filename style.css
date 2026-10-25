@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v54";
+  --css-version: "2026-10-24-design-v55";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -10183,4 +10183,48 @@ body.shared-viewer-readonly .task-add-pill,
 
 .mc-chart-box .mc-chart-box-headinfo .mc-date-pill .mc-btn-group.mc-date-tools::before {
   left: 2.5px;
+}
+
+/* (요청사항) 차트 왼쪽 위 [작업 | 카테고리]: 버튼 대신 표 머리 칸처럼.
+   글자는 월 머리처럼 옅게, 마우스를 올린 칸만 연한 초록 */
+html.is-embedded .task-header {
+  padding: 0;
+  align-items: stretch;
+}
+
+.task-add-pill {
+  display: flex;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  align-items: stretch;
+}
+
+.task-add-pill-btn {
+  flex: 1 1 0;
+  justify-content: center;
+  height: auto;
+  padding: 0 6px;
+  border-radius: 0;
+  color: #71717a;
+  transition: background .15s ease, color .15s ease;
+}
+
+.task-add-pill-btn svg {
+  color: #0f766e;
+}
+
+.task-add-pill-btn:hover {
+  background: #eef7f4;
+  color: #0f766e;
+}
+
+.task-add-pill-sep {
+  align-self: center;
+  height: 20px;
+  margin: 0;
+  background: #ececef;
 }
