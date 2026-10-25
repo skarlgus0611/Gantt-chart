@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v34";
+  --css-version: "2026-10-24-design-v35";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9565,15 +9565,9 @@ body:has(.gantt-resize.dragging) {
 }
 
 
-/* (요청사항) ㄴ자 안쪽 모서리를 직각 대신 둥근 호로: 가로 띠 윗변과 세로 띠 왼변이
-   만나는 곳에 안쪽으로 파인 둥근 조각을 덧댄다. */
-.h-rail-corner {
-  --fillet: 10px;
-  position: absolute;
-  right: calc(2px + var(--rail-w));
-  top: calc(var(--fillet) * -1);
-  width: var(--fillet);
-  height: var(--fillet);
-  background: radial-gradient(circle at 0 0, transparent calc(var(--fillet) - .5px), var(--rail-bg) var(--fillet));
-  pointer-events: none;
+/* (요청사항) ㄴ자 바깥쪽(오른쪽 아래) 모서리를 확실하게 둥근 호로:
+   띠 두께만큼의 반지름으로 4분의 1 원이 되게 한다. */
+.h-rail::before,
+.h-rail::after {
+  border-radius: 0 0 var(--rail-w) 0;
 }
