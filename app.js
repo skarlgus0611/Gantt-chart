@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v39";
+const APP_VERSION = "2026-10-24-design-v40";
 
 
 /* =========================================================
@@ -7122,7 +7122,10 @@ function shellRenderList() {
 
       const iframe = document.createElement("iframe");
       /* (중요, 버그 수정) 이 박스 안도 Firestore로 동작하도록 index.html?chart= 를 연다. */
-      iframe.src = "index.html?chart=" + encodeURIComponent(chart.id);
+      /* (버그 수정) 차트 박스 안 화면 주소에 버전을 붙인다. 안 그러면 브라우저가
+         예전 index.html 을 기억해 두고 써서, 새로 올린 디자인이 박스 안에만
+         반영되지 않았다(강력 새로고침으로도 안 풀리는 경우가 있었다). */
+      iframe.src = "index.html?chart=" + encodeURIComponent(chart.id) + "&v=" + encodeURIComponent(APP_VERSION);
       iframe.setAttribute("scrolling", "no");
       iframe.title = chart.name + " 차트";
       iframe.addEventListener("load", () => shellAutoResize(iframe));
