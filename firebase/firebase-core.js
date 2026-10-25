@@ -621,7 +621,7 @@ export function mergeUserProfile(uid, fields) {
 /* ----- (요청사항) 웹 푸시 알림: D-2·1·0 과 지연 작업 -----
    Firebase 콘솔 → 프로젝트 설정 → 클라우드 메시징 → 웹 푸시 인증서 → "키 쌍 생성"으로
    만든 공개 키를 아래에 넣어야 켜진다(비어 있으면 푸시 켜기 버튼이 안내만 한다). */
-export const FCM_VAPID_KEY = "";
+export const FCM_VAPID_KEY = "BCo2jz8vO30ZI6wfS21CbZYYo1RyrMuKol5j7HDY6KPRDeMVRT4pW5mh_AOt90eneDYh7PM5TKBa0ElmMu00C8A";
 
 export async function pushSupported() {
   try {
