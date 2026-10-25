@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v25";
+const APP_VERSION = "2026-10-24-design-v26";
 
 
 /* =========================================================
@@ -775,7 +775,9 @@ function chartOrgRole(chart, memberships) {
 
 function chartManualRole(chart) {
   if (!fbUser || !chart) return "";
-  const entry = (chart.members || {})[fbUser.email];
+  /* 이메일은 소문자로 저장한다. 예전에 그대로 저장된 항목도 찾는다 */
+  const members = chart.members || {};
+  const entry = members[String(fbUser.email || "").toLowerCase()] || members[fbUser.email];
   return entry && entry.status === "accepted" ? (entry.role || "viewer") : "";
 }
 
@@ -6391,10 +6393,10 @@ function shellMyName() {
 
 /* 공유 버튼 안 겹친 동그라미: 나 + 같이 보는 사람 수(+N) */
 function shellShareAvatarsHtml(chart) {
-  const me = (fbUser && fbUser.email) || "";
+  const me = String((fbUser && fbUser.email) || "").toLowerCase();
   const others = chart.shared
     ? Array.from(new Set((chart.members || []).concat(chart.ownerEmail ? [chart.ownerEmail] : [])))
-      .filter((email) => email && email !== me)
+      .filter((email) => email && email.toLowerCase() !== me)
     : [];
 
   let html = '<span class="mc-avatar-stack" aria-hidden="true">' +
@@ -8640,13 +8642,16 @@ function shellRenderManageRows() {
       badge.title = (chart.ownerEmail || "") + "님이 공유한 차트";
       row.appendChild(badge);
 
-      const leaveBtn = mcActionButton("leave", "공유 차트 나가기", true);
-      leaveBtn.classList.add("mc-row-danger");
-      leaveBtn.addEventListener("click", async () => {
-        await shellHandleLeaveShared(chart.chartId, chart.name);
-        shellRenderManageRows();
-      });
-      row.appendChild(leaveBtn);
+      /* (조직 관리 2단계) 조직을 통해서만 받은 차트는 조직에서 나가면 함께 빠진다 */
+      if (!chart.viaOrgOnly) {
+        const leaveBtn = mcActionButton("leave", "공유 차트 나가기", true);
+        leaveBtn.classList.add("mc-row-danger");
+        leaveBtn.addEventListener("click", async () => {
+          await shellHandleLeaveShared(chart.chartId, chart.name);
+          shellRenderManageRows();
+        });
+        row.appendChild(leaveBtn);
+      }
 
       root.appendChild(row);
       return;
