@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v73"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v74"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v73";
+const APP_VERSION = "2026-10-24-design-v74";
 
 
 /* =========================================================
@@ -2734,13 +2734,9 @@ function moveAssigneeActive(step) {
 
 const ASSIGNEE_INPUT_IDS = ["taskOwner", "detailOwner"];
 
-/* 새 작업 창: 이메일을 고치면 알림 받는지 표시를 다시 */
+/* 새 작업 창: 이메일을 직접 고치면 자동으로 채운 값이 아닌 것으로 */
 document.addEventListener("input", (event) => {
-  if (!event.target || event.target.id !== "taskOwnerEmail") return;
-  if (event.isTrusted) event.target.dataset.auto = "0";
-  clearTimeout(event.target._statusTimer);
-  event.target._statusTimer = setTimeout(() => refreshAssigneeStatus("taskOwnerStatus", assigneeEmailValue("taskOwnerEmail"),
-    (document.getElementById("taskOwner") || {}).value || ""), 350);
+  if (event.target && event.target.id === "taskOwnerEmail" && event.isTrusted) event.target.dataset.auto = "0";
 });
 
 document.addEventListener("focusin", (event) => {
@@ -3635,48 +3631,6 @@ function assigneeEmailValue(id) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
 }
 
-const registeredEmailCache = {};
-
-function isEmailRegisteredCached(email) {
-  const key = String(email || "").toLowerCase();
-  if (!key) return Promise.resolve(false);
-  if (!(key in registeredEmailCache)) {
-    registeredEmailCache[key] = typeof fb.isEmailRegistered === "function"
-      ? fb.isEmailRegistered(key).catch(() => null) /* 규칙이 아직 없으면 모름(null) */
-      : Promise.resolve(null);
-  }
-  return registeredEmailCache[key];
-}
-
-/* "ok" 담당자가 받음 · "none" 담당자 없음 · "external" 이메일 없음 · "unregistered" 미가입 (ok 가 아니면 알림 없음) */
-async function assigneeDelivery(task) {
-  const email = String((task && task.ownerEmail) || "").toLowerCase();
-  if (!email) return String((task && task.owner) || "").trim() ? "external" : "none";
-  const registered = await isEmailRegisteredCached(email);
-  return registered === false ? "unregistered" : "ok";
-}
-
-const ASSIGNEE_STATUS_TEXT = {
-  ok: ["알림 받음", "ok"],
-  unregistered: ["미가입 · 알림 안 감", "warn"],
-  external: ["이메일 없음 · 알림 안 감", "muted"],
-  none: ["", ""]
-};
-
-let assigneeStatusSeq = 0;
-
-async function refreshAssigneeStatus(statusId, email, name) {
-  const el = document.getElementById(statusId);
-  if (!el) return;
-  const seq = ++assigneeStatusSeq;
-  el.dataset.seq = String(seq);
-  const status = await assigneeDelivery({ ownerEmail: email, owner: name });
-  if (el.dataset.seq !== String(seq)) return;
-  const [text, tone] = ASSIGNEE_STATUS_TEXT[status] || ["", ""];
-  el.textContent = text;
-  el.className = "assignee-status" + (tone ? " assignee-status-" + tone : "");
-}
-
 function selfAssignButtonHtml(task) {
   if (!fbUser) return "";
   if (isMyTask(task)) return '<button type="button" class="assignee-self" id="selfAssignBtn" data-self="off">나 빼기</button>';
@@ -4112,7 +4066,6 @@ function showTaskDetail(id) {
               <span class="detail-owner-avatar" id="detailOwnerAvatar" aria-hidden="true"></span>
               <input id="detailOwner" value="${escapeAttr(task.owner)}" placeholder="이름">
               <input id="detailOwnerEmail" class="assignee-email" type="email" value="${escapeAttr(task.ownerEmail || "")}" placeholder="이메일 (알림 받으려면 입력)" data-auto="0">
-              <span class="assignee-status" id="detailOwnerStatus"></span>
               ${selfAssignButtonHtml(task)}
             </span>
           </label>
@@ -4309,16 +4262,11 @@ function showTaskDetail(id) {
     };
   }
 
-  /* (요청사항) 담당자: 이메일 칸 · 알림 받는지 표시 · 내가 할게요 / 나 빼기 */
+  /* (요청사항) 담당자: 이메일 칸 · 내가 할게요 / 나 빼기 */
   const ownerEmailField = document.getElementById("detailOwnerEmail");
-  refreshAssigneeStatus("detailOwnerStatus", task.ownerEmail || "", task.owner || "");
   if (ownerEmailField) {
-    let statusTimer = null;
     ownerEmailField.addEventListener("input", (event) => {
       if (event.isTrusted) ownerEmailField.dataset.auto = "0";
-      clearTimeout(statusTimer);
-      statusTimer = setTimeout(() => refreshAssigneeStatus("detailOwnerStatus", assigneeEmailValue("detailOwnerEmail"),
-        document.getElementById("detailOwner").value), 350);
     });
   }
 
@@ -4619,7 +4567,6 @@ function openTaskModal() {
   {
     const ownerInput = document.getElementById("taskOwner");
     if (ownerInput) ownerInput.dataset.ownerEmail = "";
-    refreshAssigneeStatus("taskOwnerStatus", "", "");
   }
 
   const colorInput = document.getElementById("taskColor");
