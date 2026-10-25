@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v67"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v74"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v67";
+const APP_VERSION = "2026-10-24-design-v74";
 
 
 /* =========================================================
@@ -502,7 +502,8 @@ function applyTaskFields(base, data, cats) {
     t.ownerEmail = "";
   }
   if (!String(t.owner || "").trim()) {
-    t.ownerEmail = "";
+    /* (요청사항) 이메일만 적었으면 이메일 앞부분을 이름으로 */
+    t.owner = t.ownerEmail ? t.ownerEmail.split("@")[0] : "";
   }
 
   /* (요청사항) 지연 확인: 누르면 그 작업의 지연 알림을 멈춘다. 종료일을 바꾸면 다시 알린다 */
@@ -1740,9 +1741,9 @@ function postStatsToParent() {
       ownerFilter: state.ownerFilter || null,
       taskCount: tasks.length,
       /* (요청사항) 마감 알림: 지연·임박 작업 */
-      dueTasks: tasks.map((t) => ({ t, due: taskDueStatus(t) })).filter((x) => x.due && x.due.kind !== "overdue-ack").map(({ t, due }) => ({
+      dueTasks: tasks.map((t) => ({ t, due: taskNoticeStage(t) })).filter((x) => x.due).map(({ t, due }) => ({
         id: t.id, name: t.name, end: t.end, progress: normProgress(t.progress),
-        owner: t.owner || "", ownerEmail: t.ownerEmail || "", kind: due.kind, days: due.days, label: due.label
+        owner: t.owner || "", ownerEmail: t.ownerEmail || "", stage: due.stage, kind: due.kind, days: due.days, label: due.label
       }))
     }, window.location.origin);
   } catch (error) {
@@ -2632,9 +2633,23 @@ function closeAssigneeMenu() {
   assigneeMenuInput = null;
 }
 
+/* (요청사항) 담당자 = 이름 + 이메일. 이메일 칸은 이름 칸 id 에 Email 을 붙인 것 */
+function assigneeEmailInput(input) {
+  return input ? document.getElementById(input.id + "Email") : null;
+}
+
+function setAssigneeEmail(input, email, auto) {
+  const field = assigneeEmailInput(input);
+  if (!field) return;
+  field.value = email || "";
+  field.dataset.auto = auto ? "1" : "0";
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function chooseAssignee(input, person) {
   input.value = assigneeDisplayName(person);
   input.dataset.ownerEmail = person.email;
+  setAssigneeEmail(input, person.email, true);
   input.dispatchEvent(new Event("input", { bubbles: true }));
   closeAssigneeMenu();
 }
@@ -2719,6 +2734,11 @@ function moveAssigneeActive(step) {
 
 const ASSIGNEE_INPUT_IDS = ["taskOwner", "detailOwner"];
 
+/* 새 작업 창: 이메일을 직접 고치면 자동으로 채운 값이 아닌 것으로 */
+document.addEventListener("input", (event) => {
+  if (event.target && event.target.id === "taskOwnerEmail" && event.isTrusted) event.target.dataset.auto = "0";
+});
+
 document.addEventListener("focusin", (event) => {
   const input = event.target;
   if (!input || !ASSIGNEE_INPUT_IDS.includes(input.id)) return;
@@ -2734,9 +2754,14 @@ document.addEventListener("input", (event) => {
   if (!input || !ASSIGNEE_INPUT_IDS.includes(input.id) || !event.isTrusted) return;
   /* 손으로 고치면 예전 연결은 끊고, 목록의 이름과 똑같으면 그 사람으로 다시 잇는다 */
   input.dataset.ownerEmail = "";
+  const emailField = assigneeEmailInput(input);
+  if (emailField && emailField.dataset.auto === "1") setAssigneeEmail(input, "", false);
   loadAssigneeCandidates().then((candidates) => {
     const match = assigneeMatchByName(candidates, input.value);
-    if (match) input.dataset.ownerEmail = match.email;
+    if (match) {
+      input.dataset.ownerEmail = match.email;
+      if (emailField && !emailField.value) setAssigneeEmail(input, match.email, true);
+    }
   });
   openAssigneeMenu(input, true);
 });
@@ -3566,6 +3591,58 @@ function taskDueStatus(task) {
   return null;
 }
 
+/* (요청사항) 사이트 안 알림의 단계: D-15 에 생기고, D-2·1·당일·지연 때 단계가 바뀐다.
+   종 버튼에서 [확인]을 누를 때까지 남아 있다(확인은 단계마다 따로) */
+function taskNoticeStage(task) {
+  if (!task || !task.end || normProgress(task.progress) >= 100) return null;
+  const left = daysBetweenKeys(dateKey(new Date()), task.end);
+  if (left === null || left > DUE_NOTICE_DAYS) return null;
+  if (left < 0) return task.overdueAck ? null : { stage: "overdue", kind: "overdue", days: -left, label: "지연 " + (-left) + "일" };
+  if (left <= DUE_SOON_DAYS) return { stage: "d" + left, kind: "due-soon", days: left, label: left === 0 ? "오늘 마감" : "D-" + left };
+  return { stage: "d15", kind: "upcoming", days: left, label: "D-" + left };
+}
+
+/* =========================================================
+ * (요청사항) 담당자와 알림 받는 사람
+ *  - 담당자 = 이름 + 이메일
+ *  - 알림은 담당자가 정해져 있고(이메일) 이 사이트에 가입한 경우에만 그 담당자에게 간다
+ *  - 그 밖의 경우(담당자 없음 · 이메일 없음 · 미가입)는 아무에게도 안 간다
+ *  - 담당자 본인은 권한과 상관없이 [완료]·[지연 확인], 뷰어도 "내가 할게요"
+ * ========================================================= */
+function myEmailLower() {
+  return fbUser ? String(fbUser.email || "").toLowerCase() : "";
+}
+
+function myDisplayName() {
+  return fbUser ? (fbUser.displayName || myEmailLower().split("@")[0]) : "";
+}
+
+function canEditChartHere() {
+  return !document.body.classList.contains("shared-viewer-readonly");
+}
+
+function isMyTask(task) {
+  return !!task && !!task.ownerEmail && task.ownerEmail.toLowerCase() === myEmailLower();
+}
+
+function assigneeEmailValue(id) {
+  const field = document.getElementById(id);
+  const email = field ? field.value.trim().toLowerCase() : "";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
+}
+
+function selfAssignButtonHtml(task) {
+  if (!fbUser) return "";
+  if (isMyTask(task)) return '<button type="button" class="assignee-self" id="selfAssignBtn" data-self="off">나 빼기</button>';
+  /* 남(이메일 있는 담당자)의 작업은 편집자 이상만 바꿀 수 있다 */
+  if (task.ownerEmail && !canEditChartHere()) return "";
+  return '<button type="button" class="assignee-self" id="selfAssignBtn" data-self="on">내가 할게요</button>';
+}
+
+function canFinishTask(task) {
+  return canEditChartHere() || isMyTask(task);
+}
+
 function dueChipHtml(task) {
   const due = taskDueStatus(task);
   if (due && due.kind === "upcoming") return ""; /* D-15 는 종 버튼에서만 */
@@ -3987,7 +4064,9 @@ function showTaskDetail(id) {
             <span class="detail-prop-key">${icon('<circle cx="12" cy="8" r="3.5"></circle><path d="M5 20a7 7 0 0 1 14 0"></path>')}담당자</span>
             <span class="detail-prop-val detail-owner">
               <span class="detail-owner-avatar" id="detailOwnerAvatar" aria-hidden="true"></span>
-              <input id="detailOwner" value="${escapeAttr(task.owner)}" placeholder="비어 있음">
+              <input id="detailOwner" value="${escapeAttr(task.owner)}" placeholder="이름">
+              <input id="detailOwnerEmail" class="assignee-email" type="email" value="${escapeAttr(task.ownerEmail || "")}" placeholder="이메일 (알림 받으려면 입력)" data-auto="0">
+              ${selfAssignButtonHtml(task)}
             </span>
           </label>
 
@@ -4048,11 +4127,11 @@ function showTaskDetail(id) {
       <span class="detail-actions-spacer"></span>
 
       <!-- (요청사항) [지연 확인 | 완료] 한 알약 — 지연 확인은 지연된 작업에만 -->
-      <div class="detail-pill detail-pill-status">
-        ${taskDueStatus(task) && taskDueStatus(task).kind === "overdue"
+      <div class="detail-pill detail-pill-status${canFinishTask(task) ? "" : " hidden"}">
+        ${canFinishTask(task) && taskDueStatus(task) && taskDueStatus(task).kind === "overdue"
           ? `<button id="ackOverdueBtn" type="button" class="detail-ack" title="확인하면 이 작업의 지연 알림을 멈춰요">${icon('<path d="M12 8v5M12 16h.01"></path><circle cx="12" cy="12" r="9"></circle>')}지연 확인</button>`
           : ""}
-        <button id="completeTaskBtn" type="button" class="detail-complete" ${normProgress(task.progress) >= 100 ? "disabled" : ""} title="진행률을 100%로 바꾸고 알림을 멈춰요">${icon('<path d="m5 12 5 5 9-10"></path>')}${normProgress(task.progress) >= 100 ? "완료됨" : "완료"}</button>
+        ${canFinishTask(task) ? `<button id="completeTaskBtn" type="button" class="detail-complete" ${normProgress(task.progress) >= 100 ? "disabled" : ""} title="진행률을 100%로 바꾸고 알림을 멈춰요">${icon('<path d="m5 12 5 5 9-10"></path>')}${normProgress(task.progress) >= 100 ? "완료됨" : "완료"}</button>` : ""}
       </div>
 
       <!-- (요청사항) [취소 | 저장] 한 알약 -->
@@ -4172,9 +4251,34 @@ function showTaskDetail(id) {
 
   if (completeButton) {
     completeButton.onclick = () => {
+      /* 편집 권한이 없는 담당자(뷰어)는 진행률만 100% 로 */
+      if (!canEditChartHere()) {
+        quickTaskUpdate(completeButton, task.id, { progress: 100 }, "완료했어요. 이 작업 알림은 더 오지 않아요.");
+        return;
+      }
       const progressInput = document.getElementById("detailProgress");
       if (progressInput) progressInput.value = 100;
       saveTaskDetail(task.id);
+    };
+  }
+
+  /* (요청사항) 담당자: 이메일 칸 · 내가 할게요 / 나 빼기 */
+  const ownerEmailField = document.getElementById("detailOwnerEmail");
+  if (ownerEmailField) {
+    ownerEmailField.addEventListener("input", (event) => {
+      if (event.isTrusted) ownerEmailField.dataset.auto = "0";
+    });
+  }
+
+  const selfButton = document.getElementById("selfAssignBtn");
+
+  if (selfButton) {
+    selfButton.onclick = (event) => {
+      event.preventDefault();
+      const on = selfButton.dataset.self === "on";
+      quickTaskUpdate(selfButton, task.id,
+        on ? { owner: myDisplayName(), ownerEmail: myEmailLower() } : { owner: "", ownerEmail: "" },
+        on ? "이 작업의 담당자가 되었어요. 마감 알림을 받아요." : "담당자에서 빠졌어요.");
     };
   }
 
@@ -4182,16 +4286,7 @@ function showTaskDetail(id) {
   const ackButton = document.getElementById("ackOverdueBtn");
 
   if (ackButton) {
-    ackButton.onclick = () => withBusy(ackButton, "확인 중…", async () => {
-      try {
-        await apiPost("update", { data: { id: task.id, overdueAck: true } });
-        await loadData(false);
-        showTaskDetail(task.id);
-        showToast("지연을 확인했어요. 이 작업의 지연 알림을 멈춥니다.");
-      } catch (error) {
-        alert("저장 실패\n" + error.message);
-      }
-    });
+    ackButton.onclick = () => quickTaskUpdate(ackButton, task.id, { overdueAck: true }, "지연을 확인했어요. 이 작업의 지연 알림을 멈춥니다.");
   }
 
   /* 화면 아래쪽에 열리므로 보이는 위치로 스크롤한다. */
@@ -4201,6 +4296,21 @@ function showTaskDetail(id) {
       block: "nearest"
     });
   }
+}
+
+
+/* 작업의 몇 칸만 바로 저장 (완료 · 지연 확인 · 내가 할게요). 뷰어도 규칙이 허용하는 칸만 바뀐다 */
+function quickTaskUpdate(button, id, fields, message) {
+  return withBusy(button, "저장 중…", async () => {
+    try {
+      await apiPost("update", { data: { id, ...fields } });
+      await loadData(false);
+      showTaskDetail(id);
+      showToast(message);
+    } catch (error) {
+      alert("저장 실패\n" + error.message);
+    }
+  });
 }
 
 
@@ -4234,7 +4344,7 @@ async function saveTaskDetail(id) {
 
     owner: document.getElementById("detailOwner").value,
 
-    ownerEmail: document.getElementById("detailOwner").dataset.ownerEmail || ""
+    ownerEmail: assigneeEmailValue("detailOwnerEmail")
   };
 
 
@@ -4453,6 +4563,7 @@ function openTaskModal() {
   setFieldValue("taskMemo", "");
   setFieldValue("taskTarget", "");
   setFieldValue("taskOwner", "");
+  setFieldValue("taskOwnerEmail", "");
   {
     const ownerInput = document.getElementById("taskOwner");
     if (ownerInput) ownerInput.dataset.ownerEmail = "";
@@ -4535,7 +4646,7 @@ async function saveNewTask() {
 
           owner: document.getElementById("taskOwner").value,
 
-          ownerEmail: document.getElementById("taskOwner").dataset.ownerEmail || ""
+          ownerEmail: assigneeEmailValue("taskOwnerEmail")
         }
       });
 
@@ -11588,7 +11699,7 @@ function obTaskSteps() {
     { targets: [pick("#detailStart", ".detail-prop")], title: "기간",
       text: "시작일과 종료일을 고르면 옆에 며칠인지 보여요. 차트에서 막대를 끌거나 막대 끝을 끌어도 바뀌어요." },
     { targets: [pick("#detailOwner", ".detail-prop")], title: "담당자",
-      text: "이름을 적거나, 차트가 공유된 조직원 목록에서 골라요. 고른 사람은 '담당자별 보기'로 모아 볼 수 있어요." },
+      text: "이름과 이메일을 적거나 조직원 목록에서 골라요. 이메일이 있어야 그 사람이 마감 알림을 받아요. '내가 할게요'로 나를 담당자로 넣을 수도 있어요." },
     { targets: [pick(".detail-side")], title: "진행률과 막대 색",
       text: "숫자를 넣거나 막대를 끌어 진행률을 정해요. 아래에서 이 작업만의 막대 색을 고를 수도 있어요." },
     { targets: [pick("#saveDetailBtn"), pick("#cancelDetailBtn")], title: "저장",
@@ -11700,18 +11811,13 @@ obInitInlineTips();
  *  - 메일 받기 설정은 users/{uid}.notify.email (기본 켜짐). 실제 발송은 functions/ 의 예약 작업
  * ========================================================= */
 let bellMenu = null;
-let bellMineOnly = false;
+let bellMineOnly = true; /* (요청사항) 기본은 "나에게 온 알림" */
 let bellProfile = null;
 let bellProfileState = "idle"; // idle | loading | ready | error
 
+/* (요청사항) 나에게 온 알림 = 내가 담당자인 작업 */
 function bellIsMine(task) {
-  if (!fbUser) return false;
-  const email = String(fbUser.email || "").toLowerCase();
-  if (task.ownerEmail && task.ownerEmail.toLowerCase() === email) return true;
-  const owner = String(task.owner || "").trim();
-  if (!owner || task.ownerEmail) return false;
-  const name = String(fbUser.displayName || "").trim();
-  return owner === name || owner === obFirstName();
+  return !!fbUser && isMyTask(task);
 }
 
 function bellCollect() {
@@ -11727,26 +11833,41 @@ function bellCollect() {
   });
 }
 
-/* 종 버튼 배지는 "아직 안 본 오늘 알림" 개수. 목록을 열면 본 것으로 (이 브라우저에 오늘 날짜와 함께 기록) */
+/* (요청사항) 사이트 안 알림은 [확인]을 누를 때까지 남는다. 확인 기록은 users/{uid}.noticeAcks 에
+   (다른 기기에서도 다시 안 뜨게) + 이 브라우저에도. 종료일이 바뀌면 새 알림으로 본다 */
 function bellNoticeKey(task) {
-  return task.chartId + ":" + task.id + ":" + task.kind + ":" + task.days;
+  return task.chartId + ":" + task.id + ":" + task.stage + ":" + task.end;
 }
 
-function bellSeenKeys() {
-  try {
-    const saved = JSON.parse(localStorage.getItem("ganttBellSeen:" + (fbUser ? fbUser.uid : "")) || "null");
-    return saved && saved.day === dateKey(new Date()) ? new Set(saved.keys || []) : new Set();
-  } catch (error) {
-    return new Set();
+function bellAckCacheKey() {
+  return "ganttNoticeAcks:" + (fbUser ? fbUser.uid : "");
+}
+
+function bellAcks() {
+  let local = {};
+  try { local = JSON.parse(localStorage.getItem(bellAckCacheKey()) || "{}") || {}; } catch (error) { local = {}; }
+  return { ...((bellProfile && bellProfile.noticeAcks) || {}), ...local };
+}
+
+function bellAck(items) {
+  if (!fbUser || !items.length) return;
+  const today = dateKey(new Date());
+  const added = {};
+  items.forEach((t) => { added[bellNoticeKey(t)] = today; });
+  const merged = { ...bellAcks(), ...added };
+  try { localStorage.setItem(bellAckCacheKey(), JSON.stringify(merged)); } catch (error) { /* 무시 */ }
+  bellProfile = { ...(bellProfile || {}), noticeAcks: { ...((bellProfile && bellProfile.noticeAcks) || {}), ...added } };
+  if (typeof fb.mergeUserProfile === "function") {
+    fb.mergeUserProfile(fbUser.uid, { noticeAcks: added }).catch((error) => console.warn("알림 확인 저장 실패:", error && error.message));
   }
+  shellRefreshBell();
 }
 
-function bellMarkSeen(items) {
-  const keys = bellSeenKeys();
-  items.forEach((t) => keys.add(bellNoticeKey(t)));
-  try {
-    localStorage.setItem("ganttBellSeen:" + (fbUser ? fbUser.uid : ""), JSON.stringify({ day: dateKey(new Date()), keys: Array.from(keys) }));
-  } catch (error) { /* 무시 */ }
+/* 확인하지 않은 알림 (전체 / 내 담당) */
+function bellOpenItems(mineOnly = bellMineOnly) {
+  const acks = bellAcks();
+  const items = bellCollect().filter((t) => !acks[bellNoticeKey(t)]);
+  return mineOnly ? items.filter(bellIsMine) : items;
 }
 
 function shellRefreshBell() {
@@ -11755,9 +11876,7 @@ function shellRefreshBell() {
   const badge = document.getElementById("mcBellBadge");
   if (!button || !badge) return;
   button.classList.toggle("hidden", !fbUser);
-  const items = bellCollect();
-  const seen = bellSeenKeys();
-  const counted = (bellMineOnly ? items.filter(bellIsMine) : items).filter((t) => !seen.has(bellNoticeKey(t)));
+  const counted = bellOpenItems(true); /* 배지는 언제나 "나에게 온 알림"만 */
   badge.textContent = counted.length > 99 ? "99+" : String(counted.length);
   badge.classList.toggle("hidden", !counted.length);
   badge.classList.toggle("mc-bell-badge-soon", !counted.some((t) => t.kind === "overdue"));
@@ -11782,46 +11901,84 @@ function shellOpenTaskFromNotice(chartId, taskId) {
   setTimeout(() => shellSendCommand(box, { cmd: "openTask", taskId }), 450);
 }
 
+const BELL_ICON = {
+  alert: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v5M12 16h.01"></path><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>',
+  clock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>',
+  cal: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M8 3v3M16 3v3"></path></svg>',
+  check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>',
+  gear: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>',
+  mail: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="m4 7 8 6 8-6"></path></svg>',
+  bell: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>',
+  done: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg>'
+};
+let bellSettingsOpen = false;
+
+/* (요청사항) 글자 위주였던 알림창을 그림 위주로:
+   왼쪽 색 타일에 남은 날(크게) · 이름 한 줄 · 아래 줄은 담당자 동그라미 + 차트 + 진행률 막대 ·
+   오른쪽 회색 체크 = 확인. 메일·푸시 설정은 톱니 버튼 안으로 */
 function shellRenderBellMenu() {
   const menu = bellMenu;
   if (!menu) return;
-  const all = bellCollect();
-  const items = bellMineOnly ? all.filter(bellIsMine) : all;
-  const overdue = items.filter((t) => t.kind === "overdue");
-  const soon = items.filter((t) => t.kind === "due-soon");
-  const upcoming = items.filter((t) => t.kind === "upcoming");
+  const items = bellOpenItems();
+  const groups = [
+    ["overdue", "지연", BELL_ICON.alert],
+    ["due-soon", "마감 임박", BELL_ICON.clock],
+    ["upcoming", "다가오는 마감", BELL_ICON.cal]
+  ];
 
-  const section = (title, list, kind) => !list.length ? "" :
-    '<div class="mc-bell-sec"><div class="mc-bell-sec-title mc-bell-' + kind + '">' + title + " " + list.length + "</div>" +
-    list.map((t) =>
-      '<button type="button" class="mc-bell-item" data-chart="' + escapeHtml(t.chartId) + '" data-task="' + escapeHtml(t.id) + '">' +
-        '<span class="due-chip due-chip-' + t.kind + '">' + escapeHtml(t.label) + "</span>" +
-        '<span class="mc-bell-item-text"><b>' + escapeHtml(t.name) + "</b>" +
-        "<span>" + escapeHtml(t.chartName) + " · " + escapeHtml(t.owner || "담당자 없음") + " · " + t.progress + "%</span></span>" +
-      "</button>").join("") + "</div>";
+  const tile = (t) => {
+    const big = t.kind === "overdue" ? "+" + t.days + "일" : t.days === 0 ? "오늘" : "D-" + t.days;
+    const small = t.kind === "overdue" ? "지연" : t.days === 0 ? "마감" : "남음";
+    return '<span class="mc-bell-tile mc-bell-tile-' + t.kind + '"><b>' + big + "</b><i>" + small + "</i></span>";
+  };
+  const who = (t) => {
+    const name = t.owner || "";
+    return name
+      ? '<span class="mc-bell-who" style="background:' + mcPersonColor(t.ownerEmail || name) + '" title="' + escapeHtml(name) + '">' + escapeHtml(Array.from(name)[0]) + "</span>"
+      : '<span class="mc-bell-who mc-bell-who-none" title="담당자 없음">–</span>';
+  };
+
+  const list = groups.map(([kind, title, icon]) => {
+    const rows = items.filter((t) => t.kind === kind);
+    if (!rows.length) return "";
+    return '<div class="mc-bell-sec"><div class="mc-bell-sec-title mc-bell-' + kind + '">' + icon + "<span>" + title + "</span><em>" + rows.length + "</em></div>" +
+      rows.map((t) =>
+        '<div class="mc-bell-item">' +
+          '<button type="button" class="mc-bell-open" data-chart="' + escapeHtml(t.chartId) + '" data-task="' + escapeHtml(t.id) + '">' +
+            tile(t) +
+            '<span class="mc-bell-item-text"><b>' + escapeHtml(t.name) + "</b>" +
+              '<span class="mc-bell-meta">' + who(t) + '<span class="mc-bell-chart">' + escapeHtml(t.chartName) + "</span>" +
+                '<span class="mc-bell-prog" title="진행률 ' + t.progress + '%"><i style="width:' + t.progress + '%"></i></span></span></span>' +
+          "</button>" +
+          '<button type="button" class="mc-bell-ack" data-key="' + escapeHtml(bellNoticeKey(t)) + '" aria-label="확인" title="확인 (알림에서 지우기)">' + BELL_ICON.check + "</button>" +
+        "</div>").join("") + "</div>";
+  }).join("");
 
   const notify = (bellProfile && bellProfile.notify) || {};
   const emailOn = notify.email !== false;
   const pushOn = notify.push === true;
   const off = bellProfileState !== "ready" ? " disabled" : "";
-  const mailRow = bellProfileState === "error"
-    ? '<div class="mc-bell-mail mc-bell-mail-off">알림 설정을 불러오지 못했어요. (보안 규칙 확인 필요)</div>'
+  const toggle = (id, on, icon, title, sub) =>
+    '<label class="mc-bell-switch-row"><span class="mc-bell-switch-ic">' + icon + "</span>" +
+      '<span class="mc-bell-switch-text"><b>' + title + "</b><i>" + sub + "</i></span>" +
+      '<input type="checkbox" class="mc-bell-switch" id="' + id + '"' + (on ? " checked" : "") + off + "></label>";
+  const settings = !bellSettingsOpen ? "" : bellProfileState === "error"
+    ? '<div class="mc-bell-settings mc-bell-mail-off">알림 설정을 불러오지 못했어요. (보안 규칙 확인 필요)</div>'
     : '<div class="mc-bell-settings">' +
-        '<label class="mc-bell-mail"><input type="checkbox" id="mcBellMail"' + (emailOn ? " checked" : "") + off +
-          "><span><b>D-7</b>에 내 담당 작업을 메일로 한 번 받기</span></label>" +
-        '<label class="mc-bell-mail"><input type="checkbox" id="mcBellPush"' + (pushOn ? " checked" : "") + off +
-          "><span><b>D-2 · D-1 · 당일</b>과 <b>지연</b>(확인 전까지 하루 한 번)을 푸시로 받기</span></label>" +
+        toggle("mcBellMail", emailOn, BELL_ICON.mail, "메일", "D-7 · 내 담당") +
+        toggle("mcBellPush", pushOn, BELL_ICON.bell, "푸시", "D-2 · D-1 · 당일 · 지연") +
       "</div>";
 
   menu.innerHTML =
     '<div class="mc-bell-head"><b>마감 알림</b>' +
-      '<div class="mc-bell-seg"><button type="button" data-bell-scope="all" class="' + (!bellMineOnly ? "on" : "") + '">전체</button>' +
-      '<button type="button" data-bell-scope="mine" class="' + (bellMineOnly ? "on" : "") + '">내 담당</button></div></div>' +
+      '<div class="mc-bell-seg"><button type="button" data-bell-scope="mine" class="' + (bellMineOnly ? "on" : "") + '">나에게</button>' +
+      '<button type="button" data-bell-scope="all" class="' + (!bellMineOnly ? "on" : "") + '">전체</button></div>' +
+      '<button type="button" class="mc-bell-gear' + (bellSettingsOpen ? " on" : "") + '" aria-label="알림 설정" title="알림 설정">' + BELL_ICON.gear + "</button></div>" +
+    settings +
     '<div class="mc-bell-list">' +
-      (items.length
-        ? section("지연", overdue, "overdue") + section("마감 임박", soon, "soon") + section("15일 뒤 마감", upcoming, "upcoming")
-        : '<div class="mc-bell-empty">오늘 알릴 마감이 없어요.</div>') +
-    "</div>" + mailRow;
+      (items.length ? list : '<div class="mc-bell-empty">' + BELL_ICON.done + "<span>확인할 알림이 없어요</span></div>") +
+    "</div>" +
+    (items.length ? '<button type="button" class="mc-bell-ack-all">' + BELL_ICON.check + "모두 확인</button>" : "");
 }
 
 function shellOpenBellMenu(button) {
@@ -11836,8 +11993,6 @@ function shellOpenBellMenu(button) {
   bellMenu = menu;
   shellRenderBellMenu();
   document.body.appendChild(menu);
-  bellMarkSeen(bellCollect());
-  shellRefreshBell();
   const rect = button.getBoundingClientRect();
   menu.style.top = rect.bottom + 8 + "px";
   menu.style.left = Math.max(8, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8)) + "px";
@@ -11850,7 +12005,22 @@ function shellOpenBellMenu(button) {
       shellRefreshBell();
       return;
     }
-    const item = event.target.closest(".mc-bell-item");
+    const ack = event.target.closest(".mc-bell-ack");
+    if (ack) {
+      const target = bellOpenItems().find((t) => bellNoticeKey(t) === ack.dataset.key);
+      if (target) bellAck([target]);
+      return;
+    }
+    if (event.target.closest(".mc-bell-gear")) {
+      bellSettingsOpen = !bellSettingsOpen;
+      shellRenderBellMenu();
+      return;
+    }
+    if (event.target.closest(".mc-bell-ack-all")) {
+      bellAck(bellOpenItems());
+      return;
+    }
+    const item = event.target.closest(".mc-bell-open");
     if (item) shellOpenTaskFromNotice(item.dataset.chart, item.dataset.task);
   });
   menu.addEventListener("change", async (event) => {
@@ -11891,6 +12061,10 @@ async function shellInitBellProfile() {
     const fields = { email: String(fbUser.email || "").toLowerCase(), name: fbUser.displayName || "" };
     if (!profile || !profile.notify || profile.notify.email === undefined) fields.notify = { email: true };
     await fb.mergeUserProfile(fbUser.uid, fields);
+    /* (요청사항) 다른 사람이 나를 담당자로 적으면 "가입한 사람"으로 보이게 */
+    if (typeof fb.registerMyEmail === "function") {
+      fb.registerMyEmail(fbUser.uid, fields.email).catch((error) => console.warn("가입 이메일 표시 실패:", error && error.message));
+    }
     bellProfile = { ...(profile || {}), ...fields };
     bellProfileState = "ready";
   } catch (error) {

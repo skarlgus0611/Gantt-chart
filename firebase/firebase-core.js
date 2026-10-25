@@ -646,3 +646,19 @@ export async function enablePush(uid) {
 export function disablePush(uid) {
   return setDoc(doc(db, "users", uid), { notify: { push: false }, updatedAt: serverTimestamp() }, { merge: true });
 }
+
+/* ----- (요청사항) 알림 받는 사람 판정: "이 사이트에 가입한 이메일인가" -----
+   registeredEmails/{소문자 이메일} = { uid } 를 본인이 로그인할 때 적어 두고,
+   다른 사람은 그 문서가 있는지만 확인한다(목록 조회는 막혀 있음). */
+export function registerMyEmail(uid, email) {
+  const key = String(email || "").trim().toLowerCase();
+  if (!key) return Promise.resolve();
+  return setDoc(doc(db, "registeredEmails", key), { uid, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+export async function isEmailRegistered(email) {
+  const key = String(email || "").trim().toLowerCase();
+  if (!key) return false;
+  const snap = await getDoc(doc(db, "registeredEmails", key));
+  return snap.exists();
+}
