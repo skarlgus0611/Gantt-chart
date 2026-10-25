@@ -84,17 +84,17 @@ function buildNotices({ users, charts, tasksByChart, todayKey }) {
   };
 }
 
-function chipText(left) {
-  return left < 0 ? "지연 " + (-left) + "일" : left === 0 ? "오늘 마감" : "D-" + left;
-}
-
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-/* 메일: 그날 보낼 작업을 한 통에 묶어서 — 차트별로 한 줄씩, 한눈에 */
-function chipColors(left) {
-  return left < 0 ? ["#b91c1c", "#fee2e2"] : left === 0 ? ["#c2410c", "#ffedd5"] : left === 1 ? ["#b45309", "#fef3c7"] : ["#0f766e", "#e3f2ed"];
+/* 메일: 그날 보낼 작업을 한 통에 묶어서 — 차트별로 한 줄씩, D-표시만 크고 굵게 색으로 */
+function dLabel(left) {
+  return left < 0 ? "D+" + (-left) : left === 0 ? "D-day" : "D-" + left;
+}
+
+function dColor(left) {
+  return left < 0 ? "#dc2626" : left === 0 ? "#ea580c" : left === 1 ? "#d97706" : left === 7 ? "#0f766e" : "#64748b";
 }
 
 function shortDate(key) {
@@ -104,14 +104,14 @@ function shortDate(key) {
 
 function renderMail(notice, siteUrl) {
   const groups = [
-    ["지연", (i) => i.left < 0],
-    ["오늘 마감", (i) => i.left === 0],
-    ["내일 마감", (i) => i.left === 1],
-    ["일주일 뒤 마감", (i) => i.left === 7],
-    ["15일 뒤 마감", (i) => i.left === 15]
+    ["지연", "D+", -1, (i) => i.left < 0],
+    ["오늘 마감", "D-day", 0, (i) => i.left === 0],
+    ["내일 마감", "D-1", 1, (i) => i.left === 1],
+    ["일주일 뒤 마감", "D-7", 7, (i) => i.left === 7],
+    ["15일 뒤 마감", "D-15", 15, (i) => i.left === 15]
   ];
-  const counts = groups.map(([label, test]) => [label, notice.items.filter(test).length]).filter(([, n]) => n);
-  const subject = "[간트차트] " + counts.map(([label, n]) => label + " " + n + "건").join(" · ");
+  const counts = groups.map(([label, short, left, test]) => ({ label, short, left, n: notice.items.filter(test).length })).filter((g) => g.n);
+  const subject = "[간트차트] " + counts.map((g) => g.label + " " + g.n + "건").join(" · ");
   const font = "font-family:-apple-system,'Pretendard','Malgun Gothic',sans-serif;";
 
   const byChart = new Map();
@@ -120,25 +120,26 @@ function renderMail(notice, siteUrl) {
     byChart.get(i.chartName).push(i);
   });
   const rows = Array.from(byChart.entries()).map(([chartName, list]) =>
-    '<tr><td colspan="3" style="padding:14px 0 4px;font-size:11.5px;color:#71717a;font-weight:700">' + escapeHtml(chartName) + "</td></tr>" +
-    list.map((i) => {
-      const [color, bg] = chipColors(i.left);
-      return '<tr style="border-top:1px solid #f0f0f0">' +
-        '<td style="padding:7px 8px 7px 0;width:1%;white-space:nowrap"><span style="display:inline-block;min-width:44px;text-align:center;padding:2px 7px;border-radius:999px;background:' + bg + ";color:" + color + ';font-size:11.5px;font-weight:700">' + chipText(i.left) + "</span></td>" +
-        '<td style="padding:7px 0;font-size:13.5px;font-weight:600;color:#18181b">' + escapeHtml(i.name) + "</td>" +
-        '<td style="padding:7px 0 7px 8px;width:1%;white-space:nowrap;text-align:right;font-size:12px;color:#71717a">' + shortDate(i.end) + " · " + i.progress + "%</td></tr>";
-    }).join("")
+    '<tr><td colspan="3" style="padding:16px 0 4px;font-size:11.5px;color:#71717a;font-weight:700">' + escapeHtml(chartName) + "</td></tr>" +
+    list.map((i) =>
+      '<tr style="border-top:1px solid #ececec">' +
+        '<td style="padding:8px 10px 8px 0;width:1%;white-space:nowrap;font-size:18px;font-weight:800;letter-spacing:-.3px;color:' + dColor(i.left) + '">' + dLabel(i.left) + "</td>" +
+        '<td style="padding:8px 0;font-size:14px;color:#18181b">' + escapeHtml(i.name) + "</td>" +
+        '<td style="padding:8px 0 8px 8px;width:1%;white-space:nowrap;text-align:right;font-size:12px;color:#a1a1aa">' + shortDate(i.end) + " · " + i.progress + "%</td></tr>"
+    ).join("")
   ).join("");
 
-  const pills = counts.map(([label, n]) => '<span style="display:inline-block;margin:6px 6px 0 0;padding:2px 9px;border-radius:999px;background:rgba(255,255,255,.18);font-size:12px">' + label + " " + n + "</span>").join("");
+  const stats = counts.map((g) =>
+    '<span style="display:inline-block;margin:6px 14px 0 0;white-space:nowrap;font-size:19px;font-weight:800;color:' + dColor(g.left) + '">' + g.short +
+    ' <span style="font-size:12px;font-weight:700">' + g.n + "건</span></span>").join("");
   const html =
     '<div style="max-width:560px;margin:0 auto;padding:16px;' + font + 'color:#27272a">' +
-      '<div style="padding:14px 16px;border-radius:12px;background:#0f766e;color:#fff"><b style="font-size:16px">마감 알림</b><div>' + pills + "</div></div>" +
-      '<table role="presentation" style="width:100%;border-collapse:collapse;margin-top:4px">' + rows + "</table>" +
-      '<p style="margin:18px 0 8px"><a href="' + escapeHtml(siteUrl) + '" style="display:inline-block;padding:9px 18px;border-radius:999px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700;font-size:13px">간트차트 열기</a></p>' +
+      '<div style="padding-bottom:12px;border-bottom:2px solid #18181b"><div style="font-size:13px;font-weight:700;color:#0f766e">간트차트 마감 알림</div>' + stats + "</div>" +
+      '<table role="presentation" style="width:100%;border-collapse:collapse">' + rows + "</table>" +
+      '<p style="margin:20px 0 8px"><a href="' + escapeHtml(siteUrl) + '" style="display:inline-block;padding:9px 18px;border-radius:999px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700;font-size:13px">간트차트 열기</a></p>' +
       '<p style="margin:0;font-size:11px;color:#a1a1aa">완료하거나 [지연 확인]을 누르면 그만 보내요 · 메일 끄기: 종 버튼 → 설정</p></div>';
-  const text = counts.map(([label, n]) => label + " " + n + "건").join(" · ") + "\n\n" +
-    notice.items.map((i) => "- [" + chipText(i.left) + "] " + i.name + " (" + i.chartName + ", " + i.end + ", " + i.progress + "%)").join("\n") + "\n\n" + siteUrl;
+  const text = counts.map((g) => g.label + " " + g.n + "건").join(" · ") + "\n\n" +
+    notice.items.map((i) => "- " + dLabel(i.left) + "  " + i.name + " (" + i.chartName + ", " + i.end + ", " + i.progress + "%)").join("\n") + "\n\n" + siteUrl;
   return { subject, html, text };
 }
 
