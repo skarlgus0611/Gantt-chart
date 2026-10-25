@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v52";
+const APP_VERSION = "2026-10-24-design-v53";
 
 
 /* =========================================================
@@ -6979,7 +6979,7 @@ function shellRefreshCalButtons() {
 }
 
 /* =========================================================
- * (요청사항) CSV 업로드: 파일의 작업을 이 차트에 "그냥 추가"
+ * (요청사항) CSV·엑셀(.xlsx) 업로드: 파일의 작업을 이 차트에 "그냥 추가"
  *  - UTF-8 로 읽고, 한글이 깨지면 EUC-KR(엑셀 CSV)로 다시 읽는다
  *  - 큰따옴표 안의 쉼표·줄바꿈 지원
  *  - 첫 줄 제목으로 열을 찾는다(순서 무관)
@@ -7028,6 +7028,110 @@ async function csvReadFileText(file) {
     }
   }
   return text.replace(/^﻿/, "");
+}
+
+/* ---- 엑셀(.xlsx) 읽기: 라이브러리 없이 zip 을 풀어 첫 번째 시트를 줄·칸 배열로 ----
+ *  - .xlsx 는 zip 안의 XML 파일 묶음이라 브라우저 기본 기능(DecompressionStream, DOMParser)으로 충분하다
+ *  - 날짜 칸은 엑셀 일련번호로 오지만 csvNormalizeDate 가 이미 처리한다 */
+async function xlsxUnzip(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error("엑셀 파일을 열 수 없어요. (.xlsx 형식인지 확인해 주세요)");
+  const count = view.getUint16(eocd + 10, true);
+  let pos = view.getUint32(eocd + 16, true);
+  const entries = {};
+  for (let n = 0; n < count && view.getUint32(pos, true) === 0x02014b50; n++) {
+    const method = view.getUint16(pos + 10, true);
+    const size = view.getUint32(pos + 20, true);
+    const nameLen = view.getUint16(pos + 28, true);
+    const extraLen = view.getUint16(pos + 30, true);
+    const commentLen = view.getUint16(pos + 32, true);
+    const local = view.getUint32(pos + 42, true);
+    const name = new TextDecoder().decode(bytes.subarray(pos + 46, pos + 46 + nameLen));
+    entries[name] = { method, size, local };
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+  return async (name) => {
+    const entry = entries[name];
+    if (!entry) return null;
+    const start = entry.local + 30 + view.getUint16(entry.local + 26, true) + view.getUint16(entry.local + 28, true);
+    const data = bytes.subarray(start, start + entry.size);
+    if (entry.method === 0) return new TextDecoder().decode(data);
+    if (entry.method !== 8) throw new Error("이 엑셀 파일의 압축 방식은 읽을 수 없어요.");
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Response(stream).text();
+  };
+}
+
+function xlsxXml(text) {
+  return text ? new DOMParser().parseFromString(text, "application/xml") : null;
+}
+
+function xlsxColumnIndex(ref) {
+  const letters = String(ref || "").replace(/[^A-Z]/gi, "").toUpperCase();
+  let index = 0;
+  for (const ch of letters) index = index * 26 + (ch.charCodeAt(0) - 64);
+  return index - 1;
+}
+
+function xlsxText(node) {
+  /* 일본어 후리가나(rPh) 같은 보조 글자는 빼고 <t> 만 이어 붙인다 */
+  return Array.from(node.getElementsByTagNameNS("*", "t"))
+    .filter((t) => !t.parentNode || t.parentNode.localName !== "rPh")
+    .map((t) => t.textContent)
+    .join("");
+}
+
+async function xlsxReadRows(file) {
+  const read = await xlsxUnzip(await file.arrayBuffer());
+
+  /* 첫 번째 시트의 실제 파일 경로 찾기 (못 찾으면 sheet1.xml) */
+  let sheetPath = "xl/worksheets/sheet1.xml";
+  const workbook = xlsxXml(await read("xl/workbook.xml"));
+  const rels = xlsxXml(await read("xl/_rels/workbook.xml.rels"));
+  const firstSheet = workbook && workbook.getElementsByTagNameNS("*", "sheet")[0];
+  if (firstSheet && rels) {
+    const relId = firstSheet.getAttribute("r:id") ||
+      firstSheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+    const rel = Array.from(rels.getElementsByTagNameNS("*", "Relationship")).find((r) => r.getAttribute("Id") === relId);
+    if (rel) {
+      const target = rel.getAttribute("Target") || "";
+      sheetPath = target.startsWith("/") ? target.slice(1) : "xl/" + target.replace(/^\.\//, "");
+    }
+  }
+
+  const sharedDoc = xlsxXml(await read("xl/sharedStrings.xml"));
+  const shared = sharedDoc ? Array.from(sharedDoc.getElementsByTagNameNS("*", "si")).map(xlsxText) : [];
+
+  const sheet = xlsxXml(await read(sheetPath));
+  if (!sheet) throw new Error("엑셀 파일에서 시트를 찾지 못했어요.");
+
+  const rows = [];
+  Array.from(sheet.getElementsByTagNameNS("*", "row")).forEach((rowNode) => {
+    const row = [];
+    let next = 0;
+    Array.from(rowNode.getElementsByTagNameNS("*", "c")).forEach((cell) => {
+      const ref = cell.getAttribute("r");
+      const index = ref ? xlsxColumnIndex(ref) : next;
+      next = index + 1;
+      const type = cell.getAttribute("t");
+      const v = cell.getElementsByTagNameNS("*", "v")[0];
+      const raw = v ? v.textContent : "";
+      let value;
+      if (type === "s") value = shared[Number(raw)] || "";
+      else if (type === "inlineStr") value = xlsxText(cell);
+      else if (type === "d") value = raw.slice(0, 10);
+      else value = raw;
+      while (row.length < index) row.push("");
+      row[index] = value;
+    });
+    if (row.some((c) => String(c).trim() !== "")) rows.push(row);
+  });
+  return rows;
 }
 
 const CSV_HEADER_ALIASES = {
@@ -7081,7 +7185,7 @@ function csvBuildImport(rows, existingCategories) {
     if (index >= 0) col[key] = index;
   });
   if (col.name === undefined || col.start === undefined || col.end === undefined) {
-    throw new Error("첫 줄에 '작업명', '시작일', '종료일' 제목이 있어야 해요. (이 앱에서 다운로드한 CSV 형식)");
+    throw new Error("첫 줄에 '작업명', '시작일', '종료일' 제목이 있어야 해요. (이 앱에서 다운로드한 파일 형식)");
   }
 
   const get = (row, key) => (col[key] === undefined ? "" : String(row[col[key]] || "").trim());
@@ -7124,7 +7228,7 @@ function shellPickCsvForChart(chart, box, button) {
   }
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = ".csv,text/csv";
+  input.accept = ".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   input.addEventListener("change", () => {
     const file = input.files && input.files[0];
     if (file) withBusy(button, "불러오는 중…", () => shellImportCsvToChart(chart, box, file));
@@ -7135,9 +7239,11 @@ function shellPickCsvForChart(chart, box, button) {
 async function shellImportCsvToChart(chart, box, file) {
   const chartId = chart.id;
   try {
-    const text = await csvReadFileText(file);
+    const fileName = String(file.name || "").toLowerCase();
+    if (fileName.endsWith(".xls")) throw new Error("예전 엑셀(.xls) 파일은 읽을 수 없어요. 엑셀에서 .xlsx 또는 CSV 로 다시 저장해 주세요.");
+    const rows = fileName.endsWith(".xlsx") ? await xlsxReadRows(file) : csvParse(await csvReadFileText(file));
     const categories = await fb.getCategoriesOnce(chartId);
-    const plan = csvBuildImport(csvParse(text), categories);
+    const plan = csvBuildImport(rows, categories);
 
     if (!plan.tasks.length) {
       showToast("추가할 작업이 없어요." + (plan.skipped.length ? " (" + plan.skipped.slice(0, 3).join(", ") + ")" : ""), true, 0);
@@ -7187,7 +7293,7 @@ async function shellImportCsvToChart(chart, box, file) {
     showToast("작업 " + added + "개를 추가했어요." + (added < plan.tasks.length ? " (" + (plan.tasks.length - added) + "개 실패)" : ""), added < plan.tasks.length);
   } catch (error) {
     console.error(error);
-    showToast(error.message || "CSV 파일을 불러오지 못했어요.", true, 0);
+    showToast(error.message || "파일을 불러오지 못했어요.", true, 0);
   }
 }
 
