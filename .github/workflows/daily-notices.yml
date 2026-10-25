@@ -1,0 +1,49 @@
+# (요청사항) 마감 알림을 GitHub 가 매일 오전 9시(서울)에 보낸다 — Firebase 무료 요금제로 가능.
+# 필요한 비밀값 (저장소 Settings → Secrets and variables → Actions):
+#   FIREBASE_SERVICE_ACCOUNT : Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → "새 비공개 키 생성" JSON 내용 통째로
+#   SMTP_USER                : 알림 메일을 보낼 Gmail 주소        (없으면 메일만 건너뜀)
+#   SMTP_PASS                : 그 Gmail 의 앱 비밀번호(16자리)   (없으면 메일만 건너뜀)
+#   SMTP_HOST, SMTP_PORT     : (선택) Gmail 이 아닐 때 보내는 메일 서버. 네이버: smtp.naver.com / 465
+# Actions 탭 → Daily due notices → Run workflow 로 바로 돌려 볼 수도 있다 (미리보기를 켜면 보내지 않고 목록만 출력).
+name: Daily due notices
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # 매일 00:00 UTC = 오전 9시 서울 (GitHub 사정으로 수십 분 늦을 수 있음)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "미리보기 (보내지 않고 목록만 출력)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: daily-notices
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install
+        run: npm install --prefix functions --no-audit --no-fund --omit=dev
+
+      - name: Check notice rules
+        run: node functions/test-digest.js
+
+      - name: Send notices
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: node functions/run-daily.js

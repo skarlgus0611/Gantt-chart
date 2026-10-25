@@ -1,6 +1,6 @@
 # 마감 알림 (서버)
 
-`dailyDueNotices` 는 매일 오전 9시(서울)에 한 번 돌아요.
+매일 오전 9시(서울)에 한 번, 오늘 보낼 마감 알림 메일·웹 푸시를 보내요.
 
 | 언제 | 사이트 안 | 메일 | 웹 푸시 |
 |---|---|---|---|
@@ -17,30 +17,35 @@
 - 그 밖의 경우(담당자 없음 · 이메일 없음 · 미가입)는 아무에게도 안 보내요
 - 메일·푸시는 종 버튼 설정에서 각각 켜고 끌 수 있어요 (메일 기본 켜짐, 푸시는 직접 켜야 함)
 
-## 처음 한 번 준비하기
+## 처음 한 번 준비하기 (무료 — GitHub 가 매일 9시에 보냄)
 
-1. **웹 푸시 키** — Firebase 콘솔 → 프로젝트 설정 → 클라우드 메시징 → 웹 푸시 인증서 → "키 쌍 생성".
-   나온 공개 키를 `firebase/firebase-core.js` 의 `FCM_VAPID_KEY = ""` 따옴표 안에 넣어요. (이건 공개해도 되는 키예요)
-2. **Firebase 요금제를 Blaze(종량제)로** — Firebase 콘솔 → 왼쪽 아래 요금제 → 업그레이드.
-   사용량이 적으면 실제 요금은 거의 0원이에요. Google Cloud 콘솔 → 결제 → 예산 및 알림에서 예산 알림(예: 1,000원)을 걸어 두면 안심돼요.
-3. **보내는 Gmail 계정의 앱 비밀번호** — 그 Google 계정 → 보안 → 2단계 인증 켜기 → "앱 비밀번호"에서 16자리 비밀번호 만들기.
-4. **PC 준비** — Node.js 20 설치 후 터미널에서
-   ```
-   npm install -g firebase-tools
-   firebase login
-   ```
-5. **이 저장소 폴더에서**
-   ```
-   cd functions
-   npm install
-   cd ..
-   firebase functions:secrets:set SMTP_USER    # 보내는 Gmail 주소 입력
-   firebase functions:secrets:set SMTP_PASS    # 3번의 앱 비밀번호 입력
-   firebase deploy --only functions
-   ```
-6. **바로 한 번 돌려 보기** — Google Cloud 콘솔 → Cloud Scheduler → `firebase-schedule-dailyDueNotices-...` → "강제 실행".
+카드 등록(Blaze) 없이 됩니다. GitHub Actions 가 매일 오전 9시(서울)에 `functions/run-daily.js` 를 돌려요
+(`.github/workflows/daily-notices.yml`). GitHub 사정으로 수십 분 늦게 올 수 있어요.
 
-`firebase deploy --only functions` 는 함수만 올려요. 보안 규칙은 지금처럼 콘솔에 붙여넣으면 돼요.
+1. **Firebase 키** — Firebase 콘솔 → 프로젝트 설정(톱니) → **서비스 계정** 탭 → **새 비공개 키 생성** → JSON 파일이 받아져요.
+2. **(메일을 보내려면) Gmail 앱 비밀번호** — 보낼 Gmail 계정 → 보안 → 2단계 인증 켜기 → "앱 비밀번호"에서 16자리 만들기.
+3. **GitHub 비밀값** — 저장소 Settings → Secrets and variables → Actions → New repository secret
+
+   | Name | 값 |
+   |---|---|
+   | `FIREBASE_SERVICE_ACCOUNT` | 1번 JSON 파일 내용 통째로 |
+   | `SMTP_USER` | 보낼 Gmail 주소 (메일 안 쓰면 안 넣어도 됨) |
+   | `SMTP_PASS` | 16자리 앱 비밀번호 (메일 안 쓰면 안 넣어도 됨) |
+   | `SMTP_HOST` | (선택) Gmail 이 아닐 때. 네이버면 `smtp.naver.com` |
+   | `SMTP_PORT` | (선택) 네이버면 `465` |
+
+4. **확인** — 저장소 Actions 탭 → **Daily due notices** → **Run workflow**. "미리보기"를 켜면 보내지 않고 누구에게 무엇을 보낼지만 기록에 나와요.
+
+## (선택) Blaze 요금제라면
+
+Firebase Cloud Functions 로도 같은 일을 할 수 있어요(`functions/index.js`). 이 경우 GitHub 예약 실행은 꺼 두세요.
+```
+npm install -g firebase-tools && firebase login
+cd functions && npm install && cd ..
+firebase functions:secrets:set SMTP_USER
+firebase functions:secrets:set SMTP_PASS
+firebase deploy --only functions
+```
 
 ## 아이폰
 
