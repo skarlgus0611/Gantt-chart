@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v32";
+const APP_VERSION = "2026-10-24-design-v33";
 
 
 /* =========================================================
@@ -5827,9 +5827,80 @@ hSlider = buildRangeSlider(document.getElementById("hRangeSlider"), {
   onChange: () => {
     renderTimeline();
     updateRangeLabel();
+    showRangeTip(0); /* 끄는 동안 날짜가 막대를 따라 보인다 */
   },
   afterLayout: () => markCoveredMonths()
 });
+
+/* (요청사항) 표시 기간 날짜는 늘 보여 주지 않고, 가로 막대에 마우스를 올리거나
+   한 번 눌렀을 때만 막대 위에 잠깐 띄운다. 끄는 동안에는 계속 따라 보인다. */
+let rangeTipTimer = 0;
+
+function rangeTipEl() {
+  const rail = document.querySelector(".h-rail");
+  if (!rail) return null;
+  let tip = rail.querySelector(".range-tip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.className = "range-tip";
+    tip.setAttribute("role", "status");
+    rail.appendChild(tip);
+  }
+  return tip;
+}
+
+function showRangeTip(hideAfterMs) {
+  const tip = rangeTipEl();
+  const slider = document.getElementById("hRangeSlider");
+  const bar = slider && slider.querySelector(".range-bar");
+  if (!tip || !bar) return;
+  tip.textContent =
+    `${dateKey(dateFromYearDay(state.rangeStart))} ~ ${dateKey(dateFromYearDay(state.rangeEnd))} · ` +
+    `${state.rangeEnd - state.rangeStart + 1}일`;
+  tip.classList.add("visible");
+  /* 막대 가운데 위에, 띠 밖으로 나가지 않게 */
+  const railWidth = slider.offsetWidth;
+  const center = bar.offsetLeft + bar.offsetWidth / 2;
+  const half = tip.offsetWidth / 2;
+  tip.style.left = Math.max(half, Math.min(railWidth - half, center)) + "px";
+  clearTimeout(rangeTipTimer);
+  if (hideAfterMs) rangeTipTimer = setTimeout(hideRangeTip, hideAfterMs);
+}
+
+function hideRangeTip() {
+  clearTimeout(rangeTipTimer);
+  const tip = document.querySelector(".h-rail .range-tip");
+  if (tip) tip.classList.remove("visible");
+}
+
+function initRangeTip() {
+  const slider = document.getElementById("hRangeSlider");
+  if (!slider) return;
+  const isBarOrEnd = (target) => target && target.closest && target.closest(".range-bar, .range-handle");
+  slider.addEventListener("pointerover", (event) => {
+    if (event.pointerType === "mouse" && isBarOrEnd(event.target)) showRangeTip(0);
+  });
+  slider.addEventListener("pointerout", (event) => {
+    if (event.pointerType !== "mouse" || !isBarOrEnd(event.target)) return;
+    if (slider.classList.contains("is-moving") || slider.classList.contains("is-resizing")) return;
+    if (!isBarOrEnd(event.relatedTarget)) rangeTipTimer = setTimeout(hideRangeTip, 400);
+  });
+  /* 터치(한 번 누름)나 끌기 시작: 몇 초간 보여 준다 */
+  slider.addEventListener("pointerdown", (event) => {
+    if (isBarOrEnd(event.target)) showRangeTip(event.pointerType === "mouse" ? 0 : 2500);
+  });
+  window.addEventListener("pointerup", (event) => {
+    if (!document.querySelector(".h-rail .range-tip.visible")) return;
+    const touch = event.pointerType !== "mouse";
+    /* 마우스가 막대 위에 그대로 있으면 계속 보이고, 아니면 잠시 뒤 사라진다 (터치는 2.5초) */
+    if (touch || !slider.querySelector(".range-bar:hover, .range-handle:hover")) {
+      clearTimeout(rangeTipTimer);
+      rangeTipTimer = setTimeout(hideRangeTip, touch ? 2500 : 1500);
+    }
+  });
+}
+
+initRangeTip();
 
 /* (요청사항) 진한 막대 아래 깔린 달 이름은 흰 글씨로 (막대가 옅어지면 CSS 가 초록으로) */
 function markCoveredMonths() {
