@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v29";
+  --css-version: "2026-10-24-design-v30";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9257,4 +9257,16 @@ body:has(.gantt-resize.dragging) {
   font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0;
+}
+
+
+/* (요청사항) 고른 구간이 띠 양 끝의 둥근 모양과 딱 맞게: 여백 0 (app.js H_SLIDER_INSET 과 같음) */
+.range-months {
+  left: 0;
+  right: 0;
+}
+
+.range-month:first-child,
+.range-month:last-child {
+  padding: 0 4px;
 }

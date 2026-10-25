@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v29";
+const APP_VERSION = "2026-10-24-design-v30";
 
 
 /* =========================================================
@@ -5801,7 +5801,9 @@ let hSlider = null;
 let vSlider = null;
 
 /* 표시 기간 슬라이더의 양 끝 여백(손잡이 계산과 달 눈금이 같은 값을 쓴다) */
-const H_SLIDER_INSET = 10;
+/* (요청사항) 양 끝 손잡이가 이제 구간 안쪽 반원이라 잘릴 일이 없다 → 여백 없이
+   구간이 띠의 둥근 끝과 정확히 겹치게 한다. */
+const H_SLIDER_INSET = 0;
 
 hSlider = buildRangeSlider(document.getElementById("hRangeSlider"), {
   orientation: "h",
