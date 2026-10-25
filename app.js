@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v59";
+const APP_VERSION = "2026-10-24-design-v60";
 
 
 /* =========================================================
@@ -257,6 +257,7 @@ fb.onAuthChange((user) => {
       shellChartsCache = [];
       if (typeof shellRenderList === "function") shellRenderList();
     } else {
+      stopLiveSync();
       state.tasks = [];
       state.categories = [];
       if (typeof render === "function") render();
@@ -1367,6 +1368,9 @@ async function loadData(showProgress = true) {
 
     render();
 
+    /* (요청사항) 처음 한 번 불러온 뒤로는 실시간 반영 */
+    if (fbUser) startLiveSync();
+
     if (showProgress) {
       hideToast();
     }
@@ -1386,6 +1390,60 @@ async function loadData(showProgress = true) {
       reloadButton.disabled = false;
     }
   }
+}
+
+
+/* =========================================================
+ * (요청사항) 실시간 반영
+ *  - 처음 불러온 뒤 이 차트의 작업·카테고리를 Firestore 에서 지켜보다가
+ *    다른 사람(또는 다른 탭)이 바꾸면 새로고침 없이 바로 다시 그린다
+ *  - 화면을 누르고 끄는 중(막대·순서·기간 조절)에는 기다렸다가 손을 뗀 뒤 반영
+ *  - 내용이 지금 화면과 같으면(내가 방금 저장한 것 등) 다시 그리지 않는다
+ * ========================================================= */
+let liveSyncUnsubs = [];
+let livePointerHeld = false;
+
+document.addEventListener("pointerdown", () => { livePointerHeld = true; }, true);
+["pointerup", "pointercancel"].forEach((type) => {
+  document.addEventListener(type, () => { livePointerHeld = false; }, true);
+});
+
+function stopLiveSync() {
+  liveSyncUnsubs.forEach((unsub) => { try { unsub(); } catch (e) { /* 무시 */ } });
+  liveSyncUnsubs = [];
+}
+
+function startLiveSync() {
+  if (IS_SHELL_MODE || liveSyncUnsubs.length || typeof fb.listenTasks !== "function") return;
+  const chartId = IS_SHARED_CHART ? SHARED_CHART_ID : CHART_ID;
+  const latest = { tasks: null, categories: null };
+  let timer = null;
+
+  const apply = () => {
+    timer = null;
+    if (!latest.tasks || !latest.categories) return;
+    if (livePointerHeld || state.draggingTaskId || document.body.classList.contains("is-dragging")) {
+      timer = setTimeout(apply, 400);
+      return;
+    }
+    const data = resolveTasksAndCats({ tasks: latest.tasks, categories: latest.categories });
+    if (JSON.stringify([data.tasks, data.categories]) === JSON.stringify([state.tasks, state.categories])) return;
+    state.tasks = data.tasks;
+    state.categories = data.categories;
+    render();
+  };
+  const schedule = () => {
+    if (!timer) timer = setTimeout(apply, 250);
+  };
+  const stop = (error) => {
+    console.warn("실시간 반영을 멈춥니다:", error && error.message);
+    stopLiveSync();
+  };
+
+  liveSyncUnsubs = [
+    fb.listenTasks(chartId, (tasks) => { latest.tasks = tasks; schedule(); }, stop),
+    fb.listenCategories(chartId, (categories) => { latest.categories = categories; schedule(); }, stop)
+  ];
 }
 
 
@@ -9918,7 +9976,7 @@ if (IS_SHELL_MODE) {
     /* 현재 연도(또는 커스텀 기간)의 전체 범위로 초기화 */
     resetRange();
 
-    /* 데이터 불러오기 */
+    /* 데이터 불러오기 → 그 뒤로는 실시간 반영 */
     loadData();
   })();
 }
