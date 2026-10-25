@@ -1,47 +1,11 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v47";
+  --css-version: "2026-10-24-design-v52";
 }
 
-/* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
-   Inter/시스템 폰트보다 한글·영문·숫자가 한 벌로 자연스럽게 어울려서
-   "AI가 만든 느낌"을 줄이려고 교체함. 로컬 파일로 직접 서빙한다
-   (구글 폰트 네트워크 요청 없음). ▲▲▲ */
-@font-face {
-  font-family: "Pretendard";
-  src: url("fonts/Pretendard-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Pretendard";
-  src: url("fonts/Pretendard-Medium.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Pretendard";
-  src: url("fonts/Pretendard-SemiBold.woff2") format("woff2");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Pretendard";
-  src: url("fonts/Pretendard-Bold.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Pretendard";
-  src: url("fonts/Pretendard-ExtraBold.woff2") format("woff2");
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
+/* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
+   (가변 글꼴, 글자 묶음별로 필요한 것만 받음). 예전 @font-face 는 가리키던
+   fonts/*.woff2 파일이 없어서 지웠다. */
 
 * {
   box-sizing: border-box;
@@ -9892,4 +9856,78 @@ body:has(.gantt-resize.dragging) {
 .mc-chart-box .mc-chart-box-headinfo .mc-date-pill .mc-btn-group.mc-date-tools {
   padding-left: 8px;
   gap: 4px;
+}
+
+
+/* (요청사항) 막대 위 % 글씨: 조금 크고 굵게, 숫자 폭을 고르게 (색은 app.js 가 바탕에 맞춰 고름) */
+.task-bar-text {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.gantt.capturing .task-bar-name {
+  font-weight: 700;
+}
+
+
+/* (요청사항) 카테고리 창: 이름 입력칸이 카테고리 줄 미리보기 안에 들어가고,
+   색 미리보기 막대는 그 아래 줄로 */
+.category-preview {
+  height: 46px;
+  margin: 8px 0 10px;
+}
+
+.modal-card .category-preview .category-preview-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--cat-text, #1e3a8a);
+}
+
+.modal-card .category-preview .category-preview-input::placeholder {
+  color: var(--cat-text, #1e3a8a);
+  opacity: .45;
+}
+
+.category-preview:focus-within {
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, .12);
+}
+
+.category-preview-barrow {
+  display: flex;
+  align-items: center;
+  margin: 0 0 16px;
+  padding: 0 2px;
+}
+
+.category-preview-barrow .category-preview-bar {
+  flex: 1 1 auto;
+  max-width: none;
+  height: 14px;
+}
+
+/* 공유 창: 조직 안내문을 위 선택칸 글씨에 맞춘다 */
+.mc-share-pane-note {
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #52525b;
+  text-align: justify;
+  text-align-last: justify;
+}
+
+.mc-share-pane-foot .mc-btn {
+  margin-left: auto;
 }

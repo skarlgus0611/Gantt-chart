@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v47";
+const APP_VERSION = "2026-10-24-design-v52";
 
 
 /* =========================================================
@@ -1560,6 +1560,29 @@ function isLightColor(hex) {
 }
 
 
+/* (요청사항) 막대 위 글씨가 바탕색에 묻히지 않게: 흰 글씨와 진한 글씨 중
+   실제 바탕과 명암 대비가 더 큰 쪽을 고른다(WCAG 대비 계산). */
+function relativeLuminance(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const channel = value => {
+    const c = value / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel((n >> 16) & 255) + 0.7152 * channel((n >> 8) & 255) + 0.0722 * channel(n & 255);
+}
+
+function barTextStyle(backgroundHex) {
+  const bg = validHex(backgroundHex) || DEFAULT_COLOR;
+  const lum = relativeLuminance(bg);
+  const dark = "#111827";
+  const whiteContrast = 1.05 / (lum + 0.05);
+  const darkContrast = (lum + 0.05) / (relativeLuminance(dark) + 0.05);
+  return whiteContrast >= darkContrast
+    ? "color:#ffffff;text-shadow:0 1px 2px rgba(0,0,0,.35)"
+    : "color:" + dark + ";text-shadow:0 1px 0 rgba(255,255,255,.35)";
+}
+
+
 /* =========================================================
  * RENDER
  * ========================================================= */
@@ -2009,6 +2032,10 @@ function selectedRows() {
 const MAX_TASK_ROW_HEIGHT = 96;
 const MAX_ROW_SCALE = MAX_TASK_ROW_HEIGHT / TASK_ROW_HEIGHT;
 
+/* (요청사항) 차트를 늘려도 카테고리 줄은 이 높이(px)까지만 커진다.
+   줄일 때는 작업 줄과 같은 비율로 줄고, 늘릴 때 남는 높이는 작업 줄이 나눠 갖는다. */
+const MAX_CATEGORY_ROW_HEIGHT = 36;
+
 function computeRowScale() {
 
   const width = Math.max(1, state.rowEnd - state.rowStart);
@@ -2016,6 +2043,34 @@ function computeRowScale() {
   const available = Math.max(1, state.chartHeight - 52);
 
   state.rowScale = Math.min(available / width, MAX_ROW_SCALE);
+
+  /* 고른 구간 안에서 카테고리·작업 줄이 차지하는 "자연 높이"(경계 줄은 보이는 만큼만) */
+  let categoryUnits = 0;
+  let taskUnits = 0;
+
+  selectedRowsWithCum().forEach(r => {
+    const visible = Math.max(0, Math.min(r.end, state.rowEnd) - Math.max(r.start, state.rowStart));
+    if (r.row.kind === "category") categoryUnits += visible;
+    else taskUnits += visible;
+  });
+
+  const categoryScale = Math.min(state.rowScale, MAX_CATEGORY_ROW_HEIGHT / CATEGORY_ROW_HEIGHT);
+
+  state.categoryRowScale = categoryScale;
+  state.taskRowScale = state.rowScale;
+
+  if (categoryScale < state.rowScale && taskUnits > 0) {
+    state.taskRowScale = Math.min(
+      MAX_ROW_SCALE,
+      Math.max(0, available - categoryUnits * categoryScale) / taskUnits
+    );
+  }
+}
+
+/* 줄 종류별 배율 */
+function rowScaleOf(row) {
+  if (row.kind === "category") return state.categoryRowScale || state.rowScale;
+  return state.taskRowScale || state.rowScale;
 }
 
 
@@ -2027,7 +2082,7 @@ function rowsOffset(rows) {
     return 0;
   }
 
-  return (state.rowStart - rows[0].start) * state.rowScale;
+  return (state.rowStart - rows[0].start) * rowScaleOf(rows[0].row);
 }
 
 
@@ -2040,7 +2095,7 @@ function scaledRowHeights(rows) {
 
   rows.forEach(r => {
 
-    cumulative += rowHeightOf(r.row) * state.rowScale;
+    cumulative += rowHeightOf(r.row) * rowScaleOf(r.row);
 
     const rounded = Math.round(cumulative);
 
@@ -3414,13 +3469,19 @@ function renderTaskBar(
   const progress =
     Math.max(0, Math.min(100, Number(task.progress) || 0));
 
+  /* % 글씨는 막대 오른쪽 끝에 놓인다. 진행률이 거의 다 찼으면 그 자리는
+     흰빛이 덧씌워진 부분이라, 실제로 글씨 뒤에 깔리는 색으로 대비를 계산한다. */
+  const textBackground = progress >= 85
+    ? mixHex(color, "#ffffff", isLightColor(color) ? 0.5 : 0.7)
+    : color;
+
   bar.innerHTML = `
     <div
       class="task-progress"
       style="width:${progress}%"
     ></div>
 
-    <div class="task-bar-text">
+    <div class="task-bar-text" style="${barTextStyle(textBackground)}">
       <span class="task-bar-name">${escapeHtml(task.name)}</span>
       <span class="task-bar-pct">${progress}%</span>
     </div>
@@ -5736,6 +5797,7 @@ function refreshCategorySheet() {
   const name = document.getElementById("categoryName").value.trim();
 
   applyCategoryTint(document.getElementById("categoryPreview"), color);
+  applyCategoryTint(document.getElementById("categoryPreviewBarRow"), color);
   document.getElementById("categoryPreviewName").textContent = name || "새 카테고리";
 
   markSelectedSwatch(modal, color);
@@ -9907,7 +9969,6 @@ async function shellHandleRevokeAllSharing() {
  * ========================================================= */
 const shareOrgState = { chart: null, memberships: [], rosters: {}, picked: new Set() };
 
-const SHARE_MAP_HINT = "기존 권한: 게스트→뷰어 · 참여자→편집자 · 관리자→관리자";
 
 function shellShareSetTab(tab) {
   document.querySelectorAll("#mcShareModal .mc-share-tab").forEach((btn) => {
@@ -9986,11 +10047,6 @@ async function shellShareOrgRefresh() {
   const orgs = shareOrgSelectable();
   shareOrgFillSelect(document.getElementById("mcSharePickOrg"), orgs, true);
   shareOrgFillSelect(document.getElementById("mcShareAllOrg"), orgs, true);
-  document.querySelectorAll("#mcShareModal [data-share-map-hint]").forEach((hint) => {
-    hint.innerHTML = "";
-    hint.appendChild(orgIcon("info", 13));
-    hint.appendChild(orgEl("span", "", SHARE_MAP_HINT));
-  });
 
   const allPane = document.querySelector('#mcShareModal [data-share-pane="org"]');
   allPane.classList.toggle("mc-share-pane-empty", !orgs.length);
