@@ -264,10 +264,10 @@ export async function getChartOnce(chartId) {
 
 /* ----- 작업(tasks) ----- */
 
-export function listenTasks(chartId, callback) {
+export function listenTasks(chartId, callback, onError) {
   return onSnapshot(collection(db, "charts", chartId, "tasks"), (snap) => {
     callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-  });
+  }, (error) => { if (onError) onError(error); else console.error(error); });
 }
 
 export async function getTasksOnce(chartId) {
@@ -321,10 +321,10 @@ export async function reorderTasks(chartId, orderedIds) {
 
 /* ----- 카테고리 ----- */
 
-export function listenCategories(chartId, callback) {
+export function listenCategories(chartId, callback, onError) {
   return onSnapshot(collection(db, "charts", chartId, "categories"), (snap) => {
     callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-  });
+  }, (error) => { if (onError) onError(error); else console.error(error); });
 }
 
 export async function getCategoriesOnce(chartId) {

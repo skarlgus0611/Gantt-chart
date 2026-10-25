@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v58";
+  --css-version: "2026-10-24-design-v60";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -10281,4 +10281,32 @@ html.is-embedded .task-header {
   width: 1px;
   height: 20px;
   background: #b9d9cf;
+}
+
+
+/* (요청사항) 해가 바뀌는 1월: 연도 표시 + 옅은 경계선 */
+.month-cell.year-start {
+  position: relative;
+  box-shadow: inset 1.5px 0 0 #9ccfc2;
+}
+
+.month-cell .month-year {
+  margin-right: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e3f2ed;
+  color: #0f766e;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.range-month.year-start {
+  box-shadow: inset 1.5px 0 0 rgba(15, 118, 110, .55);
+  color: #0f766e;
+  font-weight: 800;
+}
+
+.month-cell .month-year.month-year-only {
+  margin-right: 0;
+  padding: 1px 5px;
 }
