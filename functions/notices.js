@@ -6,7 +6,14 @@
 const nodemailer = require("nodemailer");
 const { buildNotices, renderMail, renderPush, seoulTodayKey } = require("./digest");
 
-async function runDailyNotices(admin, { smtpUser, smtpPass, siteUrl, log = console, dryRun = false, todayKey = seoulTodayKey() }) {
+/* 보내는 메일 서버: 비우면 Gmail, 네이버 등은 SMTP_HOST 로 (예: smtp.naver.com) */
+function mailTransport(smtpUser, smtpPass, smtpHost, smtpPort) {
+  if (!smtpHost) return nodemailer.createTransport({ service: "gmail", auth: { user: smtpUser, pass: smtpPass } });
+  const port = Number(smtpPort) || 465;
+  return nodemailer.createTransport({ host: smtpHost, port, secure: port === 465, auth: { user: smtpUser, pass: smtpPass } });
+}
+
+async function runDailyNotices(admin, { smtpUser, smtpPass, smtpHost = "", smtpPort = "", siteUrl, log = console, dryRun = false, todayKey = seoulTodayKey() }) {
   const db = admin.firestore();
   const [usersSnap, chartsSnap] = await Promise.all([db.collection("users").get(), db.collection("charts").get()]);
   const users = usersSnap.docs.map((d) => ({ uid: d.id, ...d.data() }));
@@ -26,7 +33,7 @@ async function runDailyNotices(admin, { smtpUser, smtpPass, siteUrl, log = conso
   if (mails.length && (dryRun || !smtpUser || !smtpPass)) {
     mails.forEach((m) => log.info("[메일 " + (dryRun ? "미리보기" : "건너뜀: Gmail 설정 없음") + "] " + m.email + " · " + renderMail(m, siteUrl).subject));
   } else if (mails.length) {
-    const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: smtpUser, pass: smtpPass } });
+    const transporter = mailTransport(smtpUser, smtpPass, smtpHost, smtpPort);
     for (const notice of mails) {
       const mail = renderMail(notice, siteUrl);
       try {

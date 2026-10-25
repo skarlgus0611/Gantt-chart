@@ -3,6 +3,7 @@
 #   FIREBASE_SERVICE_ACCOUNT : Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → "새 비공개 키 생성" JSON 내용 통째로
 #   SMTP_USER                : 알림 메일을 보낼 Gmail 주소        (없으면 메일만 건너뜀)
 #   SMTP_PASS                : 그 Gmail 의 앱 비밀번호(16자리)   (없으면 메일만 건너뜀)
+#   SMTP_HOST, SMTP_PORT     : (선택) Gmail 이 아닐 때 보내는 메일 서버. 네이버: smtp.naver.com / 465
 # Actions 탭 → Daily due notices → Run workflow 로 바로 돌려 볼 수도 있다 (미리보기를 켜면 보내지 않고 목록만 출력).
 name: Daily due notices
 
@@ -42,5 +43,7 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
         run: node functions/run-daily.js

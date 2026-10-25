@@ -31,6 +31,8 @@
    | `FIREBASE_SERVICE_ACCOUNT` | 1번 JSON 파일 내용 통째로 |
    | `SMTP_USER` | 보낼 Gmail 주소 (메일 안 쓰면 안 넣어도 됨) |
    | `SMTP_PASS` | 16자리 앱 비밀번호 (메일 안 쓰면 안 넣어도 됨) |
+   | `SMTP_HOST` | (선택) Gmail 이 아닐 때. 네이버면 `smtp.naver.com` |
+   | `SMTP_PORT` | (선택) 네이버면 `465` |
 
 4. **확인** — 저장소 Actions 탭 → **Daily due notices** → **Run workflow**. "미리보기"를 켜면 보내지 않고 누구에게 무엇을 보낼지만 기록에 나와요.
 
