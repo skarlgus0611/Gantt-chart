@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v77"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v78"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v77";
+const APP_VERSION = "2026-10-24-design-v78";
 
 
 /* =========================================================
@@ -3565,8 +3565,8 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
  *  - 지연: 종료일이 지났는데 진행률이 100% 가 아님
  *  - 임박: 오늘부터 3일 안에 끝나야 하는데 아직 100% 가 아님
  * ========================================================= */
-/* (요청사항) 알림 단계 — D-15 사이트 안 · D-7 사이트 안+메일 · D-1 사이트 안+메일+푸시 ·
-   당일 사이트 안+메일+푸시 · D+1 사이트 안+메일+푸시 · D+2 부터 완료/지연 확인까지 사이트 안+매일 푸시 (메일·푸시는 서버 예약 작업) */
+/* (요청사항) 알림 단계 — 사이트 안: D-15 · D-7 · D-1 · 당일 · 지연(확인 전까지)
+   메일(서버 예약 작업, 매일 오전 8시): D-7 · D-1 · 당일 · D+1 · D+3 · D+7 · 그 뒤 일주일마다. 완료·지연 확인이면 끝 */
 const DUE_NOTICE_DAYS = 15;
 const DUE_SOON_DAYS = 2;
 
@@ -11953,7 +11953,7 @@ let bellSettingsOpen = false;
 
 /* (요청사항) 글자 위주였던 알림창을 그림 위주로:
    왼쪽 색 타일에 남은 날(크게) · 이름 한 줄 · 아래 줄은 담당자 동그라미 + 차트 + 진행률 막대 ·
-   오른쪽 회색 체크 = 확인. 메일·푸시 설정은 톱니 버튼 안으로 */
+   오른쪽 회색 체크 = 확인. 메일 설정은 오른쪽 위 버튼 안으로 */
 function shellRenderBellMenu() {
   const menu = bellMenu;
   if (!menu) return;
@@ -11994,7 +11994,6 @@ function shellRenderBellMenu() {
 
   const notify = (bellProfile && bellProfile.notify) || {};
   const emailOn = notify.email !== false;
-  const pushOn = notify.push === true;
   const off = bellProfileState !== "ready" ? " disabled" : "";
   const toggle = (id, on, icon, title, sub) =>
     '<label class="mc-bell-switch-row"><span class="mc-bell-switch-ic">' + icon + "</span>" +
@@ -12003,8 +12002,7 @@ function shellRenderBellMenu() {
   const settings = !bellSettingsOpen ? "" : bellProfileState === "error"
     ? '<div class="mc-bell-settings mc-bell-mail-off">알림 설정을 불러오지 못했어요. (보안 규칙 확인 필요)</div>'
     : '<div class="mc-bell-settings">' +
-        toggle("mcBellMail", emailOn, BELL_ICON.mail, "메일", "D-7 · D-1 · 당일 · 지연 첫날") +
-        toggle("mcBellPush", pushOn, BELL_ICON.bell, "푸시", "D-1 · 당일 · 지연 (확인 전까지 매일)") +
+        toggle("mcBellMail", emailOn, BELL_ICON.mail, "메일", "D-7 · D-1 · 당일 · 지연 1·3·7일, 그 뒤 매주") +
       "</div>";
 
   menu.innerHTML =
@@ -12072,13 +12070,7 @@ function shellOpenBellMenu(button) {
       if (input.id === "mcBellMail") {
         await fb.mergeUserProfile(fbUser.uid, { notify: { email: on } });
         setNotify({ email: on });
-        showToast(on ? "마감 7일 전 · 1일 전 · 당일 · 지연 첫날에 메일로 알려 드릴게요." : "마감 알림 메일을 끕니다.");
-      } else if (input.id === "mcBellPush") {
-        input.disabled = true;
-        if (on) await fb.enablePush(fbUser.uid);
-        else await fb.disablePush(fbUser.uid);
-        setNotify({ push: on });
-        showToast(on ? "마감 1일 전 · 당일과 지연 작업을 푸시로 알려 드릴게요." : "푸시 알림을 끕니다.");
+        showToast(on ? "마감 7일 전 · 1일 전 · 당일, 지연되면 1·3·7일째와 그 뒤 매주 메일로 알려 드릴게요." : "마감 알림 메일을 끕니다.");
       }
     } catch (error) {
       input.checked = !on;
@@ -12110,6 +12102,16 @@ async function shellInitBellProfile() {
     bellProfileState = "error";
   }
   if (bellMenu) shellRenderBellMenu();
+}
+
+/* 예전에 켜 둔 웹 푸시(서비스 워커)는 이제 쓰지 않으니 정리한다 */
+if (IS_SHELL_MODE && "serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations()
+    .then((list) => list.forEach((reg) => {
+      const url = (reg.active || reg.installing || reg.waiting || {}).scriptURL || "";
+      if (url.includes("firebase-messaging-sw.js")) reg.unregister();
+    }))
+    .catch(() => {});
 }
 
 if (IS_SHELL_MODE) {
