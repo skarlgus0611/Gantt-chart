@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v30";
+const APP_VERSION = "2026-10-24-design-v31";
 
 
 /* =========================================================
@@ -5052,6 +5052,8 @@ function buildRangeSlider(container, opts) {
       handleA.style.top = p1 + "px";
       handleB.style.top = p2 + "px";
     }
+
+    if (opts.afterLayout) opts.afterLayout();
   }
 
   function unitAt(clientPos) {
@@ -5069,7 +5071,12 @@ function buildRangeSlider(container, opts) {
     return horizontal ? event.clientX : event.clientY;
   }
 
-  function drag(onMove) {
+  /* (요청사항) 끝을 끄는 중(is-resizing)·가운데를 끄는 중(is-moving)을 표시해
+     CSS 가 "끝을 잡으면 가운데가 옅어지는" 모양을 그린다. */
+  function drag(onMove, kind) {
+
+    const stateClass = kind === "end" ? "is-resizing" : "is-moving";
+    container.classList.add(stateClass);
 
     function move(event) {
       onMove(event);
@@ -5078,12 +5085,15 @@ function buildRangeSlider(container, opts) {
     }
 
     function up() {
+      container.classList.remove(stateClass);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
     }
 
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
 
   handleA.addEventListener("pointerdown", event => {
@@ -5096,7 +5106,7 @@ function buildRangeSlider(container, opts) {
       const [, end] = opts.getRange();
 
       opts.setRange(Math.min(value, end), end);
-    });
+    }, "end");
   });
 
   handleB.addEventListener("pointerdown", event => {
@@ -5109,7 +5119,7 @@ function buildRangeSlider(container, opts) {
       const [start] = opts.getRange();
 
       opts.setRange(start, Math.max(value, start));
-    });
+    }, "end");
   });
 
   /* 가운데 막대: 간격을 유지한 채 평행이동 */
@@ -5131,7 +5141,7 @@ function buildRangeSlider(container, opts) {
       let start = Math.max(0, Math.min(total - 1 - width, s0 + deltaUnits));
 
       opts.setRange(start, start + width);
-    });
+    }, "move");
   });
 
   return { layout };
@@ -5817,8 +5827,23 @@ hSlider = buildRangeSlider(document.getElementById("hRangeSlider"), {
   onChange: () => {
     renderTimeline();
     updateRangeLabel();
-  }
+  },
+  afterLayout: () => markCoveredMonths()
 });
+
+/* (요청사항) 진한 막대 아래 깔린 달 이름은 흰 글씨로 (막대가 옅어지면 CSS 가 초록으로) */
+function markCoveredMonths() {
+  const container = document.getElementById("hRangeSlider");
+  if (!container) return;
+  const bar = container.querySelector(".range-bar");
+  if (!bar) return;
+  const left = bar.offsetLeft;
+  const right = left + bar.offsetWidth;
+  container.querySelectorAll(".range-month").forEach((month) => {
+    const center = month.offsetLeft + month.offsetWidth / 2 + (month.parentElement ? month.parentElement.offsetLeft : 0);
+    month.classList.toggle("covered", center >= left && center <= right);
+  });
+}
 
 /* (디자인 추가분) 표시 기간 슬라이더 = 미니 타임라인: 지금 창(연도 또는
    지정 기간)의 달 눈금을 슬라이더 바탕에 깔아서, 고른 구간 상자가 몇 월을
@@ -5846,6 +5871,8 @@ function renderRangeMonths() {
     const current = year === now.getFullYear() && month === now.getMonth();
     return `<span class="range-month${current ? " current" : ""}" style="flex-grow:${days}">${month + 1}月</span>`;
   }).join("");
+
+  markCoveredMonths();
 }
 
 
@@ -5881,6 +5908,8 @@ if (heightHandle) {
       renderTaskColumn();
       renderTimeline();
       syncRowHeightSlider();
+      /* 세로 띠가 차트 높이를 따라 늘고 줄 때 초록 막대도 같이 맞춘다 */
+      if (vSlider) vSlider.layout();
     }
 
     function up() {
@@ -5922,7 +5951,8 @@ if (rowHeightSlider) {
 
 vSlider = buildRangeSlider(document.getElementById("vRangeSlider"), {
   orientation: "v",
-  inset: 8,
+  /* (요청사항) 끝마개가 띠 안쪽에 그려지므로 여백 없이 띠 끝과 맞춘다 */
+  inset: 0,
   getTotal: () => Math.max(1, state.rowsTotal || 1),
   getRange: () => [state.rowStart || 0, state.rowEnd || 0],
   setRange: (start, end) => {

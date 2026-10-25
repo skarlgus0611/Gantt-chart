@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v30";
+  --css-version: "2026-10-24-design-v31";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9269,4 +9269,214 @@ body:has(.gantt-resize.dragging) {
 .range-month:first-child,
 .range-month:last-child {
   padding: 0 4px;
+}
+
+
+/* =========================================================
+   (요청사항) 표시 범위 띠 새 모양 — 가로(기간)·세로(작업) 공통
+   - 바탕 회색 띠: 오른쪽 세로 띠와 아래 가로 띠가 ㄴ자로 이어짐
+     (차트 높이를 바꾸면 세로 띠가 같이 늘고 줄어 계속 붙어 있음)
+   - 평소: 진한 초록 막대 하나 + 양 끝 ‹ › 끝마개
+   - 끝에 마우스를 대거나 끄는 중: 가운데가 옅어져 끝마개가 도드라짐
+   ========================================================= */
+:root {
+  --rail-bg: #eef0f2;
+  --rail-w: 22px;     /* 띠 두께 */
+  --rail-col: 26px;   /* 차트 오른쪽 세로 띠 칸 너비 */
+  --rail-gap: 6px;    /* 차트와 가로 띠 사이 */
+}
+
+/* ---- 세로 띠 ---- */
+.row-range {
+  flex: 0 0 var(--rail-col);
+  opacity: 1;
+  border-left: 0;
+}
+
+.row-range::before {
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: var(--rail-w);
+  margin-left: 0;
+  border: 0;
+  border-radius: 11px 11px 0 0;
+  background: var(--rail-bg);
+}
+
+.row-range .range-track {
+  background: transparent;
+}
+
+.row-range .range-bar {
+  left: 2px;
+  width: var(--rail-w);
+  margin-left: 0;
+  transform: none;
+  border: 0;
+  border-radius: 999px;
+  background: #0f766e;
+  cursor: grab;
+}
+
+.row-range .range-handle,
+.row-range .range-handle:hover,
+.row-range .range-handle:focus-visible {
+  left: 2px;
+  width: var(--rail-w);
+  height: 24px;
+  margin: 0;
+  border: 0;
+  background: #0f766e no-repeat center / 12px;
+  box-shadow: none;
+  cursor: ns-resize;
+  z-index: 2;
+}
+
+.row-range .range-handle-a,
+.row-range .range-handle-a:hover,
+.row-range .range-handle-a:focus-visible {
+  transform: none;
+  border-radius: 999px 999px 4px 4px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 15 6-6 6 6'/%3E%3C/svg%3E");
+}
+
+.row-range .range-handle-b,
+.row-range .range-handle-b:hover,
+.row-range .range-handle-b:focus-visible {
+  transform: translateY(-100%);
+  border-radius: 4px 4px 999px 999px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* ---- 가로 띠 (차트 바로 밑) ---- */
+.h-rail {
+  position: relative;
+  margin-top: var(--rail-gap);
+  padding-right: var(--rail-col);
+}
+
+/* 오른쪽 아래 모서리: 가로 띠 끝을 세로 띠 밑까지 늘리고, 차트와의 틈을 메워 ㄴ자로 잇는다 */
+.h-rail::before,
+.h-rail::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  background: var(--rail-bg);
+  pointer-events: none;
+}
+
+.h-rail::before {
+  top: 0;
+  height: var(--rail-w);
+  width: calc(var(--rail-col) + 4px);
+  border-radius: 0 0 11px 0;
+}
+
+.h-rail::after {
+  top: calc(var(--rail-gap) * -1);
+  height: calc(var(--rail-gap) + var(--rail-w));
+  width: var(--rail-w);
+  border-radius: 0 0 11px 0;
+}
+
+.range-slider {
+  height: var(--rail-w);
+}
+
+.range-slider .range-track {
+  border: 0;
+  border-radius: 999px 0 0 999px;
+  background: var(--rail-bg);
+}
+
+.range-slider .range-bar {
+  top: 0;
+  height: 100%;
+  border: 0;
+  border-radius: 999px;
+  background: #0f766e;
+  z-index: 1;
+}
+
+.range-slider .range-handle,
+.range-slider .range-handle:hover,
+.range-slider .range-handle:focus-visible {
+  top: 0;
+  width: 24px;
+  height: 100%;
+  border: 0;
+  background: #0f766e no-repeat center / 12px;
+  box-shadow: none;
+  z-index: 3;
+}
+
+.range-slider .range-handle-a,
+.range-slider .range-handle-a:hover,
+.range-slider .range-handle-a:focus-visible {
+  transform: none;
+  border-radius: 999px 4px 4px 999px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 6-6 6 6 6'/%3E%3C/svg%3E");
+}
+
+.range-slider .range-handle-b,
+.range-slider .range-handle-b:hover,
+.range-slider .range-handle-b:focus-visible {
+  transform: translateX(-100%);
+  border-radius: 4px 999px 999px 4px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E");
+}
+
+/* 달 이름: 막대 위에 얹고, 진한 막대 아래는 흰 글씨 */
+.range-months {
+  z-index: 2;
+}
+
+.range-month {
+  border-left-color: rgba(24, 24, 27, .06);
+  color: #a1a1aa;
+}
+
+.range-month.covered {
+  color: #ffffff;
+  border-left-color: rgba(255, 255, 255, .2);
+}
+
+.range-month.covered.current {
+  color: #ffffff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---- 끝에 마우스를 대거나 끄는 중: 가운데만 옅게 ---- */
+.range-slider:has(.range-handle:hover) .range-bar,
+.range-slider.is-resizing .range-bar,
+.row-range:has(.range-handle:hover) .range-bar,
+.row-range.is-resizing .range-bar {
+  background: rgba(15, 118, 110, .22);
+}
+
+.range-slider:has(.range-handle:hover) .range-month.covered,
+.range-slider.is-resizing .range-month.covered {
+  color: #0f766e;
+  border-left-color: rgba(15, 118, 110, .12);
+}
+
+.range-slider .range-bar,
+.row-range .range-bar {
+  transition: background .15s ease;
+}
+
+.range-slider.is-moving .range-bar,
+.row-range.is-moving .range-bar {
+  cursor: grabbing;
+}
+
+/* 표시 기간 값(날짜) 줄은 띠 바로 밑에 작게 */
+.zoom-area {
+  margin-top: 6px;
+}
+
+.zoom-head {
+  margin-bottom: 0;
 }
