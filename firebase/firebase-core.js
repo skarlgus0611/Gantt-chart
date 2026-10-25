@@ -601,3 +601,13 @@ export async function getOrgChartIndex(orgId) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 /* ▲▲▲ 조직 관리 (2단계, 추가분) 끝 ▲▲▲ */
+
+/* ----- (요청사항) 첫 화면 안내: 사용자별 "안내를 봤음" 표시 ----- */
+export async function getUserProfile(uid) {
+  const snap = await getDoc(doc(db, "users", uid));
+  return snap.exists() ? snap.data() : null;
+}
+
+export function mergeUserOnboarding(uid, flags) {
+  return setDoc(doc(db, "users", uid), { onboarding: flags, updatedAt: serverTimestamp() }, { merge: true });
+}
