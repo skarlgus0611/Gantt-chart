@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v78";
+  --css-version: "2026-10-24-design-v79";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -11548,4 +11548,78 @@ body.shared-viewer-readonly #detailOwnerEmail {
 .due-chip-later {
   background: #f4f4f5;
   color: #8a8a93;
+}
+
+/* (요청사항) 알림을 전부 한 번에: 목록을 화면 높이만큼 쓰고, 한 줄을 낮게 */
+.mc-bell-list {
+  max-height: calc(100vh - 190px);
+}
+
+.mc-bell-item {
+  margin-bottom: 3px;
+}
+
+.mc-bell-open {
+  padding: 5px 8px;
+  gap: 10px;
+}
+
+.mc-bell-tile {
+  min-width: 46px;
+  height: 38px;
+  border-radius: 10px;
+}
+
+.mc-bell-tile b {
+  font-size: 13px;
+}
+
+.mc-bell-tile i {
+  font-size: 9.5px;
+}
+
+.mc-bell-item-text {
+  gap: 3px;
+}
+
+.mc-bell-ack {
+  width: 28px;
+  height: 28px;
+}
+
+.mc-bell-sec-title {
+  padding: 6px 6px 4px;
+}
+
+/* (요청사항) 목록 오른쪽에 늘 보이는 스크롤바 */
+.mc-bell-list {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/* 파이어폭스용 (크롬은 이 속성이 있으면 아래 직접 꾸민 스크롤바를 무시해서 따로 둔다) */
+@supports (-moz-appearance: none) {
+  .mc-bell-list {
+    scrollbar-width: thin;
+    scrollbar-color: #b9d9cf #f4f5f5;
+  }
+}
+
+.mc-bell-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.mc-bell-list::-webkit-scrollbar-track {
+  margin: 4px 0;
+  border-radius: 999px;
+  background: #f4f5f5;
+}
+
+.mc-bell-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #b9d9cf;
+}
+
+.mc-bell-list::-webkit-scrollbar-thumb:hover {
+  background: #8cc3b5;
 }
