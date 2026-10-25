@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v76";
+  --css-version: "2026-10-24-design-v77";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -11542,4 +11542,10 @@ body.shared-viewer-readonly #detailOwnerEmail {
   font-size: 10.5px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+/* (요청사항) 여유 있는 작업(D-16 이상)의 남은 날 칩은 옅게 */
+.due-chip-later {
+  background: #f4f4f5;
+  color: #8a8a93;
 }
