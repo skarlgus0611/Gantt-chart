@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v61";
+const APP_VERSION = "2026-10-24-design-v62";
 
 
 /* =========================================================
@@ -11123,7 +11123,8 @@ function obSeen(key) {
 
 function obMark(keys) {
   if (!fbUser) return;
-  const flags = { ...(obFlagsNow() || {}) };
+  /* 셸과 카드 안 차트가 각자 적으니, 이 브라우저에 적힌 최신 값과 합친다 */
+  const flags = { ...(obFlags || {}), ...(obReadCache() || {}) };
   [].concat(keys).forEach((key) => { flags[key] = true; });
   obFlags = flags;
   obWriteCache(flags);
@@ -11324,8 +11325,7 @@ function obStartTour() {
     const iframe = box && box.querySelector("iframe");
     const ready = iframe && iframe.contentDocument && iframe.contentDocument.querySelector(".task-add-pill");
     if (ready || tries > 40) {
-      obTourState = { steps: obTourSteps(), index: 0 };
-      obRenderTourStep();
+      obRunTour(obTourSteps(), () => obMark("tour"));
       return;
     }
     tries++;
@@ -11335,57 +11335,104 @@ function obStartTour() {
   wait();
 }
 
+/* 안내 틀: steps = [{ targets: [() => ({ el, frame? })], title, text }]
+   카드 안 차트(iframe)에서 부를 때는 바깥 화면(부모)에 깔아서 화면 전체를 덮는다 */
+function obHostWindow() {
+  try {
+    if (!IS_SHELL_MODE && window.parent !== window && window.parent.document) return window.parent;
+  } catch (error) { /* 다른 출처면 자기 창 */ }
+  return window;
+}
+
+function obRunTour(steps, onEnd) {
+  if (obTourState) return;
+  const win = obHostWindow();
+  obTourState = { steps, index: 0, onEnd, win, frame: win === window ? null : window.frameElement };
+  obRenderTourStep();
+}
+
 function obEndTour() {
-  obMark("tour");
+  const tour = obTourState;
+  if (!tour) return;
   obTourState = null;
-  const layer = document.getElementById("obTour");
+  const layer = tour.win.document.getElementById("obTour");
   if (layer) layer.remove();
-  window.removeEventListener("resize", obRenderTourStep);
+  tour.win.removeEventListener("resize", obRenderTourStep);
+  if (tour.onEnd) tour.onEnd();
 }
 
 function obRectOf(target) {
   const r = target.el.getBoundingClientRect();
-  if (!target.frame) return { x: r.left, y: r.top, w: r.width, h: r.height };
-  const f = target.frame.getBoundingClientRect();
+  const frame = target.frame || (obTourState && obTourState.frame);
+  if (!frame) return { x: r.left, y: r.top, w: r.width, h: r.height };
+  const f = frame.getBoundingClientRect();
   return { x: f.left + r.left, y: f.top + r.top, w: r.width, h: r.height };
+}
+
+/* (요청사항) 강조 상자가 겹치거나 붙어 있으면 바깥 테두리를 하나로 합친다 */
+function obMergeRects(rects) {
+  const out = [];
+  rects.forEach((rect) => {
+    let r = { ...rect };
+    for (let i = 0; i < out.length; i++) {
+      const o = out[i];
+      const touch = r.x <= o.x + o.w + 2 && o.x <= r.x + r.w + 2 && r.y <= o.y + o.h + 2 && o.y <= r.y + r.h + 2;
+      if (touch) {
+        const x = Math.min(r.x, o.x);
+        const y = Math.min(r.y, o.y);
+        r = { x, y, w: Math.max(r.x + r.w, o.x + o.w) - x, h: Math.max(r.y + r.h, o.y + o.h) - y };
+        out.splice(i, 1);
+        i = -1;
+      }
+    }
+    out.push(r);
+  });
+  return out;
 }
 
 function obRenderTourStep() {
   const tour = obTourState;
   if (!tour) return;
-  /* 화면에 없는 단계(폰에서 숨은 사이드바 등)는 건너뛴다 */
-  while (tour.index < tour.steps.length) {
-    const found = tour.steps[tour.index].targets.map((fn) => fn()).filter((t) => t && obVisible(t.el));
-    if (found.length) break;
-    tour.index++;
-  }
+  const win = tour.win;
+  const hostDoc = win.document;
+  const live = (step) => step.targets.map((fn) => fn()).filter((t) => t && obVisible(t.el));
+  /* 화면에 없는 단계(폰에서 숨은 사이드바, 아직 없는 조직 등)는 건너뛴다 */
+  while (tour.index < tour.steps.length && !live(tour.steps[tour.index]).length) tour.index++;
   if (tour.index >= tour.steps.length) {
     obEndTour();
     return;
   }
   const step = tour.steps[tour.index];
-  const targets = step.targets.map((fn) => fn()).filter((t) => t && obVisible(t.el));
+  const targets = live(step);
   const total = tour.steps.length;
 
-  let layer = document.getElementById("obTour");
+  /* 창 안에서 스크롤해야 보이는 곳이면 먼저 보이게 */
+  try { targets[0].el.scrollIntoView({ block: "nearest" }); } catch (error) { /* 무시 */ }
+  let first = obRectOf(targets[0]);
+  if (first.y < 8 || first.y + first.h > win.innerHeight - 8) {
+    win.scrollBy(0, first.y - Math.max(80, (win.innerHeight - first.h) / 2));
+  }
+
+  let layer = hostDoc.getElementById("obTour");
   if (!layer) {
-    layer = document.createElement("div");
+    layer = hostDoc.createElement("div");
     layer.id = "obTour";
     layer.className = "ob-tour";
-    document.body.appendChild(layer);
+    hostDoc.body.appendChild(layer);
     layer.addEventListener("click", (event) => {
       const button = event.target.closest("[data-ob]");
-      if (!button) return;
+      const current = obTourState;
+      if (!button || !current) return;
       if (button.dataset.ob === "skip") { obEndTour(); return; }
-      tour.index++;
-      if (tour.index >= tour.steps.length) obEndTour();
+      current.index++;
+      if (current.index >= current.steps.length) obEndTour();
       else obRenderTourStep();
     });
-    window.addEventListener("resize", obRenderTourStep);
+    win.addEventListener("resize", obRenderTourStep);
   }
 
   const pad = 6;
-  const rects = targets.map(obRectOf).map((r) => ({ x: r.x - pad, y: r.y - pad, w: r.w + pad * 2, h: r.h + pad * 2 }));
+  const rects = obMergeRects(targets.map(obRectOf).map((r) => ({ x: r.x - pad, y: r.y - pad, w: r.w + pad * 2, h: r.h + pad * 2 })));
   const holes = rects.map((r) => '<rect x="' + r.x + '" y="' + r.y + '" width="' + r.w + '" height="' + r.h + '" rx="14" fill="black"></rect>').join("");
   const rings = rects.map((r) => '<div class="ob-ring" style="left:' + r.x + "px;top:" + r.y + "px;width:" + r.w + "px;height:" + r.h + 'px"></div>').join("");
   const dots = tour.steps.map((s, i) => '<i class="' + (i === tour.index ? "on" : "") + '"></i>').join("");
@@ -11398,29 +11445,105 @@ function obRenderTourStep() {
       "<h4>" + escapeHtml(step.title) + "</h4><p>" + escapeHtml(step.text) + "</p>" +
       '<div class="ob-tip-row"><div class="ob-dots">' + dots + "</div>" +
       '<button type="button" class="ob-tip-skip" data-ob="skip">건너뛰기</button>' +
-      '<button type="button" class="ob-tip-next" data-ob="next">' + (last ? "시작하기" : "다음") + "</button></div></div>";
+      '<button type="button" class="ob-tip-next" data-ob="next">' + (last ? (step.lastLabel || "시작하기") : "다음") + "</button></div></div>";
 
-  /* 말풍선 위치: 첫 표시 아래(자리가 없으면 위), 화면 밖으로 안 나가게 */
+  /* 말풍선 위치: 첫 표시 아래(자리가 없으면 위, 그것도 없으면 옆), 화면 밖으로 안 나가게 */
   const tip = layer.querySelector(".ob-tip");
   const anchor = rects[0];
   const tipW = tip.offsetWidth;
   const tipH = tip.offsetHeight;
-  const below = anchor.y + anchor.h + 14 + tipH < window.innerHeight - 8;
-  const left = Math.max(12, Math.min(anchor.x + anchor.w / 2 - 44, window.innerWidth - tipW - 12));
+  const fitsBelow = anchor.y + anchor.h + 14 + tipH < win.innerHeight - 8;
+  const fitsAbove = anchor.y - tipH - 14 > 8;
+  let left = Math.max(12, Math.min(anchor.x + anchor.w / 2 - 44, win.innerWidth - tipW - 12));
+  let top;
+  tip.classList.remove("ob-tip-up", "ob-tip-side");
+  if (fitsBelow) {
+    top = anchor.y + anchor.h + 14;
+  } else if (fitsAbove) {
+    top = anchor.y - tipH - 14;
+    tip.classList.add("ob-tip-up");
+  } else {
+    /* 큰 영역: 옆에, 그래도 안 되면 영역 안쪽 아래에 */
+    tip.classList.add("ob-tip-side");
+    top = Math.max(12, Math.min(anchor.y + 12, win.innerHeight - tipH - 12));
+    left = anchor.x + anchor.w + 14 + tipW < win.innerWidth ? anchor.x + anchor.w + 14
+      : anchor.x - tipW - 14 > 0 ? anchor.x - tipW - 14
+      : Math.max(12, Math.min(anchor.x + anchor.w - tipW - 12, win.innerWidth - tipW - 12));
+  }
   tip.style.left = left + "px";
-  tip.style.top = (below ? anchor.y + anchor.h + 14 : Math.max(12, anchor.y - tipH - 14)) + "px";
-  tip.classList.toggle("ob-tip-up", !below);
+  tip.style.top = top + "px";
   const arrowX = Math.max(18, Math.min(anchor.x + anchor.w / 2 - left - 7, tipW - 32));
   tip.style.setProperty("--ob-arrow-x", arrowX + "px");
 }
 
+/* ---------- 작업 수정 · 조직원 관리 창: 처음 열 때 단계별 안내 ---------- */
+function obTaskSteps() {
+  const panel = document.getElementById("detailPanel");
+  const pick = (selector, closest) => () => {
+    let el = panel && panel.querySelector(selector);
+    if (el && closest) el = el.closest(closest) || el;
+    return el ? { el } : null;
+  };
+  return [
+    { targets: [pick("#detailName")], title: "작업 이름",
+      text: "제목을 눌러 바로 고칠 수 있어요. 왼쪽 동그라미는 막대 색이에요." },
+    { targets: [pick("#detailCategory", ".detail-prop")], title: "카테고리",
+      text: "작업을 어느 묶음에 넣을지 골라요. 카테고리를 바꾸면 차트에서 그 묶음 아래로 옮겨져요." },
+    { targets: [pick("#detailStart", ".detail-prop")], title: "기간",
+      text: "시작일과 종료일을 고르면 옆에 며칠인지 보여요. 차트에서 막대를 끌거나 막대 끝을 끌어도 바뀌어요." },
+    { targets: [pick("#detailOwner", ".detail-prop")], title: "담당자",
+      text: "이름을 적거나, 차트가 공유된 조직원 목록에서 골라요. 고른 사람은 '담당자별 보기'로 모아 볼 수 있어요." },
+    { targets: [pick(".detail-side")], title: "진행률과 막대 색",
+      text: "숫자를 넣거나 막대를 끌어 진행률을 정해요. 아래에서 이 작업만의 막대 색을 고를 수도 있어요." },
+    { targets: [pick("#saveDetailBtn"), pick("#cancelDetailBtn")], title: "저장",
+      text: "다 고쳤으면 저장을 눌러요. 공유된 사람들 화면에도 바로 반영돼요. 왼쪽 아래 삭제로 작업을 지울 수 있어요.", lastLabel: "알겠어요" }
+  ];
+}
+
+function obOrgSteps() {
+  const modal = document.getElementById("mcOrgModal");
+  const pick = (selector) => () => {
+    const el = modal && modal.querySelector(selector);
+    return el && el.childElementCount !== 0 || (el && el.tagName === "BUTTON") ? { el } : null;
+  };
+  return [
+    { targets: [pick("#mcOrgInvites")], title: "받은 초대",
+      text: "다른 사람이 나를 조직에 초대하면 여기에 떠요. 수락하면 그 조직에 공유된 차트를 함께 볼 수 있어요." },
+    { targets: [pick("#mcOrgNewBtn")], title: "새 조직 만들기",
+      text: "회사·팀·동아리처럼 함께 일하는 단위로 조직을 만들어요. 만든 사람이 소유자가 돼요." },
+    { targets: [pick("#mcOrgList")], title: "내 조직",
+      text: "내가 속한 조직이 모두 보여요. 눌러서 오른쪽에 조직원과 권한을 띄워요." },
+    { targets: [pick(".mc-org-head-actions")], title: "조직원 초대",
+      text: "이메일로 조직원을 초대하고 역할을 정해요. ⋯ 버튼에서 조직 이름 바꾸기·소유자 넘기기·나가기를 할 수 있어요." },
+    { targets: [pick(".mc-org-section")], title: "조직원과 역할(권한)",
+      text: "역할은 게스트·참여자·관리자예요. 차트를 조직에 공유하면 게스트는 뷰어, 참여자는 편집자, 관리자는 관리자 권한으로 보고, 차트마다 사람별로 바꿀 수도 있어요." },
+    { targets: [() => {
+        const sections = modal ? modal.querySelectorAll(".mc-org-section") : [];
+        return sections[1] ? { el: sections[1] } : null;
+      }], title: "초대 대기",
+      text: "아직 수락하지 않은 사람이에요. 수락하기 전까지는 조직에 공유된 차트를 볼 수 없어요.", lastLabel: "알겠어요" }
+  ];
+}
+
+function obStartPanelTour(key) {
+  if (obSeen(key) || obTourState) return;
+  const steps = key === "task" ? obTaskSteps() : obOrgSteps();
+  let tries = 0;
+  const wait = () => {
+    const ready = steps.some((s) => s.targets.some((fn) => { const t = fn(); return t && obVisible(t.el); }));
+    if (!ready && tries++ < 16) { setTimeout(wait, 200); return; }
+    if (!ready) return;
+    obMark(key); // 한 번만: 시작한 순간 본 것으로
+    obRunTour(steps, null);
+  };
+  setTimeout(wait, 150);
+}
+
 /* ---------- 창을 처음 열 때 한 번씩 안내 ---------- */
 const OB_INLINE_TIPS = {
-  task: { title: "작업 고치는 법", text: "이름·기간·진행률·담당자를 바꾸고 저장을 누르면 돼요. 막대를 직접 끌어서 기간을 바꾸거나, 막대 끝을 끌어 늘리고 줄일 수도 있어요. 담당자 칸에서는 공유된 조직원을 골라 넣을 수 있어요." },
   share: { title: "공유하는 법", text: "이메일 탭은 구글 계정으로 한 명씩 초대해요. 조직원 선택·조직 전체 탭은 내 조직 사람들에게 한 번에 공유해요. 권한은 뷰어(보기만)·편집자(수정)·관리자(공유 설정까지) 중에서 고를 수 있어요." },
   newChart: { title: "차트 만드는 법", text: "이름만 정하면 빈 차트가 생겨요. 표시 기간과 작업은 만든 뒤 차트 안에서 바로 정하면 돼요. 엑셀 파일이 있으면 만든 뒤 업로드로 작업을 한 번에 넣을 수 있어요." },
   manage: { title: "차트 관리하는 법", text: "여기서 차트 순서를 바꾸고, 이름을 고치고, 화면에서 숨길 수 있어요. 차트 삭제는 만든 사람(소유자)만 할 수 있어요. 오른쪽 위 버튼으로 모든 차트를 엑셀로 한 번에 받을 수도 있어요." },
-  org: { title: "조직원 관리하는 법", text: "조직을 만들고 이메일로 조직원을 초대하세요. 조직원 역할은 게스트·참여자·관리자예요. 차트를 조직에 공유하면 게스트는 뷰어, 참여자는 편집자, 관리자는 관리자 권한으로 보게 되고, 사람마다 따로 바꿀 수도 있어요." }
 };
 
 function obShowInlineTip(container, key) {
@@ -11448,6 +11571,10 @@ function obWatchOpen(element, key, containerOf) {
   if (!element) return;
   const check = () => {
     if (element.classList.contains("hidden")) return;
+    if (key === "task" || key === "org") {
+      obStartPanelTour(key);
+      return;
+    }
     setTimeout(() => obShowInlineTip(containerOf(element), key), 0);
   };
   new MutationObserver(check).observe(element, { attributes: true, attributeFilter: ["class"] });
