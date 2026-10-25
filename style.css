@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v57";
+  --css-version: "2026-10-24-design-v58";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -10259,4 +10259,26 @@ html.is-embedded .task-header {
 .task-add-pill-btn:hover {
   background: #cfe8e0;
   color: #0f766e;
+}
+
+/* (요청사항) 두 칸 같은 연초록 + 가운데 세로선 하나 */
+.task-add-pill {
+  background: #e3f2ed;
+}
+
+.task-add-pill-btn:first-child,
+.task-add-pill-btn:last-child {
+  background: transparent;
+}
+
+.task-add-pill-btn:hover {
+  background: #cfe8e0;
+}
+
+.task-add-pill-sep {
+  display: block;
+  flex-shrink: 0;
+  width: 1px;
+  height: 20px;
+  background: #b9d9cf;
 }
