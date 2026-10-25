@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-24-design-v28">
+  <meta name="app-version" content="2026-10-24-design-v36">
 
   <title>간트차트</title>
 
@@ -20,7 +20,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-24-design-v28"
+    href="style.css?v=2026-10-24-design-v36"
   >
 </head>
 
@@ -493,15 +493,12 @@
     </section>
 
 
-    <!-- 차트 전체 높이 조절 손잡이 -->
-    <div
-      class="gantt-resize"
-      id="chartHeightHandle"
-      role="separator"
-      aria-orientation="horizontal"
-      aria-label="차트 높이 조절"
-      title="끌어서 차트 높이 조절"
-    ><span class="gantt-resize-grip" aria-hidden="true"><svg width="16" height="10" viewBox="0 0 16 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 3h12M2 7h12"></path></svg></span></div>
+    <!-- (요청사항) 표시 기간(가로) 띠를 차트 바로 밑에 붙여, 오른쪽 세로 띠와
+         바탕이 ㄴ자로 이어지게 한다. 손잡이·막대는 app.js 가 채운다. -->
+    <div class="h-rail">
+      <div class="range-slider" id="hRangeSlider" aria-label="표시 기간"></div>
+      <span class="h-rail-corner" aria-hidden="true"></span>
+    </div>
 
 
     <!-- =========================
@@ -521,12 +518,23 @@
           <span id="rangeLabel" class="zoom-value"></span>
         </div>
 
-        <!-- 손잡이·막대는 app.js 가 채운다 -->
-        <div class="range-slider" id="hRangeSlider" aria-label="표시 기간"></div>
-
       </div>
 
     </section>
+
+
+    <!-- 차트 전체 높이 조절 손잡이 -->
+    <div
+      class="gantt-resize"
+      id="chartHeightHandle"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="차트 높이 조절"
+      title="끌어서 차트 높이 조절"
+    ><span class="gantt-resize-grip" aria-hidden="true"><svg width="16" height="10" viewBox="0 0 16 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 3h12M2 7h12"></path></svg></span></div>
+
+
+
 
 
     <!-- =========================
@@ -824,7 +832,7 @@
        JS
   ========================= -->
 
-  <script type="module" src="app.js?v=2026-10-24-design-v28"></script>
+  <script type="module" src="app.js?v=2026-10-24-design-v36"></script>
 
 </body>
 </html>

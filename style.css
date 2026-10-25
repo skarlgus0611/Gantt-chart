@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v28";
+  --css-version: "2026-10-24-design-v36";
 }
 
 /* ▼▼▼ Pretendard 글꼴 (추가분) — 토스/네이버 등이 쓰는 한글 전용 서체.
@@ -9234,4 +9234,353 @@ body:has(.gantt-resize.dragging) {
 .gantt-resize .gantt-resize-grip {
   border-color: #bcdcd2;
   background: #eef6f3;
+}
+
+
+/* (요청사항) 표시 기간 띠를 더 얇게, 달 이름은 작게 "1月" 식으로 */
+.range-slider {
+  height: 20px;
+}
+
+.range-slider .range-bar {
+  border-width: 1.5px;
+}
+
+.range-slider .range-handle,
+.range-slider .range-handle:hover,
+.range-slider .range-handle:focus-visible {
+  width: 11px;
+  border-width: 3px;
+}
+
+.range-month {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+
+/* (요청사항) 고른 구간이 띠 양 끝의 둥근 모양과 딱 맞게: 여백 0 (app.js H_SLIDER_INSET 과 같음) */
+.range-months {
+  left: 0;
+  right: 0;
+}
+
+.range-month:first-child,
+.range-month:last-child {
+  padding: 0 4px;
+}
+
+
+/* =========================================================
+   (요청사항) 표시 범위 띠 새 모양 — 가로(기간)·세로(작업) 공통
+   - 바탕 회색 띠: 오른쪽 세로 띠와 아래 가로 띠가 ㄴ자로 이어짐
+     (차트 높이를 바꾸면 세로 띠가 같이 늘고 줄어 계속 붙어 있음)
+   - 평소: 진한 초록 막대 하나 + 양 끝 ‹ › 끝마개
+   - 끝에 마우스를 대거나 끄는 중: 가운데가 옅어져 끝마개가 도드라짐
+   ========================================================= */
+:root {
+  --rail-bg: #eef0f2;
+  --rail-w: 22px;     /* 띠 두께 */
+  --rail-col: 26px;   /* 차트 오른쪽 세로 띠 칸 너비 */
+  --rail-gap: 6px;    /* 차트와 가로 띠 사이 */
+}
+
+/* ---- 세로 띠 ---- */
+.row-range {
+  flex: 0 0 var(--rail-col);
+  opacity: 1;
+  border-left: 0;
+}
+
+.row-range::before {
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: var(--rail-w);
+  margin-left: 0;
+  border: 0;
+  border-radius: 11px 11px 0 0;
+  background: var(--rail-bg);
+}
+
+.row-range .range-track {
+  background: transparent;
+}
+
+.row-range .range-bar {
+  left: 2px;
+  width: var(--rail-w);
+  margin-left: 0;
+  transform: none;
+  border: 0;
+  border-radius: 999px;
+  background: #0f766e;
+  cursor: grab;
+}
+
+.row-range .range-handle,
+.row-range .range-handle:hover,
+.row-range .range-handle:focus-visible {
+  left: 2px;
+  width: var(--rail-w);
+  height: 24px;
+  margin: 0;
+  border: 0;
+  background: #0f766e no-repeat center / 12px;
+  box-shadow: none;
+  cursor: ns-resize;
+  z-index: 2;
+}
+
+.row-range .range-handle-a,
+.row-range .range-handle-a:hover,
+.row-range .range-handle-a:focus-visible {
+  transform: none;
+  border-radius: 999px 999px 4px 4px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 15 6-6 6 6'/%3E%3C/svg%3E");
+}
+
+.row-range .range-handle-b,
+.row-range .range-handle-b:hover,
+.row-range .range-handle-b:focus-visible {
+  transform: translateY(-100%);
+  border-radius: 4px 4px 999px 999px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* ---- 가로 띠 (차트 바로 밑) ---- */
+.h-rail {
+  position: relative;
+  margin-top: var(--rail-gap);
+  padding-right: var(--rail-col);
+}
+
+/* 오른쪽 아래 모서리: 가로 띠 끝을 세로 띠 밑까지 늘리고, 차트와의 틈을 메워 ㄴ자로 잇는다 */
+.h-rail::before,
+.h-rail::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  background: var(--rail-bg);
+  pointer-events: none;
+}
+
+.h-rail::before {
+  top: 0;
+  height: var(--rail-w);
+  width: calc(var(--rail-col) + 4px);
+  border-radius: 0 0 11px 0;
+}
+
+.h-rail::after {
+  top: calc(var(--rail-gap) * -1);
+  height: calc(var(--rail-gap) + var(--rail-w));
+  width: var(--rail-w);
+  border-radius: 0 0 11px 0;
+}
+
+.range-slider {
+  height: var(--rail-w);
+}
+
+.range-slider .range-track {
+  border: 0;
+  border-radius: 999px 0 0 999px;
+  background: var(--rail-bg);
+}
+
+.range-slider .range-bar {
+  top: 0;
+  height: 100%;
+  border: 0;
+  border-radius: 999px;
+  background: #0f766e;
+  z-index: 1;
+}
+
+.range-slider .range-handle,
+.range-slider .range-handle:hover,
+.range-slider .range-handle:focus-visible {
+  top: 0;
+  width: 24px;
+  height: 100%;
+  border: 0;
+  background: #0f766e no-repeat center / 12px;
+  box-shadow: none;
+  z-index: 3;
+}
+
+.range-slider .range-handle-a,
+.range-slider .range-handle-a:hover,
+.range-slider .range-handle-a:focus-visible {
+  transform: none;
+  border-radius: 999px 4px 4px 999px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m15 6-6 6 6 6'/%3E%3C/svg%3E");
+}
+
+.range-slider .range-handle-b,
+.range-slider .range-handle-b:hover,
+.range-slider .range-handle-b:focus-visible {
+  transform: translateX(-100%);
+  border-radius: 4px 999px 999px 4px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E");
+}
+
+/* 달 이름: 막대 위에 얹고, 진한 막대 아래는 흰 글씨 */
+.range-months {
+  z-index: 2;
+}
+
+.range-month {
+  border-left-color: rgba(24, 24, 27, .06);
+  color: #a1a1aa;
+}
+
+.range-month.covered {
+  color: #ffffff;
+  border-left-color: rgba(255, 255, 255, .2);
+}
+
+.range-month.covered.current {
+  color: #ffffff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---- 끝에 마우스를 대거나 끄는 중: 가운데만 옅게 ---- */
+.range-slider:has(.range-handle:hover) .range-bar,
+.range-slider.is-resizing .range-bar,
+.row-range:has(.range-handle:hover) .range-bar,
+.row-range.is-resizing .range-bar {
+  background: rgba(15, 118, 110, .22);
+}
+
+.range-slider:has(.range-handle:hover) .range-month.covered,
+.range-slider.is-resizing .range-month.covered {
+  color: #0f766e;
+  border-left-color: rgba(15, 118, 110, .12);
+}
+
+.range-slider .range-bar,
+.row-range .range-bar {
+  transition: background .15s ease;
+}
+
+.range-slider.is-moving .range-bar,
+.row-range.is-moving .range-bar {
+  cursor: grabbing;
+}
+
+/* 표시 기간 값(날짜) 줄은 띠 바로 밑에 작게 */
+.zoom-area {
+  margin-top: 6px;
+}
+
+.zoom-head {
+  margin-bottom: 0;
+}
+
+
+/* (요청사항) 띠 전체를 더 얇게: 22 → 14px */
+:root {
+  --rail-w: 14px;
+  --rail-col: 18px;
+  --rail-gap: 5px;
+}
+
+.row-range::before {
+  border-radius: 7px 7px 0 0;
+}
+
+.h-rail::before,
+.h-rail::after {
+  border-radius: 0 0 7px 0;
+}
+
+.range-slider .range-handle,
+.range-slider .range-handle:hover,
+.range-slider .range-handle:focus-visible {
+  width: 18px;
+  background-size: 10px;
+}
+
+.row-range .range-handle,
+.row-range .range-handle:hover,
+.row-range .range-handle:focus-visible {
+  height: 18px;
+  background-size: 10px;
+}
+
+.range-month {
+  font-size: 8.5px;
+  line-height: 1;
+}
+
+
+/* (요청사항) 표시 기간 날짜 줄은 숨기고, 막대에 올리거나 누를 때만 말풍선으로 */
+.zoom-area {
+  display: none;
+}
+
+.range-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #18181b;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  letter-spacing: .01em;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s ease, transform .15s ease;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(24, 24, 27, .2);
+}
+
+.range-tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-top-color: #18181b;
+}
+
+.range-tip.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* 띠 밑 여백 (날짜 줄이 빠진 자리) */
+.h-rail + .zoom-area + .gantt-resize,
+.h-rail ~ .gantt-resize {
+  margin-top: 8px;
+}
+
+
+/* (요청사항) ㄴ자 바깥쪽(오른쪽 아래) 모서리를 확실하게 둥근 호로:
+   띠 두께만큼의 반지름으로 4분의 1 원이 되게 한다. */
+.h-rail::before,
+.h-rail::after {
+  border-radius: 0 0 var(--rail-w) 0;
+}
+
+
+/* (요청사항) ㄴ자 안쪽 모서리도 살짝만 둥글게 (반지름 5px) */
+.h-rail-corner {
+  --fillet: 5px;
+  position: absolute;
+  right: calc(2px + var(--rail-w));
+  top: calc(var(--fillet) * -1);
+  width: var(--fillet);
+  height: var(--fillet);
+  background: radial-gradient(circle at 0 0, transparent calc(var(--fillet) - .5px), var(--rail-bg) var(--fillet));
+  pointer-events: none;
 }
