@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v41";
+const APP_VERSION = "2026-10-24-design-v47";
 
 
 /* =========================================================
@@ -6278,6 +6278,7 @@ async function shellLoadCharts() {
     shellRenderList();
     shellBroadcastRefreshToIframes();
     shellOrgRefreshBadge(); /* (조직 관리 1단계) 받은 조직 초대 수 배지 — 실패해도 다른 기능에 영향 없음 */
+    shellRefreshCalButtons(); /* 캘린더 추가/삭제 버튼 상태 */
   } catch (error) {
     console.error(error);
     showToast(error.message || "차트 목록을 불러오지 못했습니다.", true, 0);
@@ -6308,6 +6309,7 @@ function shellBroadcastRefreshToIframes() {
    이 함수를 다시 호출해 버튼 영역만 교체한다(iframe은 그대로 둔다). */
 /* (디자인 추가분) 차트 박스 머리 버튼에 쓰는 선 아이콘들 */
 const MC_ICONS = {
+  upload: '<path d="M12 15V3m0 0 4 4m-4-4-4 4"></path><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>',
   sheet: '<rect x="3.5" y="3.5" width="17" height="17" rx="3"></rect><path d="M3.5 9h17M3.5 14.5h17M9.5 9v11.5"></path>',
   download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4"></path><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>',
   calAdd: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M9 2.5v3M15 2.5v3"></path><path d="M12 13v5M9.5 15.5h5"></path>',
@@ -6782,8 +6784,11 @@ function shellStartRename(chart, box) {
   });
 }
 
-/* (디자인 변경) 시안 순서: [새로고침·전체·오늘·캡처] [엑셀로 내보내기]
-   [캘린더 추가·삭제] [공유] [⋯]. 공유 차트 전용 버튼은 ⋯ 메뉴로 옮겼다. */
+/* (요청사항) 카드 머리 오른쪽 버튼 다시 정리:
+   [새로고침 · 캡처 · 캘린더(추가/삭제 하나로)]  [업로드 | 다운로드]  [공유]
+   - 캡처 · 업/다운로드 · 공유만 테마색, 나머지는 흰색
+   - ⋯ 버튼은 없앰 (이름 바꾸기는 제목을 누르면 됨)
+   - 오늘 전후 보기 · 전체 보기는 제목 옆 기간 알약 쪽으로 옮김(shellBuildDateToolsEl) */
 function shellBuildActionsEl(chart, box) {
   const actions = document.createElement("div");
   actions.className = "mc-chart-box-actions";
@@ -6794,69 +6799,334 @@ function shellBuildActionsEl(chart, box) {
     return btn;
   };
 
-  const todayBtn = tool("today", "오늘 전후 보기", "today");
-  todayBtn.classList.add("mc-btn-active");
+  const captureBtn = tool("capture", "이미지로 캡처", "capture");
+  captureBtn.classList.add("mc-btn-capture");
+
+  /* 캘린더: 이 차트의 캘린더가 있으면 삭제 버튼, 없으면 추가 버튼 하나만 */
+  const calBtn = mcActionButton("calAdd", "캘린더에 추가", true);
+  calBtn.classList.add("mc-cal-toggle");
+  calBtn.dataset.chartId = chart.id;
+  calBtn.addEventListener("click", () => withBusy(calBtn, "", async () => {
+    const current = shellFindChart(chart.id) || chart;
+    if (shellChartHasCalendar(current)) {
+      if (current.shared) await shellHandleSharedCalendarRemove(current.chartId);
+      else await shellHandleCalendarRemove(current.id);
+    } else {
+      if (current.shared) await shellHandleSharedCalendarAdd(current.chartId);
+      else await shellHandleCalendarAdd(current.id);
+    }
+  }).then(shellRefreshCalButtons)); /* 처리 중 표시가 풀린 뒤 추가↔삭제 모양을 맞춘다 */
 
   const toolGroup = mcButtonGroup([
     tool("reload", "새로고침", "reload"),
-    tool("full", "전체 보기", "full"),
-    todayBtn,
-    tool("capture", "이미지로 캡처", "capture")
+    captureBtn,
+    calBtn
   ]);
-  toolGroup.classList.add("mc-chart-tools");
+  toolGroup.classList.add("mc-chart-tools", "mc-tools-white");
+  /* 폰에서 살짝 누르면 잠깐 초록색으로 (마우스는 :hover 로 처리) */
+  toolGroup.addEventListener("pointerdown", (event) => {
+    const btn = event.target.closest(".mc-btn");
+    if (!btn || event.pointerType === "mouse") return;
+    btn.classList.add("mc-touched");
+    setTimeout(() => btn.classList.remove("mc-touched"), 450);
+  });
   actions.appendChild(toolGroup);
 
-  /* (요청사항) 엑셀 내보내기는 캘린더 버튼과 같은 모양으로, 캘린더 뒤로 옮기고 "다운로드" 글자 */
-  const csvBtn = mcActionButton("sheet", "다운로드", false);
-  csvBtn.title = "엑셀로 내보내기 — 이 차트의 작업을 CSV 파일로 받습니다";
-  csvBtn.setAttribute("aria-label", "엑셀로 내보내기");
-  csvBtn.addEventListener("click", () => chart.shared
+  /* CSV 업로드 | 다운로드 (한 알약 안에 따로) */
+  const uploadBtn = mcActionButton("upload", "업로드", false);
+  uploadBtn.classList.add("mc-csv-upload");
+  uploadBtn.title = "CSV 파일의 작업을 이 차트에 추가합니다 (기존 작업은 그대로)";
+  uploadBtn.addEventListener("click", () => shellPickCsvForChart(shellFindChart(chart.id) || chart, box, uploadBtn));
+
+  const downloadBtn = mcActionButton("download", "다운로드", false);
+  downloadBtn.title = "이 차트의 작업을 CSV 파일로 받습니다";
+  downloadBtn.addEventListener("click", () => chart.shared
     ? shellHandleSharedExportCsv(chart.chartId, box)
     : shellHandleExportCsv(chart.id, box));
-  const csvGroup = mcButtonGroup([csvBtn]);
-  csvGroup.classList.add("mc-chart-tools", "mc-btn-group-text");
 
-  /* (공유 기능 추가분) 캘린더/CSV는 뷰어 포함 모든 권한에서 가능. */
-  const calAddBtn = mcActionButton("calAdd", "캘린더에 추가", true);
-  calAddBtn.title = "캘린더에 추가 — 이 차트 전용 구글 캘린더를 만들어 작업을 추가합니다";
-  calAddBtn.addEventListener("click", () => chart.shared
-    ? shellHandleSharedCalendarAdd(chart.chartId)
-    : shellHandleCalendarAdd(chart.id));
-
-  const calRemoveBtn = mcActionButton("calRemove", "캘린더에서 삭제", true);
-  calRemoveBtn.title = "캘린더에서 삭제 — 이 차트 전용 구글 캘린더를 삭제합니다";
-  calRemoveBtn.addEventListener("click", () => chart.shared
-    ? shellHandleSharedCalendarRemove(chart.chartId)
-    : shellHandleCalendarRemove(chart.id));
-
-  const calGroup = mcButtonGroup([calAddBtn, calRemoveBtn]);
-  calGroup.classList.add("mc-chart-tools");
-  actions.appendChild(calGroup);
+  const csvGroup = mcButtonGroup([uploadBtn, downloadBtn]);
+  csvGroup.classList.add("mc-chart-tools", "mc-btn-group-text", "mc-csv-group");
   actions.appendChild(csvGroup);
 
   const shareBtn = document.createElement("button");
   shareBtn.type = "button";
-  shareBtn.className = "mc-btn mc-btn-ghost mc-btn-pill mc-share-btn";
+  shareBtn.className = "mc-btn mc-btn-ghost mc-btn-pill mc-share-btn" + (chart.shared ? " mc-share-on" : "");
   shareBtn.innerHTML = shellShareAvatarsHtml(chart) + "<span>공유</span>";
   if (!chart.shared) {
     shareBtn.title = "이 차트를 다른 구글 계정과 공유합니다";
     shareBtn.addEventListener("click", () => withBusy(shareBtn, "공유 설정 중…", () => shellStartSharing(chart.id, chart.name)));
   } else if (chart.role === "owner" || chart.role === "admin") {
-    /* (요청사항) "공유 관리" 안에 멤버 목록이 이미 보인다. */
-    shareBtn.title = "공유 권한/사용자 설정";
+    shareBtn.title = "공유 중 — 공유 권한/사용자 설정";
     shareBtn.addEventListener("click", () => shellOpenShareModal(chart.chartId, chart.name, true, chart.role));
   } else {
-    shareBtn.title = "공유 구성원 보기";
+    shareBtn.title = "공유 중 — 공유 구성원 보기";
     shareBtn.addEventListener("click", () => shellOpenMembersModal(chart.chartId));
   }
   actions.appendChild(shareBtn);
 
-  const moreBtn = mcActionButton("more", "더보기", true);
-  moreBtn.dataset.popoverAnchor = "1";
-  moreBtn.addEventListener("click", () => shellOpenMoreMenu(chart, box, moreBtn));
-  actions.appendChild(moreBtn);
-
+  setTimeout(shellRefreshCalButtons, 0);
   return actions;
+}
+
+/* 제목 옆 기간 알약 바로 뒤: 오늘 전후 보기 · 전체 보기 (흰색) */
+function shellBuildDateToolsEl(box) {
+  const tool = (icon, label, cmd) => {
+    const btn = mcActionButton(icon, label, true);
+    btn.addEventListener("click", () => {
+      shellSendCommand(box, { cmd });
+      group.querySelectorAll(".mc-btn").forEach((b) => b.classList.toggle("mc-btn-active", b === btn));
+    });
+    return btn;
+  };
+  const todayBtn = tool("today", "오늘 전후 보기", "today");
+  todayBtn.classList.add("mc-btn-active");
+  const group = mcButtonGroup([todayBtn, tool("full", "전체 보기", "full")]);
+  group.classList.add("mc-chart-tools", "mc-date-tools");
+  group.addEventListener("pointerdown", (event) => {
+    const btn = event.target.closest(".mc-btn");
+    if (!btn || event.pointerType === "mouse") return;
+    btn.classList.add("mc-touched");
+    setTimeout(() => btn.classList.remove("mc-touched"), 450);
+  });
+  return group;
+}
+
+/* ---- 캘린더 추가/삭제 버튼 상태 ---- */
+function shellChartHasCalendar(chart) {
+  if (!chart) return false;
+  if (chart.shared) {
+    const info = sharedCalLoadInfo(chart.chartId || chart.id);
+    return !!(info && info.calendarId);
+  }
+  return !!chart.hasCalendar;
+}
+
+function shellRefreshCalButtons() {
+  document.querySelectorAll(".mc-cal-toggle").forEach((btn) => {
+    if (btn.disabled) return; // 처리 중이면 끝난 뒤 다시 맞춘다
+    const chart = shellFindChart(btn.dataset.chartId);
+    const has = shellChartHasCalendar(chart);
+    const label = has ? "캘린더에서 삭제" : "캘린더에 추가";
+    btn.innerHTML = mcIconSvg(has ? "calRemove" : "calAdd");
+    btn.setAttribute("aria-label", label);
+    btn.title = has
+      ? "캘린더에서 삭제 — 이 차트 전용 구글 캘린더를 삭제합니다"
+      : "캘린더에 추가 — 이 차트 전용 구글 캘린더를 만들어 작업을 넣습니다";
+    btn.classList.toggle("mc-cal-on", has);
+  });
+}
+
+/* =========================================================
+ * (요청사항) CSV 업로드: 파일의 작업을 이 차트에 "그냥 추가"
+ *  - UTF-8 로 읽고, 한글이 깨지면 EUC-KR(엑셀 CSV)로 다시 읽는다
+ *  - 큰따옴표 안의 쉼표·줄바꿈 지원
+ *  - 첫 줄 제목으로 열을 찾는다(순서 무관)
+ *  - 날짜·진행률을 다듬고, 없는 카테고리는 새로 만든다
+ *  - 넣기 전에 몇 개를 추가하는지 확인받는다
+ * ========================================================= */
+function csvParse(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cell += '"'; i++; } else { quoted = false; }
+      } else {
+        cell += ch;
+      }
+    } else if (ch === '"') {
+      quoted = true;
+    } else if (ch === ",") {
+      row.push(cell); cell = "";
+    } else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell); cell = "";
+      if (row.some((c) => String(c).trim() !== "")) rows.push(row);
+      row = [];
+    } else {
+      cell += ch;
+    }
+  }
+  row.push(cell);
+  if (row.some((c) => String(c).trim() !== "")) rows.push(row);
+  return rows;
+}
+
+async function csvReadFileText(file) {
+  const buffer = await file.arrayBuffer();
+  let text = new TextDecoder("utf-8").decode(buffer);
+  if (text.includes("�")) {
+    try {
+      text = new TextDecoder("euc-kr").decode(buffer);
+    } catch (error) {
+      /* 이 브라우저가 EUC-KR 을 모르면 UTF-8 그대로 */
+    }
+  }
+  return text.replace(/^﻿/, "");
+}
+
+const CSV_HEADER_ALIASES = {
+  name: ["작업명", "작업", "이름", "업무명", "업무"],
+  category: ["카테고리", "분류"],
+  start: ["시작일", "시작", "시작 날짜"],
+  end: ["종료일", "종료", "마감", "마감일", "끝"],
+  progress: ["진행률(%)", "진행률", "진행"],
+  owner: ["담당자", "담당"],
+  ownerEmail: ["담당자 이메일", "담당자이메일", "이메일"],
+  memo: ["메모", "비고"],
+  target: ["대상처", "대상"]
+};
+
+function csvNormalizeDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  /* 엑셀이 날짜를 숫자로 바꾼 경우 (1900-01-00 기준 일련번호) */
+  if (/^\d{5}(\.\d+)?$/.test(raw)) {
+    const serial = Math.floor(Number(raw));
+    const date = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+    return date.toISOString().slice(0, 10);
+  }
+  let m = raw.match(/^(\d{4})[-./\s]+(\d{1,2})[-./\s]+(\d{1,2})\.?$/);
+  if (!m) m = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (!m) m = raw.match(/^(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function csvNormalizeProgress(value) {
+  const raw = String(value || "").trim().replace(/%$/, "").trim();
+  if (!raw) return 0;
+  let n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  if (n > 0 && n < 1 && raw.includes(".")) n = n * 100;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function csvBuildImport(rows, existingCategories) {
+  if (!rows.length) throw new Error("파일에 내용이 없어요.");
+  const header = rows[0].map((h) => String(h || "").trim());
+  const col = {};
+  Object.keys(CSV_HEADER_ALIASES).forEach((key) => {
+    const index = header.findIndex((h) => CSV_HEADER_ALIASES[key].includes(h));
+    if (index >= 0) col[key] = index;
+  });
+  if (col.name === undefined || col.start === undefined || col.end === undefined) {
+    throw new Error("첫 줄에 '작업명', '시작일', '종료일' 제목이 있어야 해요. (이 앱에서 다운로드한 CSV 형식)");
+  }
+
+  const get = (row, key) => (col[key] === undefined ? "" : String(row[col[key]] || "").trim());
+  const known = new Set((existingCategories || []).map((c) => c.name));
+  const newCategories = [];
+  const tasks = [];
+  const skipped = [];
+
+  rows.slice(1).forEach((row, i) => {
+    const line = i + 2;
+    const name = get(row, "name");
+    if (!name) { skipped.push(line + "번째 줄: 작업명 없음"); return; }
+    const start = csvNormalizeDate(get(row, "start"));
+    const end = csvNormalizeDate(get(row, "end"));
+    if (!start || !end) { skipped.push(line + "번째 줄: 날짜 형식 오류"); return; }
+    if (end < start) { skipped.push(line + "번째 줄: 종료일이 시작일보다 빠름"); return; }
+    const category = get(row, "category");
+    if (category && category !== "기타" && !known.has(category)) {
+      known.add(category);
+      newCategories.push(category);
+    }
+    tasks.push({
+      name: name.slice(0, 200),
+      category: category === "기타" ? "" : category,
+      start, end,
+      progress: csvNormalizeProgress(get(row, "progress")),
+      owner: get(row, "owner").slice(0, 100),
+      ownerEmail: get(row, "ownerEmail"),
+      memo: get(row, "memo"),
+      target: get(row, "target").slice(0, 200)
+    });
+  });
+  return { tasks, newCategories, skipped };
+}
+
+function shellPickCsvForChart(chart, box, button) {
+  if (!shellCanEdit(chart)) {
+    showToast("이 차트를 편집할 권한이 없어서 업로드할 수 없어요.", true);
+    return;
+  }
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".csv,text/csv";
+  input.addEventListener("change", () => {
+    const file = input.files && input.files[0];
+    if (file) withBusy(button, "불러오는 중…", () => shellImportCsvToChart(chart, box, file));
+  });
+  input.click();
+}
+
+async function shellImportCsvToChart(chart, box, file) {
+  const chartId = chart.id;
+  try {
+    const text = await csvReadFileText(file);
+    const categories = await fb.getCategoriesOnce(chartId);
+    const plan = csvBuildImport(csvParse(text), categories);
+
+    if (!plan.tasks.length) {
+      showToast("추가할 작업이 없어요." + (plan.skipped.length ? " (" + plan.skipped.slice(0, 3).join(", ") + ")" : ""), true, 0);
+      return;
+    }
+
+    const lines = ["'" + chart.name + "' 차트에 작업 " + plan.tasks.length + "개를 추가할까요? (기존 작업은 그대로예요)"];
+    if (plan.newCategories.length) lines.push("새 카테고리 " + plan.newCategories.length + "개: " + plan.newCategories.join(", "));
+    if (plan.skipped.length) {
+      lines.push("건너뛰는 줄 " + plan.skipped.length + "개:");
+      plan.skipped.slice(0, 5).forEach((s) => lines.push(" · " + s));
+      if (plan.skipped.length > 5) lines.push(" · 그 밖에 " + (plan.skipped.length - 5) + "개");
+    }
+    if (!confirm(lines.join("\n"))) return;
+
+    /* 카테고리 먼저 (이름 → id) */
+    const categoryIds = {};
+    categories.forEach((c) => { categoryIds[c.name] = c.id; });
+    for (const name of plan.newCategories) {
+      const res = await apiPostForChart("createCategory", chartId, { data: { name } });
+      categoryIds[name] = res.result;
+    }
+
+    let added = 0;
+    for (const task of plan.tasks) {
+      try {
+        await apiPostForChart("create", chartId, {
+          data: {
+            name: task.name,
+            categoryId: task.category ? (categoryIds[task.category] || "") : "",
+            start: task.start,
+            end: task.end,
+            progress: task.progress,
+            memo: task.memo,
+            target: task.target,
+            owner: task.owner,
+            ownerEmail: task.ownerEmail
+          }
+        });
+        added++;
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    shellSendCommand(box, { cmd: "reload" });
+    showToast("작업 " + added + "개를 추가했어요." + (added < plan.tasks.length ? " (" + (plan.tasks.length - added) + "개 실패)" : ""), added < plan.tasks.length);
+  } catch (error) {
+    console.error(error);
+    showToast(error.message || "CSV 파일을 불러오지 못했어요.", true, 0);
+  }
 }
 
 function shellSharedStateKey(chart) {
@@ -7098,7 +7368,13 @@ function shellRenderList() {
       range.title = "연도·표시 기간 설정";
       range.dataset.popoverAnchor = "1";
       range.addEventListener("click", () => shellOpenRangePopover(shellFindChart(chart.id) || chart, box, range));
-      headInfo.appendChild(range);
+
+      /* (요청사항) 날짜 관련(기간 · 오늘 전후 보기 · 전체 보기)은 알약 하나에 */
+      const datePill = document.createElement("div");
+      datePill.className = "mc-date-pill";
+      datePill.appendChild(range);
+      datePill.appendChild(shellBuildDateToolsEl(box));
+      headInfo.appendChild(datePill);
 
       /* 접혔을 때만 보이는 평균 진행률 */
       const avg = document.createElement("span");
@@ -10408,6 +10684,7 @@ function initSharedCalendarUi() {
     }
     sharedCalClearInfo(chartId);
     showToast("캘린더에서 삭제했습니다.");
+    shellRefreshCalButtons();
   }));
 }
 
