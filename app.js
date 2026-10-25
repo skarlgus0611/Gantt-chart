@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v50";
+const APP_VERSION = "2026-10-24-design-v51";
 
 
 /* =========================================================
@@ -9969,7 +9969,6 @@ async function shellHandleRevokeAllSharing() {
  * ========================================================= */
 const shareOrgState = { chart: null, memberships: [], rosters: {}, picked: new Set() };
 
-const SHARE_MAP_HINT = "기존 권한: 게스트→뷰어 · 참여자→편집자 · 관리자→관리자";
 
 function shellShareSetTab(tab) {
   document.querySelectorAll("#mcShareModal .mc-share-tab").forEach((btn) => {
@@ -10048,11 +10047,6 @@ async function shellShareOrgRefresh() {
   const orgs = shareOrgSelectable();
   shareOrgFillSelect(document.getElementById("mcSharePickOrg"), orgs, true);
   shareOrgFillSelect(document.getElementById("mcShareAllOrg"), orgs, true);
-  document.querySelectorAll("#mcShareModal [data-share-map-hint]").forEach((hint) => {
-    hint.innerHTML = "";
-    hint.appendChild(orgIcon("info", 13));
-    hint.appendChild(orgEl("span", "", SHARE_MAP_HINT));
-  });
 
   const allPane = document.querySelector('#mcShareModal [data-share-pane="org"]');
   allPane.classList.toggle("mc-share-pane-empty", !orgs.length);

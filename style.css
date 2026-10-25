@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v50";
+  --css-version: "2026-10-24-design-v51";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -9916,4 +9916,17 @@ body:has(.gantt-resize.dragging) {
   flex: 1 1 auto;
   max-width: none;
   height: 14px;
+}
+
+/* 공유 창: 조직 안내문을 위 선택칸 글씨에 맞춘다 */
+.mc-share-pane-note {
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.55;
+  color: #3f3f46;
+}
+
+.mc-share-pane-foot .mc-btn {
+  margin-left: auto;
 }
