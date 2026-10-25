@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v80"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v81"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v80";
+const APP_VERSION = "2026-10-24-design-v81";
 
 
 /* =========================================================
@@ -421,6 +421,7 @@ function resolveTasksAndCats(bucket) {
       owner: t.owner || "",
       ownerEmail: t.ownerEmail || "",
       overdueAck: !!t.overdueAck,
+      endChangedAt: Number(t.endChangedAt) || 0,
       updated: t.updated || ""
     };
   });
@@ -504,6 +505,11 @@ function applyTaskFields(base, data, cats) {
   if (!String(t.owner || "").trim()) {
     /* (요청사항) 이메일만 적었으면 이메일 앞부분을 이름으로 */
     t.owner = t.ownerEmail ? t.ownerEmail.split("@")[0] : "";
+  }
+
+  /* (요청사항) 종료일을 바꿀 때마다 시각을 남긴다 → 같은 날짜로 되돌아와도 사이트 안 알림이 새로 뜬다 */
+  if (t.end !== base.end) {
+    t.endChangedAt = Date.now();
   }
 
   /* (요청사항) 지연 확인: 누르면 그 작업의 지연 알림을 멈춘다. 종료일을 바꾸면 다시 알린다 */
@@ -1743,7 +1749,8 @@ function postStatsToParent() {
       /* (요청사항) 마감 알림: 지연·임박 작업 */
       dueTasks: tasks.map((t) => ({ t, due: taskNoticeStage(t) })).filter((x) => x.due).map(({ t, due }) => ({
         id: t.id, name: t.name, end: t.end, progress: normProgress(t.progress),
-        owner: t.owner || "", ownerEmail: t.ownerEmail || "", stage: due.stage, kind: due.kind, days: due.days, label: due.label
+        owner: t.owner || "", ownerEmail: t.ownerEmail || "", stage: due.stage, kind: due.kind, days: due.days, label: due.label,
+        endChangedAt: Number(t.endChangedAt) || 0
       }))
     }, window.location.origin);
   } catch (error) {
@@ -11873,7 +11880,8 @@ function bellDueOf(task) {
   return due ? {
     id: task.id, name: task.name || "", end: task.end, progress: normProgress(task.progress),
     owner: task.owner || "", ownerEmail: String(task.ownerEmail || "").toLowerCase(),
-    stage: due.stage, kind: due.kind, days: due.days, label: due.label
+    stage: due.stage, kind: due.kind, days: due.days, label: due.label,
+    endChangedAt: Number(task.endChangedAt) || 0
   } : null;
 }
 
@@ -11931,8 +11939,9 @@ function bellCollect() {
 
 /* (요청사항) 사이트 안 알림은 [확인]을 누를 때까지 남는다. 확인 기록은 users/{uid}.noticeAcks 에
    (다른 기기에서도 다시 안 뜨게) + 이 브라우저에도. 종료일이 바뀌면 새 알림으로 본다 */
+/* 같은 작업·같은 단계라도 종료일을 다시 바꿨으면(endChangedAt) 다른 알림 */
 function bellNoticeKey(task) {
-  return task.chartId + ":" + task.id + ":" + task.stage + ":" + task.end;
+  return task.chartId + ":" + task.id + ":" + task.stage + ":" + task.end + ":" + (Number(task.endChangedAt) || 0);
 }
 
 function bellAckCacheKey() {
@@ -11957,25 +11966,6 @@ function bellAck(items) {
     fb.mergeUserProfile(fbUser.uid, { noticeAcks: added }).catch((error) => console.warn("알림 확인 저장 실패:", error && error.message));
   }
   shellRefreshBell();
-}
-
-/* (요청사항) 확인을 되돌리기: 기록을 null 로 덮어 다시 "확인 안 한 알림"이 되게 */
-function bellUnack(key) {
-  if (!fbUser || !key) return;
-  const merged = { ...bellAcks(), [key]: null };
-  try { localStorage.setItem(bellAckCacheKey(), JSON.stringify(merged)); } catch (error) { /* 무시 */ }
-  bellProfile = { ...(bellProfile || {}), noticeAcks: { ...((bellProfile && bellProfile.noticeAcks) || {}), [key]: null } };
-  if (typeof fb.mergeUserProfile === "function") {
-    fb.mergeUserProfile(fbUser.uid, { noticeAcks: { [key]: null } }).catch((error) => console.warn("알림 되돌리기 저장 실패:", error && error.message));
-  }
-  shellRefreshBell();
-}
-
-/* 이미 확인한 알림 (지금 단계 그대로인 것만 — 단계가 바뀌면 새 알림이 된다) */
-function bellAckedItems(mineOnly = bellMineOnly) {
-  const acks = bellAcks();
-  const items = bellCollect().filter((t) => acks[bellNoticeKey(t)]);
-  return mineOnly ? items.filter(bellIsMine) : items;
 }
 
 /* 확인하지 않은 알림 (전체 / 내 담당) */
@@ -12027,7 +12017,6 @@ const BELL_ICON = {
   done: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg>'
 };
 let bellSettingsOpen = false;
-let bellAckedOpen = false;
 
 /* (요청사항) 글자 위주였던 알림창을 그림 위주로:
    왼쪽 색 타일에 남은 날(크게) · 이름 한 줄 · 아래 줄은 담당자 동그라미 + 차트 + 진행률 막대 ·
@@ -12042,7 +12031,6 @@ function shellRenderBellMenu() {
     ["upcoming", "다가오는 마감", BELL_ICON.cal],
     ["overdue", "지연", BELL_ICON.alert]
   ];
-  const acked = bellAckedItems();
 
   const tile = (t) => {
     const big = t.kind === "overdue" ? "+" + t.days + "일" : t.days === 0 ? "오늘" : "D-" + t.days;
@@ -12060,25 +12048,18 @@ function shellRenderBellMenu() {
     const rows = items.filter((t) => t.kind === kind);
     if (!rows.length) return "";
     return '<div class="mc-bell-sec"><div class="mc-bell-sec-title mc-bell-' + kind + '">' + icon + "<span>" + title + "</span><em>" + rows.length + "</em></div>" +
-      rows.map((t) => bellRow(t, false)).join("") + "</div>";
+      rows.map(bellRow).join("") + "</div>";
   }).join("");
 
-  /* 확인한 알림: 맨 아래에 접어 두고, 펼치면 되돌리기 */
-  const ackedList = !acked.length ? "" :
-    '<details class="mc-bell-acked"' + (bellAckedOpen ? " open" : "") + '><summary>확인한 알림 ' + acked.length + "</summary>" +
-      acked.map((t) => bellRow(t, true)).join("") + "</details>";
-
-  function bellRow(t, isAcked) {
-    return '<div class="mc-bell-item' + (isAcked ? " mc-bell-item-acked" : "") + '">' +
+  function bellRow(t) {
+    return '<div class="mc-bell-item">' +
           '<button type="button" class="mc-bell-open" data-chart="' + escapeHtml(t.chartId) + '" data-task="' + escapeHtml(t.id) + '">' +
             tile(t) +
             '<span class="mc-bell-item-text"><b>' + escapeHtml(t.name) + "</b>" +
               '<span class="mc-bell-meta">' + who(t) + '<span class="mc-bell-chart">' + escapeHtml(t.chartName) + "</span>" +
                 '<span class="mc-bell-prog" title="진행률 ' + t.progress + '%"><i style="width:' + t.progress + '%"></i></span></span></span>' +
           "</button>" +
-          (isAcked
-            ? '<button type="button" class="mc-bell-unack" data-unack="' + escapeHtml(bellNoticeKey(t)) + '" title="다시 알림으로">되돌리기</button>'
-            : '<button type="button" class="mc-bell-ack" data-key="' + escapeHtml(bellNoticeKey(t)) + '" aria-label="확인" title="확인 (알림에서 지우기)">' + BELL_ICON.check + "</button>") +
+          '<button type="button" class="mc-bell-ack" data-key="' + escapeHtml(bellNoticeKey(t)) + '" aria-label="확인" title="확인 (알림에서 지우기)">' + BELL_ICON.check + "</button>" +
         "</div>";
   }
 
@@ -12103,7 +12084,6 @@ function shellRenderBellMenu() {
     settings +
     '<div class="mc-bell-list">' +
       (items.length ? list : '<div class="mc-bell-empty">' + BELL_ICON.done + "<span>확인할 알림이 없어요</span></div>") +
-      ackedList +
     "</div>" +
     (items.length ? '<button type="button" class="mc-bell-ack-all">' + BELL_ICON.check + "모두 확인</button>" : "");
 }
@@ -12144,22 +12124,10 @@ function shellOpenBellMenu(button) {
       shellRenderBellMenu();
       return;
     }
-    const unack = event.target.closest("[data-unack]");
-    if (unack) {
-      bellUnack(unack.dataset.unack);
-      return;
-    }
-    if (event.target.closest(".mc-bell-acked > summary")) {
-      setTimeout(() => {
-        const box = bellMenu && bellMenu.querySelector(".mc-bell-acked");
-        bellAckedOpen = !!(box && box.open);
-      }, 0);
-      return;
-    }
     if (event.target.closest(".mc-bell-ack-all")) {
       const open = bellOpenItems();
       /* (요청사항) 안 보이던 알림까지 지워지지 않게 한 번 더 묻는다 */
-      if (!confirm("알림 " + open.length + "개를 모두 확인할까요?\n(확인한 알림은 맨 아래 \"확인한 알림\"에서 되돌릴 수 있어요)")) return;
+      if (!confirm("알림 " + open.length + "개를 모두 확인할까요?")) return;
       bellAck(open);
       return;
     }
