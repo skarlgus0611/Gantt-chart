@@ -4,7 +4,7 @@
    - index.js     : Firebase Cloud Functions 예약 작업 (Blaze 요금제일 때)
    dryRun 이면 실제로 보내지 않고 무엇을 보낼지만 기록한다. */
 const nodemailer = require("nodemailer");
-const { buildNotices, renderMail, seoulTodayKey } = require("./digest");
+const { buildNotices, renderMail, buildDigests, renderDigest, seoulTodayKey } = require("./digest");
 
 /* 보내는 메일 서버: 비우면 Gmail, 네이버 등은 SMTP_HOST 로 (예: smtp.naver.com) */
 function mailTransport(smtpUser, smtpPass, smtpHost, smtpPort) {
@@ -26,30 +26,34 @@ async function runDailyNotices(admin, { smtpUser, smtpPass, smtpHost = "", smtpP
   }
 
   const { mails } = buildNotices({ users, charts, tasksByChart, todayKey });
-  log.info("오늘(" + todayKey + ") 메일 " + mails.length + "명");
+  /* (요청사항) 일정 메일 — 본인이 정한 주기마다 일정 전체 */
+  const digests = buildDigests({ users, charts, tasksByChart, todayKey });
+  const outgoing = [
+    ...mails.map((m) => ({ email: m.email, mail: renderMail(m, siteUrl) })),
+    ...digests.map((d) => ({ email: d.email, mail: renderDigest(d, siteUrl) }))
+  ];
+  log.info("오늘(" + todayKey + ") 마감 알림 " + mails.length + "명 · 일정 메일 " + digests.length + "명");
 
-  /* 메일 */
   let mailed = 0;
-  if (mails.length && (dryRun || !smtpUser || !smtpPass)) {
-    mails.forEach((m) => log.info("[메일 " + (dryRun ? "미리보기" : "건너뜀: Gmail 설정 없음") + "] " + m.email + " · " + renderMail(m, siteUrl).subject));
-  } else if (mails.length) {
+  if (outgoing.length && (dryRun || !smtpUser || !smtpPass)) {
+    outgoing.forEach((o) => log.info("[메일 " + (dryRun ? "미리보기" : "건너뜀: Gmail 설정 없음") + "] " + o.email + " · " + o.mail.subject));
+  } else if (outgoing.length) {
     const transporter = mailTransport(smtpUser, smtpPass, smtpHost, smtpPort);
-    for (const notice of mails) {
-      const mail = renderMail(notice, siteUrl);
+    for (const { email, mail } of outgoing) {
       try {
         await transporter.sendMail({
           from: { name: "간트차트 알림", address: smtpUser },
-          to: notice.email, subject: mail.subject, html: mail.html, text: mail.text
+          to: email, subject: mail.subject, html: mail.html, text: mail.text
         });
         mailed++;
       } catch (error) {
-        log.error("메일 발송 실패 " + notice.email + ": " + (error && error.message));
+        log.error("메일 발송 실패 " + email + ": " + (error && error.message));
       }
     }
   }
 
   log.info("보냄: 메일 " + mailed + "통");
-  return { mails: mails.length, mailed };
+  return { mails: mails.length, digests: digests.length, mailed };
 }
 
 module.exports = { runDailyNotices };
