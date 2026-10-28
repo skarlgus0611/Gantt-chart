@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v87";
+  --css-version: "2026-10-24-design-v88";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -10504,9 +10504,9 @@ html.is-embedded .task-header {
 
 .ob-tip {
   position: absolute;
-  width: 300px;
+  width: 340px;
   max-width: calc(100vw - 24px);
-  padding: 16px 18px 14px;
+  padding: 18px 20px 16px;
   border-radius: 16px;
   background: #ffffff;
   box-shadow: 0 20px 50px -15px rgba(0, 0, 0, .4);
@@ -10530,15 +10530,64 @@ html.is-embedded .task-header {
 }
 
 .ob-tip-st {
-  font-size: 11.5px;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e3f2ed;
+  font-size: 11px;
   font-weight: 800;
   color: #0f766e;
 }
 
 .ob-tip h4 {
-  margin: 4px 0;
-  font-size: 15px;
+  margin: 8px 0 10px;
+  font-size: 17px;
+  letter-spacing: -.2px;
   color: #18181b;
+}
+
+/* 안내 글: 짧은 줄 목록, 강조 단어만 굵게 */
+.ob-points {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ob-points li {
+  position: relative;
+  padding-left: 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #52525b;
+  word-break: keep-all;
+}
+
+.ob-points li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .6em;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #5eead4;
+}
+
+.ob-points b {
+  font-weight: 700;
+  color: #18181b;
+}
+
+.ob-inline-text .ob-points {
+  margin-top: 6px;
+  gap: 4px;
+}
+
+.ob-inline-text .ob-points li {
+  font-size: 12.5px;
 }
 
 .ob-tip p {
@@ -10551,7 +10600,9 @@ html.is-embedded .task-header {
 .ob-tip-row {
   display: flex;
   align-items: center;
-  margin-top: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
 }
 
 .ob-dots {

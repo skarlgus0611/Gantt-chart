@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v87"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v88"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v87";
+const APP_VERSION = "2026-10-24-design-v88";
 
 
 /* =========================================================
@@ -11551,25 +11551,25 @@ function obTourSteps() {
     return el ? { el } : null;
   };
   return [
-    { targets: [inFrame(".task-add-pill")], title: "여기서 작업을 추가해요",
-      text: "작업 이름과 기간을 넣으면 오른쪽 달력에 막대가 생겨요. 카테고리로 작업을 묶을 수도 있어요." },
-    { targets: [inBox(".mc-date-pill")], title: "보이는 기간을 정해요",
-      text: "날짜를 누르면 연도·기간을 고를 수 있어요. 옆 버튼으로 오늘 전후나 전체를 바로 볼 수 있어요." },
-    { targets: [inBox(".mc-share-btn")], title: "팀과 공유해요",
-      text: "공유를 누르고 이메일이나 조직을 고르면, 같은 차트를 실시간으로 함께 봐요. 뷰어·편집자·관리자 권한도 정할 수 있어요." },
-    { targets: [byId("mcSidebarOrgBtn")], title: "조직을 만들고 관리해요",
-      text: "회사·팀 단위로 조직을 만들고 조직원을 초대하세요. 차트를 조직 전체나 고른 조직원에게 한 번에 공유할 수 있고, 조직에서 나가면 바로 볼 수 없게 돼요." },
-    { targets: [inBox(".mc-btn-capture"), inBox(".mc-cal-toggle")], title: "캡처하고 구글 캘린더에 넣어요",
-      text: "카메라 버튼은 차트를 이미지로 저장해요. 달력 버튼을 누르면 이 차트 전용 구글 캘린더가 생겨서 작업이 일정으로 들어가요." },
+    { targets: [inFrame(".task-add-pill")], title: "작업 추가",
+      points: ["**작업 이름**과 **기간**을 넣으면 달력에 막대가 생겨요", "**카테고리**로 작업을 묶을 수 있어요"] },
+    { targets: [inBox(".mc-date-pill")], title: "보이는 기간",
+      points: ["날짜를 눌러 **연도 · 기간**을 골라요", "옆 버튼으로 **오늘 전후**나 **전체**를 바로 봐요"] },
+    { targets: [inBox(".mc-share-btn")], title: "팀과 공유",
+      points: ["**이메일 · 조직**으로 공유해 실시간으로 함께 봐요", "**뷰어** 보기만 · **편집자** 수정 · **관리자** 공유 설정까지"] },
+    { targets: [byId("mcSidebarOrgBtn")], title: "조직 관리",
+      points: ["회사 · 팀 단위로 **조직**을 만들고 조직원을 초대해요", "차트를 **조직 전체**나 **고른 사람**에게 한 번에 공유해요", "조직에서 나가면 그 차트는 바로 **안 보여요**"] },
+    { targets: [inBox(".mc-btn-capture"), inBox(".mc-cal-toggle")], title: "캡처 · 구글 캘린더",
+      points: ["**카메라** — 차트를 이미지로 저장", "**달력** — 이 차트 전용 구글 캘린더에 작업이 일정으로 들어가요"] },
     { targets: [inBox(".mc-csv-upload"), () => {
         const b = box();
         const up = b && b.querySelector(".mc-csv-upload");
         const el = up && up.nextElementSibling;
         return el ? { el } : null;
-      }], title: "엑셀(CSV)로 올리고 받아요",
-      text: "업로드는 엑셀·CSV 파일의 작업을 이 차트에 추가하고, 다운로드는 작업 목록을 파일로 받아요." },
-    { targets: [byId("mcBellBtn")], title: "마감 알림을 메일로 받아요",
-      text: "종 버튼에서 마감이 다가오는 작업을 봐요. 내가 담당인 작업은 D-15·D-7·D-1·당일과 지연될 때 메일로 알려 드려요. 종 안 설정에서 매일·3일·1주일·직접 정한 주기로 일정 전체를 메일로 받아볼 수도 있어요." }
+      }], title: "엑셀(CSV) 올리기 · 받기",
+      points: ["**업로드** — 엑셀 · CSV 파일의 작업을 이 차트에 추가", "**다운로드** — 작업 목록을 파일로 받기"] },
+    { targets: [byId("mcBellBtn")], title: "마감 알림 · 메일",
+      points: ["종 버튼에서 **마감이 다가오는 작업**을 봐요", "내 작업은 **D-15 · D-7 · D-1 · 당일 · 지연** 때 메일로", "설정에서 **일정 메일** 주기도 정할 수 있어요"] }
   ];
 }
 
@@ -11591,7 +11591,15 @@ function obStartTour() {
   wait();
 }
 
-/* 안내 틀: steps = [{ targets: [() => ({ el, frame? })], title, text }]
+/* (요청사항) 안내 글은 긴 문단 대신 짧은 줄 목록으로 — points 가 없으면 text 를 문장마다 나눈다.
+   **굵게** 로 감싼 말만 강조 */
+function obPointsHtml(item) {
+  const points = item.points || String(item.text || "").split(/(?<=[요다]\.)\s+/).filter(Boolean);
+  return '<ul class="ob-points">' + points.map((line) =>
+    "<li>" + escapeHtml(line.replace(/\.$/, "")).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>") + "</li>").join("") + "</ul>";
+}
+
+/* 안내 틀: steps = [{ targets: [() => ({ el, frame? })], title, points | text }]
    카드 안 차트(iframe)에서 부를 때는 바깥 화면(부모)에 깔아서 화면 전체를 덮는다 */
 function obHostWindow() {
   try {
@@ -11698,7 +11706,7 @@ function obRenderTourStep() {
     '<svg class="ob-mask" width="100%" height="100%"><defs><mask id="obTourMask"><rect width="100%" height="100%" fill="white"></rect>' + holes +
     '</mask></defs><rect width="100%" height="100%" fill="rgba(15,23,22,.45)" mask="url(#obTourMask)"></rect></svg>' + rings +
     '<div class="ob-tip" role="dialog" aria-live="polite"><div class="ob-tip-st">' + (tour.index + 1) + " / " + total + "</div>" +
-      "<h4>" + escapeHtml(step.title) + "</h4><p>" + escapeHtml(step.text) + "</p>" +
+      "<h4>" + escapeHtml(step.title) + "</h4>" + obPointsHtml(step) +
       '<div class="ob-tip-row"><div class="ob-dots">' + dots + "</div>" +
       '<button type="button" class="ob-tip-skip" data-ob="skip">건너뛰기</button>' +
       '<button type="button" class="ob-tip-next" data-ob="next">' + (last ? (step.lastLabel || "시작하기") : "다음") + "</button></div></div>";
@@ -11810,7 +11818,7 @@ function obShowInlineTip(container, key) {
   const box = document.createElement("div");
   box.className = "ob-inline";
   box.innerHTML = '<div class="ob-inline-ic">' + OB_ICON.info + "</div>" +
-    '<div class="ob-inline-text"><b>' + escapeHtml(tip.title) + "</b><p>" + escapeHtml(tip.text) + "</p>" +
+    '<div class="ob-inline-text"><b>' + escapeHtml(tip.title) + "</b>" + obPointsHtml(tip) +
     '<div class="ob-inline-row"><button type="button" class="ob-inline-ok">알겠어요</button>' +
     '<button type="button" class="ob-inline-skip">건너뛰기</button></div></div>';
   box.querySelector(".ob-inline-ok").addEventListener("click", () => box.remove());
