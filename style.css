@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v91";
+  --css-version: "2026-10-24-design-v92";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -11817,4 +11817,672 @@ body.shared-viewer-readonly #detailOwnerEmail {
   width: 58px;
   min-width: 58px;
   padding: 0;
+}
+
+
+/* =========================================================
+   (요청사항) 메모 편집기 (상세창 메모란 · 메모 보드 공통)
+   ========================================================= */
+.memo-ed {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.memo-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1px;
+  padding: 4px 6px;
+}
+
+.memo-tb {
+  height: 30px;
+  min-width: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #3f3f46;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.memo-tb:hover {
+  background: rgba(0, 0, 0, .06);
+}
+
+.memo-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgba(0, 0, 0, .12);
+}
+
+.memo-status {
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #a1a1aa;
+  white-space: nowrap;
+}
+
+.memo-status.is-ok { color: #0f766e; }
+.memo-status.is-error { color: #dc2626; }
+
+.memo-body {
+  flex: 1;
+  min-height: 120px;
+  padding: 12px 14px 14px;
+  outline: none;
+  font-size: 14px;
+  line-height: 1.65;
+  color: #27272a;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.memo-body.is-empty::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: #a1a1aa;
+  pointer-events: none;
+}
+
+.memo-body h3 {
+  margin: 4px 0 2px;
+  font-size: 1.12em;
+  font-weight: 800;
+}
+
+.memo-body ul,
+.memo-body ol {
+  margin: 2px 0;
+  padding-left: 22px;
+}
+
+.memo-body hr {
+  border: 0;
+  border-top: 1px dashed rgba(0, 0, 0, .22);
+  margin: 10px 0;
+}
+
+.memo-body a {
+  color: #0f766e;
+  text-decoration: underline;
+}
+
+.memo-body mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  color: inherit;
+}
+
+/* 체크리스트: 왼쪽 상자를 누르면 체크 */
+.memo-body .memo-ck {
+  position: relative;
+  padding-left: 26px;
+}
+
+.memo-body .memo-ck::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: .3em;
+  width: 15px;
+  height: 15px;
+  border: 2px solid #a1a1aa;
+  border-radius: 5px;
+  background: #ffffff;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.memo-body .memo-ck.on::before {
+  border-color: #0f766e;
+  background: #0f766e url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 5 5 9-10'/%3E%3C/svg%3E") center / 11px no-repeat;
+}
+
+.memo-body .memo-ck.on {
+  color: #a1a1aa;
+  text-decoration: line-through;
+}
+
+/* 글자색 · 형광펜 고르기 */
+.memo-pop {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, .3), 0 0 0 1px rgba(0, 0, 0, .05);
+}
+
+.memo-sw {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sw);
+  cursor: pointer;
+}
+
+.memo-sw.is-mark {
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .08) inset;
+}
+
+.memo-sw-none {
+  background: #f4f4f5;
+  color: #71717a;
+  display: grid;
+  place-items: center;
+}
+
+/* 상세창 메모란 */
+.detail-memo-ed {
+  margin-top: 4px;
+}
+
+.detail-memo-ed .memo-ed {
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.detail-memo-ed .memo-bar {
+  border-bottom: 1px solid #f0f0f2;
+  background: #fafafa;
+}
+
+.detail-memo-ed .memo-body {
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 13.5px;
+}
+
+.detail-memo-ed .is-readonly .memo-body {
+  background: #fafafa;
+}
+
+/* =========================================================
+   (요청사항) 메모 보드 — 차트 → 카테고리 → 시작일 순 포스트잇
+   ========================================================= */
+.mc-memo-modal {
+  position: relative;
+  max-width: 1060px;
+  width: 100%;
+  height: min(820px, 92vh);
+  background: #fbfaf7;
+}
+
+.mc-memo-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-memo-title svg {
+  color: #0f766e;
+}
+
+.mc-memo-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: #a1a1aa;
+}
+
+.mc-memo-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #eeece6;
+}
+
+.mc-memo-tools .mc-bell-seg button {
+  height: 30px;
+  padding: 0 14px;
+}
+
+.mc-memo-search {
+  flex: 1;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  border: 1px solid #e4e2dc;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #a1a1aa;
+}
+
+.mc-memo-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: #27272a;
+}
+
+.mc-memo-add {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #0f766e;
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.mc-memo-board {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -24px;
+  padding: 4px 24px 28px;
+}
+
+.mc-memo-chart > h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 22px 0 2px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #18181b;
+}
+
+.mc-memo-chart > h3 i {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+  color: #a1a1aa;
+}
+
+.mc-memo-cat {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 14px 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #52525b;
+}
+
+.mc-memo-cat em {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.mc-memo-cat small {
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.mc-memo-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: 18px 16px;
+}
+
+/* 포스트잇 한 장: 작업 색을 파스텔로, 위에 테이프 */
+.mc-memo-note {
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 16px 15px 12px;
+  border: 0;
+  border-radius: 2px 2px 2px 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .05), 0 10px 14px -10px rgba(0, 0, 0, .3);
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+
+.mc-memo-note::after {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 46px;
+  height: 15px;
+  margin-left: -23px;
+  background: rgba(255, 255, 255, .6);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+}
+
+.mc-memo-note:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .05), 0 16px 22px -12px rgba(0, 0, 0, .35);
+}
+
+.mc-memo-note > b {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mc-memo-note-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-top: 7px;
+  overflow: hidden;
+  font-size: 12.8px;
+  line-height: 1.55;
+  opacity: .92;
+  -webkit-mask-image: linear-gradient(#000 70%, transparent);
+  mask-image: linear-gradient(#000 70%, transparent);
+}
+
+.mc-memo-note-body h3 { margin: 0; font-size: 13.5px; font-weight: 800; }
+.mc-memo-note-body ul, .mc-memo-note-body ol { margin: 0; padding-left: 18px; }
+.mc-memo-note-body hr { border: 0; border-top: 1px dashed currentColor; opacity: .3; margin: 6px 0; }
+.mc-memo-note-body mark { color: inherit; border-radius: 3px; padding: 0 2px; }
+.mc-memo-note-body .memo-ck { position: relative; padding-left: 18px; }
+.mc-memo-note-body .memo-ck::before { content: ""; position: absolute; left: 0; top: .35em; width: 11px; height: 11px; border: 1.6px solid currentColor; border-radius: 3px; opacity: .6; box-sizing: border-box; }
+.mc-memo-note-body .memo-ck.on { text-decoration: line-through; opacity: .55; }
+.mc-memo-note-body .memo-ck.on::before { background: currentColor; }
+
+.mc-memo-note-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  opacity: .82;
+}
+
+.mc-memo-note-foot .is-late {
+  color: #dc2626;
+  opacity: 1;
+}
+
+.mc-memo-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 70px 16px;
+  color: #a1a1aa;
+  text-align: center;
+}
+
+.mc-memo-empty b {
+  font-size: 14px;
+  color: #52525b;
+}
+
+.mc-memo-empty span {
+  font-size: 12.5px;
+}
+
+/* 포스트잇을 누르면 크게 펼친 편집 창 */
+.mc-memo-pop-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 56px 20px 20px;
+  border-radius: inherit;
+  background: rgba(15, 23, 22, .38);
+  backdrop-filter: blur(1.5px);
+}
+
+.mc-memo-pop {
+  position: relative;
+  width: min(720px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px 4px 4px 22px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 40px 80px -24px rgba(0, 0, 0, .55);
+}
+
+.mc-memo-pop::after {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  width: 70px;
+  height: 20px;
+  margin-left: -35px;
+  background: rgba(255, 255, 255, .65);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .1);
+}
+
+.mc-memo-pop-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 22px 22px 8px 26px;
+}
+
+.mc-memo-pop-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.mc-memo-pop-title h4 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.mc-memo-pop-title p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: .75;
+}
+
+.mc-memo-due {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .6);
+  font-size: 12px;
+  font-weight: 800;
+  vertical-align: 3px;
+}
+
+.mc-memo-due.is-late {
+  color: #dc2626;
+  background: #fff1f1;
+}
+
+.mc-memo-pop-btn {
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .6);
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mc-memo-pop-btn:hover {
+  background: rgba(255, 255, 255, .85);
+}
+
+.mc-memo-pop-x {
+  width: 34px;
+  padding: 0;
+  justify-content: center;
+}
+
+.mc-memo-pop-ed {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 18px 0;
+}
+
+.mc-memo-pop-ed .memo-ed {
+  flex: 1;
+  min-height: 0;
+}
+
+.mc-memo-pop-ed .memo-bar {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .7);
+}
+
+.mc-memo-pop-ed .memo-tb {
+  color: inherit;
+}
+
+.mc-memo-pop-ed .memo-status {
+  display: none; /* 상태는 아래 줄에 */
+}
+
+.mc-memo-pop-ed .memo-body {
+  min-height: 300px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding: 16px 10px 12px;
+  font-size: 15px;
+  color: inherit;
+}
+
+.mc-memo-pop-ed .memo-body .memo-ck::before {
+  border-color: currentColor;
+  opacity: .7;
+}
+
+.mc-memo-pop-ed .memo-body .memo-ck.on::before {
+  opacity: 1;
+}
+
+.mc-memo-pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 22px 18px 26px;
+}
+
+.mc-memo-pop-state {
+  margin-right: auto;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: .8;
+}
+
+.mc-memo-pop-state.is-error {
+  color: #dc2626;
+  opacity: 1;
+}
+
+/* + 메모 쓰기: 작업 고르기 */
+.mc-memo-pick {
+  width: min(480px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .45);
+}
+
+.mc-memo-pick-list {
+  overflow-y: auto;
+  padding: 0 14px 16px;
+}
+
+.mc-memo-pick-chart {
+  margin: 12px 8px 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #a1a1aa;
+}
+
+.mc-memo-pick-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-memo-pick-item:hover {
+  background: #f1f7f5;
+}
+
+.mc-memo-pick-item b {
+  font-size: 13.5px;
+  color: #18181b;
+}
+
+.mc-memo-pick-item span {
+  font-size: 12px;
+  color: #a1a1aa;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .mc-memo-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 12px;
+  }
+
+  .mc-memo-pop-dim {
+    padding: 28px 8px 8px;
+  }
+
+  .mc-memo-pop-ed .memo-body {
+    min-height: 200px;
+  }
 }
