@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v99"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v100"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v99";
+const APP_VERSION = "2026-10-24-design-v100";
 
 
 /* =========================================================
@@ -12099,7 +12099,7 @@ async function memoDeleteMemos(targets, beforeSave) {
   showToast(failed ? "메모 " + failed + "개를 지우지 못했어요." : "메모 " + (list.length - failed) + "개를 지웠어요.", !!failed);
 }
 
-/* 여러 개 고르기: 폰은 꾹(0.5초), 데스크탑은 1초 누르면 고르기 시작 · 고르는 중에는 눌러서 더하거나 빼기 */
+/* 여러 개 고르기: 폰 · 데스크탑 모두 0.5초 누르면 고르기 시작 · 고르는 중에는 눌러서 더하거나 빼기 */
 function memoInitSelection(modal) {
   const board = modal.querySelector("#mcMemoBoard");
   let hold = null;
@@ -12124,7 +12124,7 @@ function memoInitSelection(modal) {
         suppressClick = true;
         toggle(note);
         if (navigator.vibrate) navigator.vibrate(15);
-      }, event.pointerType === "mouse" ? 1000 : 500)
+      }, 500)
     };
   });
   board.addEventListener("pointermove", (event) => {
