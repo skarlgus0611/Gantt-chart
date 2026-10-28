@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v88"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v91"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v88";
+const APP_VERSION = "2026-10-24-design-v91";
 
 
 /* =========================================================
@@ -507,16 +507,19 @@ function applyTaskFields(base, data, cats) {
     t.owner = t.ownerEmail ? t.ownerEmail.split("@")[0] : "";
   }
 
-  /* (요청사항) 종료일을 바꿀 때마다 시각을 남긴다 → 같은 날짜로 되돌아와도 사이트 안 알림이 새로 뜬다 */
-  if (t.end !== base.end) {
+  /* (요청사항) 종료일을 바꿀 때마다 시각을 남긴다 → 같은 날짜로 되돌아와도 사이트 안 알림이 새로 뜬다.
+     (버그 수정) 완료(100%)했던 작업의 진행률을 다시 낮춘 때도 마찬가지 — 완료 전에 [확인]·[지연 확인]을
+     눌러 뒀어도 다시 알린다 */
+  const reopened = normProgress(base.progress) >= 100 && normProgress(t.progress) < 100;
+  if (t.end !== base.end || reopened) {
     t.endChangedAt = Date.now();
   }
 
-  /* (요청사항) 지연 확인: 누르면 그 작업의 지연 알림을 멈춘다. 종료일을 바꾸면 다시 알린다 */
+  /* (요청사항) 지연 확인: 누르면 그 작업의 지연 알림을 멈춘다. 종료일을 바꾸거나 완료를 되돌리면 다시 알린다 */
   t.overdueAck = !!base.overdueAck;
   if (has("overdueAck")) {
     t.overdueAck = !!data.overdueAck;
-  } else if (t.end !== base.end) {
+  } else if (t.end !== base.end || reopened) {
     t.overdueAck = false;
   }
 
@@ -11569,7 +11572,7 @@ function obTourSteps() {
       }], title: "엑셀(CSV) 올리기 · 받기",
       points: ["**업로드** — 엑셀 · CSV 파일의 작업을 이 차트에 추가", "**다운로드** — 작업 목록을 파일로 받기"] },
     { targets: [byId("mcBellBtn")], title: "마감 알림 · 메일",
-      points: ["종 버튼에서 **마감이 다가오는 작업**을 봐요", "내 작업은 **D-15 · D-7 · D-1 · 당일 · 지연** 때 메일로", "설정에서 **일정 메일** 주기도 정할 수 있어요"] }
+      points: ["종 버튼에서 **마감이 다가오는 작업**을 봐요", "내 작업은 **D-15 · D-7 · D-1 · 당일 · 지연** 때 메일로", "종 안에서 **일정 메일** 주기도 정할 수 있어요"] }
   ];
 }
 
@@ -12022,14 +12025,12 @@ const BELL_ICON = {
   clock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>',
   cal: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M8 3v3M16 3v3"></path></svg>',
   check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>',
-  gear: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>',
   mail: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="m4 7 8 6 8-6"></path></svg>',
   bell: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>',
   up: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 2 9 8H1z" fill="currentColor"></path></svg>',
   down: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 8 1 2h8z" fill="currentColor"></path></svg>',
   done: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg>'
 };
-let bellSettingsOpen = false;
 
 /* (요청사항) 일정 메일 — 마감 알림과 따로, 정한 주기마다 일정 전체를 메일로.
    users/{uid}.notify.digest = { on, every, unit: "d"|"w"|"m", scope: "mine"|"charts", since }
@@ -12061,31 +12062,36 @@ function bellDigestOn(digest) {
 function bellDigestHtml(digest, off) {
   const on = bellDigestOn(digest);
   const preset = bellDigestPreset(digest);
-  const pills = BELL_DIGEST_PRESETS.map(([key, , , label]) =>
-    '<button type="button" class="mc-bell-pill' + (preset && preset[0] === key ? " on" : "") + '" data-digest="' + key + '"' + off + ">" + label + "</button>").join("");
-  let custom;
+  /* (요청사항) 낱개 알약 대신 "나에게 | 전체" 처럼 한 줄로 붙은 칸 — 칸 너비는 같게, 왼쪽에 이름표 */
+  const seg = (cells) => '<div class="mc-bell-seg mc-bell-seg-fill">' + cells.join("") + "</div>";
+  const row = (label, control) => '<div class="mc-bell-opt"><span class="mc-bell-opt-label">' + label + "</span>" + control + "</div>";
+  let cycle;
   if (bellDigestEdit) {
     const e = bellDigestEdit;
-    custom = '<span class="mc-bell-pill mc-bell-pill-edit on">' +
+    cycle = '<div class="mc-bell-pill-edit">' +
       '<span class="mc-bell-num">' + e.every + "</span>" +
       '<span class="mc-bell-step"><button type="button" data-step="1" aria-label="늘리기">' + BELL_ICON.up + '</button><button type="button" data-step="-1" aria-label="줄이기">' + BELL_ICON.down + "</button></span>" +
       '<span class="mc-bell-units">' + [["d", "일"], ["w", "주"], ["m", "달"]].map(([u, label]) =>
         '<button type="button" data-unit="' + u + '" class="' + (e.unit === u ? "on" : "") + '">' + label + "</button>").join("") + "</span>" +
-      '<button type="button" class="mc-bell-pill-ok" data-digest-ok aria-label="저장" title="저장">' + BELL_ICON.check + "</button></span>";
+      '<button type="button" class="mc-bell-pill-ok" data-digest-ok aria-label="저장" title="저장">' + BELL_ICON.check + "</button></div>";
   } else {
     const customOn = digest && !preset;
-    custom = '<button type="button" class="mc-bell-pill' + (customOn ? " on" : "") + '" data-digest="custom"' + off + ">" + (customOn ? bellDigestText(digest) : "직접 설정") + "</button>";
+    const short = customOn ? digest.every + ({ d: "일", w: "주", m: "달" }[digest.unit] || "") : "직접";
+    cycle = seg(BELL_DIGEST_PRESETS.map(([key, , , label]) =>
+      '<button type="button" class="' + (preset && preset[0] === key ? "on" : "") + '" data-digest="' + key + '"' + off + ">" + label + "</button>")
+      .concat('<button type="button" class="' + (customOn ? "on" : "") + '" data-digest="custom"' + off + ' title="직접 설정">' + short + "</button>"));
   }
-  const scope = on
-    ? '<div class="mc-bell-digest-scope"><span>받을 작업</span><div class="mc-bell-seg">' +
-        '<button type="button" data-digest-scope="mine" class="' + (digest.scope !== "charts" ? "on" : "") + '">내 작업</button>' +
-        '<button type="button" data-digest-scope="charts" class="' + (digest.scope === "charts" ? "on" : "") + '">내 차트 전체</button></div></div>'
-    : "";
+  const body = !on ? "" : '<div class="mc-bell-digest-body">' +
+    row("주기", cycle) +
+    row("받을 작업", seg([
+      '<button type="button" data-digest-scope="mine" class="' + (digest.scope !== "charts" ? "on" : "") + '">내 작업</button>',
+      '<button type="button" data-digest-scope="charts" class="' + (digest.scope === "charts" ? "on" : "") + '">내 차트 전체</button>'
+    ])) + "</div>";
   return '<div class="mc-bell-digest">' +
       '<label class="mc-bell-switch-row"><span class="mc-bell-switch-ic">' + BELL_ICON.cal + "</span>" +
-        '<span class="mc-bell-switch-text"><b>일정 메일</b><i>' + (on ? bellDigestText(digest) + " 아침 8시, 끝나지 않은 작업 전체" : "정한 주기마다 일정 전체를 메일로") + "</i></span>" +
+        '<span class="mc-bell-switch-text"><b>일정 메일</b><i>' + (on ? bellDigestText(digest) + " · 아침 8시" : "정한 주기마다 전체 일정") + "</i></span>" +
         '<input type="checkbox" class="mc-bell-switch" id="mcBellDigest"' + (on ? " checked" : "") + off + "></label>" +
-      (on ? '<div class="mc-bell-pills">' + pills + custom + "</div>" + scope : "") +
+      body +
     "</div>";
 }
 
@@ -12163,9 +12169,9 @@ function shellRenderBellMenu() {
   ];
 
   const tile = (t) => {
-    const big = t.kind === "overdue" ? "+" + t.days + "일" : t.days === 0 ? "오늘" : "D-" + t.days;
-    const small = t.kind === "overdue" ? "지연" : t.days === 0 ? "마감" : "남음";
-    return '<span class="mc-bell-tile mc-bell-tile-' + t.kind + '"><b>' + big + "</b><i>" + small + "</i></span>";
+    /* (요청사항) 한 줄만: "D-6" · "D-day" · 지연은 "D+3" */
+    const text = t.kind === "overdue" ? "D+" + t.days : t.days === 0 ? "D-day" : "D-" + t.days;
+    return '<span class="mc-bell-tile mc-bell-tile-' + t.kind + '"><b>' + text + "</b></span>";
   };
   const who = (t) => {
     const name = t.owner || "";
@@ -12200,10 +12206,11 @@ function shellRenderBellMenu() {
     '<label class="mc-bell-switch-row"><span class="mc-bell-switch-ic">' + icon + "</span>" +
       '<span class="mc-bell-switch-text"><b>' + title + "</b><i>" + sub + "</i></span>" +
       '<input type="checkbox" class="mc-bell-switch" id="' + id + '"' + (on ? " checked" : "") + off + "></label>";
-  const settings = !bellSettingsOpen ? "" : bellProfileState === "error"
+  /* (요청사항) 설정은 접지 않고 항상 보이게 */
+  const settings = bellProfileState === "error"
     ? '<div class="mc-bell-settings mc-bell-mail-off">알림 설정을 불러오지 못했어요. (보안 규칙 확인 필요)</div>'
     : '<div class="mc-bell-settings">' +
-        toggle("mcBellMail", emailOn, BELL_ICON.mail, "마감 알림 메일", "D-15 · D-7 · D-1 · 당일 · 지연 1·4·7일, 그 뒤 매주") +
+        toggle("mcBellMail", emailOn, BELL_ICON.mail, "마감 알림 메일", "D-15 · 7 · 1 · 당일 · 지연 시") +
         bellDigestHtml(notify.digest || null, off) +
       "</div>";
 
@@ -12211,7 +12218,7 @@ function shellRenderBellMenu() {
     '<div class="mc-bell-head"><b>마감 알림</b>' +
       '<div class="mc-bell-seg"><button type="button" data-bell-scope="mine" class="' + (bellMineOnly ? "on" : "") + '">나에게</button>' +
       '<button type="button" data-bell-scope="all" class="' + (!bellMineOnly ? "on" : "") + '">전체</button></div>' +
-      '<button type="button" class="mc-bell-gear' + (bellSettingsOpen ? " on" : "") + '" aria-label="알림 설정" title="알림 설정">' + BELL_ICON.gear + "</button></div>" +
+    "</div>" +
     settings +
     '<div class="mc-bell-list">' +
       (items.length ? list : '<div class="mc-bell-empty">' + BELL_ICON.done + "<span>확인할 알림이 없어요</span></div>") +
@@ -12251,11 +12258,6 @@ function shellOpenBellMenu(button) {
       return;
     }
     if (bellHandleDigestClick(event.target)) return;
-    if (event.target.closest(".mc-bell-gear")) {
-      bellSettingsOpen = !bellSettingsOpen;
-      shellRenderBellMenu();
-      return;
-    }
     if (event.target.closest(".mc-bell-ack-all")) {
       const open = bellOpenItems();
       /* (요청사항) 안 보이던 알림까지 지워지지 않게 한 번 더 묻는다 */
