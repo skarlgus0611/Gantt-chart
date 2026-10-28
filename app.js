@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v98"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v99"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v98";
+const APP_VERSION = "2026-10-24-design-v99";
 
 
 /* =========================================================
@@ -970,6 +970,12 @@ async function coreApiPost(action, chartId, body = {}) {
 
     case "update": {
       const data = body.data || {};
+      /* (성능) 메모만 바꾸는 자동 저장은 가볍게: 작업 · 카테고리 · 차트를 다시 읽지 않고 메모 칸만 쓴다.
+         (구글 캘린더 설명의 메모는 작업을 [저장]할 때 함께 맞춰진다) */
+      if (Object.keys(data).every((key) => key === "id" || key === "memo")) {
+        await fb.updateTask(chartId, String(data.id), { memo: strLimited(data.memo ?? "", LIMITS.memo, "메모") });
+        return { ok: true, result: null };
+      }
       const [task, cats, chart] = await Promise.all([
         fb.getTaskOnce(chartId, String(data.id)), fb.getCategoriesOnce(chartId), getChartMetaCached(chartId)
       ]);
@@ -1449,9 +1455,12 @@ function startLiveSync() {
     }
     const data = resolveTasksAndCats({ tasks: latest.tasks, categories: latest.categories });
     if (JSON.stringify([data.tasks, data.categories]) === JSON.stringify([state.tasks, state.categories])) return;
+    /* (성능) 메모만 바뀌었으면(자동 저장) 차트를 통째로 다시 그리지 않는다 — 차트에는 메모가 안 보인다 */
+    const noMemo = (tasks) => tasks.map((t) => ({ ...t, memo: "" }));
+    const memoOnly = JSON.stringify([noMemo(data.tasks), data.categories]) === JSON.stringify([noMemo(state.tasks), state.categories]);
     state.tasks = data.tasks;
     state.categories = data.categories;
-    render();
+    if (!memoOnly) render();
   };
   const schedule = () => {
     if (!timer) timer = setTimeout(apply, 250);
@@ -11526,6 +11535,17 @@ function memoIcon(name, size = 16) {
   return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + MEMO_ICON[name] + "</svg>";
 }
 
+/* (성능) 색 고르기 창 닫기는 문서에 한 번만 걸어 둔다 — 편집기를 열 때마다 쌓이지 않게 */
+let memoPopCloserInstalled = false;
+function memoInstallPopCloser() {
+  if (memoPopCloserInstalled) return;
+  memoPopCloserInstalled = true;
+  document.addEventListener("mousedown", (event) => {
+    if (event.target.closest(".memo-pop, .memo-tb")) return;
+    document.querySelectorAll(".memo-pop").forEach((pop) => pop.remove());
+  });
+}
+
 /* 편집기 하나 만들기: { el, body, getMd, setStatus } — onChange(md) 는 입력할 때마다 */
 function memoCreateEditor({ md = "", readonly = false, onChange = null, compact = false, placeholder = "메모를 적어 보세요" } = {}) {
   const wrap = document.createElement("div");
@@ -11613,6 +11633,7 @@ function memoCreateEditor({ md = "", readonly = false, onChange = null, compact 
   let popover = null;
   const closePopover = () => { if (popover) { popover.remove(); popover = null; } };
   const openSwatches = (button, kind) => {
+    if (popover && !popover.isConnected) popover = null;
     const wasOpen = popover && popover.dataset.kind === kind;
     closePopover();
     if (wasOpen) return;
@@ -11729,9 +11750,7 @@ function memoCreateEditor({ md = "", readonly = false, onChange = null, compact 
       const link = event.target.closest("a");
       if (link && (event.ctrlKey || event.metaKey)) window.open(link.href, "_blank", "noopener");
     });
-    document.addEventListener("mousedown", (event) => {
-      if (popover && !popover.contains(event.target) && !event.target.closest(".memo-tb")) closePopover();
-    });
+    memoInstallPopCloser();
   }
 
   /* 체크 상자 누르기(왼쪽 상자 부분) — 보기 전용이면 안 바뀜 */
