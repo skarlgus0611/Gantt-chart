@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v91"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v92"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v91";
+const APP_VERSION = "2026-10-24-design-v92";
 
 
 /* =========================================================
@@ -558,7 +558,7 @@ function addOneDay(ymd) {
 
 function calEventDescription(task) {
   const lines = [];
-  if (task.memo) lines.push("메모: " + task.memo);
+  if (task.memo) lines.push("메모: " + memoPlainText(task.memo));
   if (task.target) lines.push("대상처: " + task.target);
   if (task.owner) lines.push("담당자: " + task.owner);
   lines.push("진행률: " + (normProgress(task.progress)) + "%");
@@ -4127,7 +4127,9 @@ function showTaskDetail(id) {
 
         </div>
 
-        <textarea id="detailMemo" class="detail-memo-box" placeholder="메모 추가…" aria-label="메모">${escapeHtml(task.memo)}</textarea>
+        <!-- (요청사항) 메모란 = 메모 보드와 같은 편집기, 자동 저장. 아래 숨은 칸은 [저장]이 함께 보낼 값 -->
+        <div id="detailMemoEditor" class="detail-memo-ed"></div>
+        <textarea id="detailMemo" class="hidden" aria-hidden="true" tabindex="-1">${escapeHtml(task.memo)}</textarea>
 
       </div>
 
@@ -4241,6 +4243,8 @@ function showTaskDetail(id) {
       refreshDetailHead();
     });
   });
+
+  mountDetailMemo(task);
 
   const progressRange = document.getElementById("detailProgressRange");
   const progressNumber = document.getElementById("detailProgress");
@@ -9467,6 +9471,9 @@ function shellInitSidebarToggle() {
   const orgBtn = document.getElementById("mcSidebarOrgBtn");
   if (orgBtn) orgBtn.addEventListener("click", shellOpenOrgModal);
 
+  /* (요청사항) 사이드바 "메모 보드" */
+  shellInitMemoBoard();
+
   const orgNewBtn = document.getElementById("mcOrgNewBtn");
   if (orgNewBtn) {
     orgNewBtn.addEventListener("click", () => {
@@ -11336,6 +11343,721 @@ async function initSharedViewerReadonly() {
   return;
 }
 /* ▲▲▲ 공유 차트 캘린더/CSV + 뷰어 읽기전용 (추가분) 끝 ▲▲▲ */
+
+
+/* =========================================================
+ * (요청사항) 메모 편집기 + 메모 보드
+ *  - 작업 메모란이 곧 스티커 메모. 서식은 간단한 표기로 memo 글자에 그대로 저장한다
+ *      # 제목 · - 목록 · 1. 번호 · - [ ] / - [x] 체크 · --- 구분선
+ *      **굵게** · *기울임* · ++밑줄++ · ~~취소선~~ · {c:red}글자색{/c} · ==형광펜== · {m:green}형광펜{/m} · [글](https://…)
+ *    예전 메모(그냥 글자)는 그대로 보인다
+ *  - 상세창 메모란과 사이드바 "메모 보드" 모두 이 편집기. 입력을 멈추면 자동 저장
+ * ========================================================= */
+const MEMO_COLORS = { red: "#dc2626", orange: "#ea580c", green: "#16a34a", blue: "#2563eb", gray: "#71717a" };
+const MEMO_MARKS = { yellow: "#fde68a", green: "#bbf7d0", pink: "#fbcfe8", blue: "#bfdbfe" };
+const MEMO_SAVE_DELAY = 1000;
+
+function memoSafeUrl(url) {
+  const u = String(url || "").trim();
+  return /^(https?:\/\/|mailto:)/i.test(u) ? u : "";
+}
+
+function memoInlineToHtml(text) {
+  /* 링크는 먼저 떼어 두고(주소에 특수문자가 있어도 안전하게) 나머지를 이스케이프 */
+  const links = [];
+  let s = String(text || "").replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (m, label, url) => {
+    const safe = memoSafeUrl(url);
+    if (!safe) return m;
+    links.push('<a href="' + escapeAttr(safe) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(label) + "</a>");
+    return "\u0000" + (links.length - 1) + "\u0000";
+  });
+  s = escapeHtml(s)
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\*([^*\n]+?)\*/g, "<i>$1</i>")
+    .replace(/\+\+(.+?)\+\+/g, "<u>$1</u>")
+    .replace(/~~(.+?)~~/g, "<s>$1</s>")
+    .replace(/==(.+?)==/g, '<mark data-m="yellow" style="background:' + MEMO_MARKS.yellow + '">$1</mark>')
+    .replace(/\{c:(\w+)\}(.*?)\{\/c\}/g, (m, k, t) => MEMO_COLORS[k] ? '<span data-c="' + k + '" style="color:' + MEMO_COLORS[k] + '">' + t + "</span>" : t)
+    .replace(/\{m:(\w+)\}(.*?)\{\/m\}/g, (m, k, t) => MEMO_MARKS[k] ? '<mark data-m="' + k + '" style="background:' + MEMO_MARKS[k] + '">' + t + "</mark>" : t);
+  return s.replace(/\u0000(\d+)\u0000/g, (m, i) => links[Number(i)] || "");
+}
+
+function memoMdToHtml(md) {
+  const out = [];
+  let list = null;
+  const closeList = () => { if (list) { out.push("</" + list + ">"); list = null; } };
+  const line = (html) => html || "<br>";
+  String(md || "").replace(/\r\n?/g, "\n").split("\n").forEach((raw) => {
+    let m;
+    if ((m = /^- \[( |x|X)\] ?(.*)$/.exec(raw))) {
+      closeList();
+      out.push('<div class="memo-ck' + (m[1] === " " ? "" : " on") + '">' + line(memoInlineToHtml(m[2])) + "</div>");
+    } else if ((m = /^[-*] (.*)$/.exec(raw)) || (m = /^\d+[.)] (.*)$/.exec(raw))) {
+      const tag = /^\d/.test(raw) ? "ol" : "ul";
+      if (list !== tag) { closeList(); out.push("<" + tag + ">"); list = tag; }
+      out.push("<li>" + line(memoInlineToHtml(m[1])) + "</li>");
+    } else {
+      closeList();
+      if ((m = /^#{1,3} (.*)$/.exec(raw))) out.push("<h3>" + line(memoInlineToHtml(m[1])) + "</h3>");
+      else if (/^-{3,}$/.test(raw.trim())) out.push("<hr>");
+      else out.push("<div>" + line(memoInlineToHtml(raw)) + "</div>");
+    }
+  });
+  closeList();
+  return out.join("");
+}
+
+/* 검색 · 구글 캘린더 설명 등에 쓰는 표기 없는 글자 */
+function memoPlainText(md) {
+  return String(md || "")
+    .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, "$1 ($2)")
+    .replace(/\{\/?[cm](:\w+)?\}/g, "")
+    .replace(/\*\*|\+\+|~~|==/g, "")
+    .replace(/^#{1,3} /gm, "")
+    .replace(/^- \[( |x|X)\] /gm, (m, x) => (x === " " ? "[ ] " : "[v] "));
+}
+
+function memoColorKey(map, value) {
+  const v = String(value || "").replace(/\s/g, "").toLowerCase();
+  if (!v || v === "transparent" || v === "rgba(0,0,0,0)") return "";
+  return Object.keys(map).find((key) => {
+    const hex = map[key];
+    const rgb = "rgb(" + [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(",") + ")";
+    return v === hex || v === rgb;
+  }) || "";
+}
+
+function memoInlineMd(node) {
+  let s = "";
+  node.childNodes.forEach((n) => {
+    if (n.nodeType === 3) { s += n.nodeValue.replace(/ /g, " ").replace(/\n/g, " "); return; }
+    if (n.nodeType !== 1) return;
+    const tag = n.tagName;
+    if (tag === "BR") { s += "\n"; return; }
+    let inner = memoInlineMd(n);
+    if (!inner.trim()) { s += inner; return; }
+    const st = n.style || {};
+    const deco = String(st.textDecorationLine || st.textDecoration || "");
+    if (tag === "A") {
+      const url = memoSafeUrl(n.getAttribute("href"));
+      s += url ? "[" + inner + "](" + url + ")" : inner;
+      return;
+    }
+    if (tag === "B" || tag === "STRONG" || /bold|[6-9]00/.test(st.fontWeight)) inner = "**" + inner + "**";
+    if (tag === "I" || tag === "EM" || st.fontStyle === "italic") inner = "*" + inner + "*";
+    if (tag === "U" || /underline/.test(deco)) inner = "++" + inner + "++";
+    if (tag === "S" || tag === "STRIKE" || tag === "DEL" || /line-through/.test(deco)) inner = "~~" + inner + "~~";
+    const color = (n.dataset && n.dataset.c) || memoColorKey(MEMO_COLORS, st.color || n.getAttribute("color"));
+    if (MEMO_COLORS[color]) inner = "{c:" + color + "}" + inner + "{/c}";
+    const mark = (n.dataset && n.dataset.m) || memoColorKey(MEMO_MARKS, st.backgroundColor);
+    if (MEMO_MARKS[mark]) inner = mark === "yellow" ? "==" + inner + "==" : "{m:" + mark + "}" + inner + "{/m}";
+    s += inner;
+  });
+  return s;
+}
+
+function memoHtmlToMd(root) {
+  const lines = [];
+  const textOf = (el) => memoInlineMd(el).replace(/\n$/, "");
+  const blockTags = /^(DIV|P|H[1-6]|UL|OL|LI|HR|BLOCKQUOTE|PRE)$/;
+  const walk = (parent) => {
+    let loose = null; // 블록 밖에 바로 있는 글자 · 굵게 등은 한 줄로 모은다
+    const flush = () => {
+      if (loose) { textOf(loose).split("\n").forEach((l) => lines.push(l)); loose = null; }
+    };
+    Array.from(parent.childNodes).forEach((n) => {
+      if (n.nodeType === 1 && blockTags.test(n.tagName)) {
+        flush();
+        const tag = n.tagName;
+        if (tag === "HR") lines.push("---");
+        else if (/^H[1-6]$/.test(tag)) lines.push("# " + textOf(n).replace(/\n/g, " "));
+        else if (tag === "UL" || tag === "OL") {
+          let i = 1;
+          n.querySelectorAll("li").forEach((li) => {
+            const own = li.cloneNode(true);
+            own.querySelectorAll("ul,ol").forEach((sub) => sub.remove());
+            lines.push((tag === "OL" ? i++ + ". " : "- ") + textOf(own).replace(/\n/g, " "));
+          });
+        } else if (n.classList.contains("memo-ck")) {
+          lines.push("- [" + (n.classList.contains("on") ? "x" : " ") + "] " + textOf(n).replace(/\n/g, " "));
+        } else if (Array.from(n.children).some((c) => blockTags.test(c.tagName))) {
+          walk(n);
+        } else {
+          textOf(n).split("\n").forEach((l) => lines.push(l));
+        }
+      } else {
+        if (!loose) loose = document.createElement("div");
+        loose.appendChild(n.cloneNode(true));
+      }
+    });
+    flush();
+  };
+  walk(root);
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  return lines.join("\n");
+}
+
+const MEMO_ICON = {
+  bold: '<path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z"/>',
+  italic: '<path d="M14 5h-4M14 19h-4M14 5l-4 14"/>',
+  underline: '<path d="M7 5v6a5 5 0 0 0 10 0V5M5 20h14"/>',
+  strike: '<path d="M5 12h14M16 7.5C15.4 6 14 5 12 5c-2.5 0-4 1.3-4 3 0 1.4 1 2.3 2.6 3M8 16.5c.6 1.5 2 2.5 4 2.5 2.5 0 4-1.3 4-3 0-.6-.2-1.2-.5-1.6"/>',
+  head: '<path d="M6 5v14M18 5v14M6 12h12"/>',
+  ul: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
+  ol: '<path d="M10 6h10M10 12h10M10 18h10M4 5h1.5v4M4 9h3M4 14.5c0-.8.7-1.5 1.5-1.5S7 13.7 7 14.5c0 1.5-3 2-3 4h3"/>',
+  ck: '<rect x="3.5" y="4.5" width="6" height="6" rx="1.5"/><path d="m4.8 7.6 1.4 1.4 2.3-2.6M13 7.5h7.5M13 16.5h7.5"/><rect x="3.5" y="13.5" width="6" height="6" rx="1.5"/>',
+  color: '<path d="M5 19 12 4l7 15M8 13h8"/>',
+  mark: '<path d="m14 5 5 5-8 8H6v-5z"/><path d="M4 21h16"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  hr: '<path d="M4 12h16"/>',
+  date: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"/><path d="M3.5 9.5h17M8 3v3M16 3v3"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+  redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>',
+  check: '<path d="m5 12 5 5 9-10"/>',
+  open: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  note: '<path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v9l-6 6H5a1 1 0 0 1-1-1z"/><path d="M14 20v-5a1 1 0 0 1 1-1h5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'
+};
+
+function memoIcon(name, size = 16) {
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + MEMO_ICON[name] + "</svg>";
+}
+
+/* 편집기 하나 만들기: { el, body, getMd, setStatus } — onChange(md) 는 입력할 때마다 */
+function memoCreateEditor({ md = "", readonly = false, onChange = null, compact = false, placeholder = "메모를 적어 보세요" } = {}) {
+  const wrap = document.createElement("div");
+  wrap.className = "memo-ed" + (compact ? " memo-ed-compact" : "") + (readonly ? " is-readonly" : "");
+  const btn = (cmd, icon, title) => '<button type="button" class="memo-tb" data-cmd="' + cmd + '" title="' + title + '" aria-label="' + title + '">' + memoIcon(icon) + "</button>";
+  const sep = '<i class="memo-sep"></i>';
+  const tools = compact
+    ? [btn("bold", "bold", "굵게 (Ctrl+B)"), btn("italic", "italic", "기울임 (Ctrl+I)"), btn("underline", "underline", "밑줄 (Ctrl+U)"), btn("strike", "strike", "취소선"), sep,
+      btn("head", "head", "제목"), btn("ul", "ul", "글머리 목록"), btn("ck", "ck", "체크리스트"), sep,
+      btn("color", "color", "글자색"), btn("mark", "mark", "형광펜"), btn("link", "link", "링크"), sep, btn("undo", "undo", "되돌리기")]
+    : [btn("bold", "bold", "굵게 (Ctrl+B)"), btn("italic", "italic", "기울임 (Ctrl+I)"), btn("underline", "underline", "밑줄 (Ctrl+U)"), btn("strike", "strike", "취소선"), sep,
+      btn("head", "head", "제목"), btn("ul", "ul", "글머리 목록"), btn("ol", "ol", "번호 목록"), btn("ck", "ck", "체크리스트"), sep,
+      btn("color", "color", "글자색"), btn("mark", "mark", "형광펜"), sep,
+      btn("link", "link", "링크"), btn("hr", "hr", "구분선"), '<button type="button" class="memo-tb memo-tb-text" data-cmd="date" title="오늘 날짜 넣기">' + memoIcon("date", 15) + "오늘</button>", sep,
+      btn("undo", "undo", "되돌리기"), btn("redo", "redo", "다시 하기")];
+  wrap.innerHTML = (readonly ? "" : '<div class="memo-bar">' + tools.join("") + '<span class="memo-status"></span></div>') +
+    '<div class="memo-body"' + (readonly ? "" : ' contenteditable="true"') + ' data-placeholder="' + escapeAttr(placeholder) + '" spellcheck="false"></div>';
+  const body = wrap.querySelector(".memo-body");
+  body.innerHTML = memoMdToHtml(md);
+  const status = wrap.querySelector(".memo-status");
+
+  const refreshEmpty = () => body.classList.toggle("is-empty", !body.textContent.trim() && !body.querySelector("hr,li,.memo-ck"));
+  const changed = () => {
+    refreshEmpty();
+    if (onChange) onChange(memoHtmlToMd(body));
+  };
+  refreshEmpty();
+
+  /* 지금 커서가 있는 줄(편집기 바로 아래 블록) */
+  const currentBlock = () => {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    let n = sel.anchorNode;
+    if (!n || !body.contains(n)) return null;
+    while (n && n.parentNode !== body) n = n.parentNode;
+    return n;
+  };
+  const placeCaret = (el, atEnd = false) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(!atEnd);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+  /* 블록 밖 맨 글자는 div 로 감싸서 줄 단위로 다루기 쉽게 */
+  const wrapLoose = () => {
+    let block = currentBlock();
+    if (block && block.nodeType === 3) {
+      const div = document.createElement("div");
+      body.insertBefore(div, block);
+      div.appendChild(block);
+      placeCaret(div, true);
+      block = div;
+    }
+    return block;
+  };
+  const exec = (cmd, value = null, css = false) => {
+    try { document.execCommand("styleWithCSS", false, css); } catch (error) { /* 무시 */ }
+    document.execCommand(cmd, false, value);
+  };
+  const toggleCheck = () => {
+    let block = wrapLoose();
+    if (!block) return;
+    if (block.tagName === "UL" || block.tagName === "OL") {
+      exec(block.tagName === "UL" ? "insertUnorderedList" : "insertOrderedList");
+      block = wrapLoose();
+      if (!block) return;
+    }
+    if (block.nodeType !== 1) return;
+    if (block.classList.contains("memo-ck")) {
+      block.classList.remove("memo-ck", "on");
+    } else {
+      if (block.tagName !== "DIV") {
+        const div = document.createElement("div");
+        div.innerHTML = block.innerHTML || "<br>";
+        block.replaceWith(div);
+        block = div;
+        placeCaret(div, true);
+      }
+      block.classList.add("memo-ck");
+    }
+  };
+
+  let popover = null;
+  const closePopover = () => { if (popover) { popover.remove(); popover = null; } };
+  const openSwatches = (button, kind) => {
+    const wasOpen = popover && popover.dataset.kind === kind;
+    closePopover();
+    if (wasOpen) return;
+    const map = kind === "color" ? MEMO_COLORS : MEMO_MARKS;
+    popover = document.createElement("div");
+    popover.className = "memo-pop";
+    popover.dataset.kind = kind;
+    popover.innerHTML = Object.keys(map).map((key) =>
+      '<button type="button" class="memo-sw' + (kind === "mark" ? " is-mark" : "") + '" data-sw="' + key + '" style="--sw:' + map[key] + '" title="' + key + '"></button>').join("") +
+      '<button type="button" class="memo-sw memo-sw-none" data-sw="" title="없애기">' + memoIcon("x", 12) + "</button>";
+    wrap.appendChild(popover);
+    const b = button.getBoundingClientRect();
+    const w = wrap.getBoundingClientRect();
+    popover.style.left = b.left - w.left + "px";
+    popover.style.top = b.bottom - w.top + 4 + "px";
+    popover.addEventListener("mousedown", (event) => event.preventDefault());
+    popover.addEventListener("click", (event) => {
+      const sw = event.target.closest("[data-sw]");
+      if (!sw) return;
+      const key = sw.dataset.sw;
+      if (kind === "color") exec("foreColor", key ? MEMO_COLORS[key] : "#27272a", true);
+      else exec("hiliteColor", key ? MEMO_MARKS[key] : "transparent", true);
+      closePopover();
+      changed();
+    });
+  };
+
+  const run = (cmd, button) => {
+    body.focus();
+    if (cmd === "bold" || cmd === "italic" || cmd === "underline") exec(cmd);
+    else if (cmd === "strike") exec("strikeThrough");
+    else if (cmd === "head") {
+      const block = wrapLoose();
+      exec("formatBlock", block && block.tagName === "H3" ? "div" : "h3");
+    } else if (cmd === "ul") exec("insertUnorderedList");
+    else if (cmd === "ol") exec("insertOrderedList");
+    else if (cmd === "ck") toggleCheck();
+    else if (cmd === "color" || cmd === "mark") { openSwatches(button, cmd); return; }
+    else if (cmd === "link") {
+      const url = memoSafeUrl(prompt("링크 주소 (https://…)", "https://"));
+      if (!url) return;
+      const sel = window.getSelection();
+      if (sel && sel.isCollapsed) exec("insertHTML", '<a href="' + escapeAttr(url) + '">' + escapeHtml(url) + "</a>");
+      else exec("createLink", url);
+    } else if (cmd === "hr") exec("insertHorizontalRule");
+    else if (cmd === "date") {
+      const d = new Date();
+      exec("insertText", (d.getMonth() + 1) + "/" + d.getDate() + " ");
+    } else if (cmd === "undo" || cmd === "redo") exec(cmd);
+    closePopover();
+    changed();
+  };
+
+  if (!readonly) {
+    const bar = wrap.querySelector(".memo-bar");
+    bar.addEventListener("mousedown", (event) => { if (event.target.closest(".memo-tb")) event.preventDefault(); });
+    bar.addEventListener("click", (event) => {
+      const button = event.target.closest(".memo-tb");
+      if (button) run(button.dataset.cmd, button);
+    });
+    body.addEventListener("input", (event) => {
+      /* 빠른 입력: 줄 맨 앞에 "- " · "1. " · "[] " · "# " 를 치면 목록 · 체크 · 제목으로 */
+      if (event.inputType === "insertText" && event.data === " ") {
+        const block = currentBlock();
+        const text = block ? block.textContent.replace(/ /g, " ") : "";
+        const shortcut = { "- ": "ul", "* ": "ul", "1. ": "ol", "[] ": "ck", "[ ] ": "ck", "# ": "head" }[text];
+        if (shortcut && block && (block.nodeType === 3 || (block.tagName === "DIV" && !block.classList.contains("memo-ck")))) {
+          let target = block;
+          if (block.nodeType === 3) { target = document.createElement("div"); body.replaceChild(target, block); }
+          target.innerHTML = "<br>";
+          placeCaret(target);
+          run(shortcut);
+          return;
+        }
+      }
+      /* 체크 줄에서 Enter 로 만든 새 줄은 체크 안 된 상태로 */
+      if (event.inputType === "insertParagraph") {
+        const block = currentBlock();
+        if (block && block.nodeType === 1 && block.classList.contains("memo-ck")) block.classList.remove("on");
+      }
+      changed();
+    });
+    body.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        const block = currentBlock();
+        /* 빈 체크 줄에서 Enter 면 체크 목록에서 나온다 */
+        if (block && block.nodeType === 1 && block.classList.contains("memo-ck") && !block.textContent.trim()) {
+          event.preventDefault();
+          block.classList.remove("memo-ck", "on");
+          changed();
+        }
+      }
+      if (event.key === "Backspace") {
+        const block = currentBlock();
+        const sel = window.getSelection();
+        if (block && block.nodeType === 1 && block.classList.contains("memo-ck") && sel.isCollapsed && sel.anchorOffset === 0 &&
+          (sel.anchorNode === block || sel.anchorNode === block.firstChild)) {
+          event.preventDefault();
+          block.classList.remove("memo-ck", "on");
+          changed();
+        }
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault(); // 브라우저 "페이지 저장" 대신 아무것도 안 함(자동 저장)
+      }
+    });
+    /* 붙여넣기는 글자만 — 다른 곳의 서식 · 스크립트가 섞이지 않게 */
+    body.addEventListener("paste", (event) => {
+      event.preventDefault();
+      const text = (event.clipboardData || window.clipboardData).getData("text/plain");
+      exec("insertText", text);
+    });
+    body.addEventListener("click", (event) => {
+      const link = event.target.closest("a");
+      if (link && (event.ctrlKey || event.metaKey)) window.open(link.href, "_blank", "noopener");
+    });
+    document.addEventListener("mousedown", (event) => {
+      if (popover && !popover.contains(event.target) && !event.target.closest(".memo-tb")) closePopover();
+    });
+  }
+
+  /* 체크 상자 누르기(왼쪽 상자 부분) — 보기 전용이면 안 바뀜 */
+  body.addEventListener("mousedown", (event) => {
+    const item = event.target.closest(".memo-ck");
+    if (!item || !body.contains(item)) return;
+    if (event.clientX - item.getBoundingClientRect().left > 24) return;
+    event.preventDefault();
+    if (readonly) return;
+    item.classList.toggle("on");
+    changed();
+  });
+
+  return {
+    el: wrap,
+    body,
+    getMd: () => memoHtmlToMd(body),
+    setMd: (value) => { body.innerHTML = memoMdToHtml(value); refreshEmpty(); },
+    setStatus: (text, kind = "") => {
+      if (!status) return;
+      status.textContent = text;
+      status.className = "memo-status" + (kind ? " is-" + kind : "");
+    }
+  };
+}
+
+/* 자동 저장 묶음: 입력을 멈추고 MEMO_SAVE_DELAY 뒤 save(md) — flush() 로 바로 저장 */
+function memoAutosaver(initialMd, save, onState) {
+  let saved = String(initialMd || "");
+  let pending = null;
+  let timer = null;
+  const run = async () => {
+    timer = null;
+    const md = pending;
+    pending = null;
+    if (md === null || md === saved) return;
+    if (md.length > LIMITS.memo) { onState("over", md.length); return; }
+    onState("saving", md.length);
+    try {
+      await save(md);
+      saved = md;
+      onState("saved", md.length);
+    } catch (error) {
+      onState("error", md.length, error);
+    }
+  };
+  return {
+    change(md) {
+      pending = md;
+      onState(md.length > LIMITS.memo ? "over" : "typing", md.length);
+      clearTimeout(timer);
+      timer = setTimeout(run, MEMO_SAVE_DELAY);
+    },
+    flush() {
+      if (timer) { clearTimeout(timer); return run(); }
+      return Promise.resolve();
+    }
+  };
+}
+
+function memoStateText(state, length) {
+  const count = length.toLocaleString() + " / " + LIMITS.memo.toLocaleString();
+  if (state === "over") return [LIMITS.memo.toLocaleString() + "자를 넘어서 저장하지 않았어요", "error"];
+  if (state === "saving") return ["저장 중…", ""];
+  if (state === "saved") return ["저장됨 · " + count, "ok"];
+  if (state === "error") return ["저장 실패 — 다시 입력하면 다시 저장해요", "error"];
+  return [count, ""];
+}
+
+/* 상세창 메모란 (카드 안 차트): 같은 편집기 + 자동 저장 */
+function mountDetailMemo(task) {
+  const host = document.getElementById("detailMemoEditor");
+  const field = document.getElementById("detailMemo");
+  if (!host || !field) return;
+  const readonly = !canEditChartHere();
+  let editor = null;
+  const saver = memoAutosaver(task.memo || "", (md) => apiPost("update", { data: { id: task.id, memo: md } }), (state, length) => {
+    const [text, kind] = memoStateText(state, length);
+    if (editor) editor.setStatus(text, kind);
+  });
+  editor = memoCreateEditor({
+    md: task.memo || "",
+    readonly,
+    compact: true,
+    placeholder: readonly ? "메모 없음" : "메모 추가… (자동 저장)",
+    onChange: (md) => {
+      field.value = md; // 상세창 [저장]도 같은 값을 보낸다
+      saver.change(md);
+    }
+  });
+  host.replaceChildren(editor.el);
+}
+
+/* ---------- 사이드바 "메모 보드" (셸) ---------- */
+const memoBoard = { mine: true, query: "", data: {}, unsubs: [], timer: null, pop: null };
+
+function memoPastel(hex, k) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ""));
+  const n = parseInt(m ? m[1] : "3b82f6", 16);
+  return "rgb(" + [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(k >= 0 ? v + (255 - v) * k : v * (1 + k))).join(",") + ")";
+}
+
+function memoTaskColor(task, cats) {
+  const cat = (cats || []).find((c) => c.id === task.categoryId);
+  return validColorStr(task.color) || (cat && validColorStr(cat.color)) || DEFAULT_COLOR;
+}
+
+function memoDueText(task) {
+  if (normProgress(task.progress) >= 100) return { text: "완료", late: false };
+  if (!task.end) return { text: "", late: false };
+  const left = daysBetweenKeys(dateKey(new Date()), task.end);
+  if (left === null) return { text: "", late: false };
+  return { text: left < 0 ? "D+" + (-left) : left === 0 ? "D-day" : "D-" + left, late: left < 0 };
+}
+
+function memoShortDate(key) {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(String(key || ""));
+  return m ? m[1] + "." + m[2] : "";
+}
+
+function memoBoardCharts() {
+  return (shellChartsCache || []).slice().sort((a, b) => (a.shared === b.shared ? (a.order || 0) - (b.order || 0) : a.shared ? 1 : -1));
+}
+
+function memoBoardStop() {
+  memoBoard.unsubs.forEach((stop) => { try { stop(); } catch (error) { /* 무시 */ } });
+  memoBoard.unsubs = [];
+}
+
+function memoBoardSchedule() {
+  clearTimeout(memoBoard.timer);
+  memoBoard.timer = setTimeout(memoBoardRender, 120);
+}
+
+function shellOpenMemoBoard() {
+  if (!fbUser) {
+    showToast("먼저 Google 로그인을 해주세요.", true);
+    return;
+  }
+  shellOpenModal("mcMemoModal");
+  memoBoardStop();
+  memoBoard.data = {};
+  memoBoardRender();
+  /* 열어 둔 동안 실시간 반영: 차트에서 메모를 저장하면 바로 보드에 */
+  memoBoardCharts().forEach((chart) => {
+    const entry = { tasks: null, cats: [] };
+    memoBoard.data[chart.id] = entry;
+    if (typeof fb.listenTasks !== "function") return;
+    memoBoard.unsubs.push(fb.listenTasks(chart.id, (tasks) => { entry.tasks = tasks; memoBoardSchedule(); }, () => { entry.tasks = []; memoBoardSchedule(); }));
+    memoBoard.unsubs.push(fb.listenCategories(chart.id, (cats) => { entry.cats = cats; memoBoardSchedule(); }, () => {}));
+  });
+}
+
+function shellCloseMemoBoard() {
+  memoClosePop();
+  memoBoardStop();
+  shellCloseModal("mcMemoModal");
+}
+
+function memoBoardTasks(chartId) {
+  const entry = memoBoard.data[chartId];
+  return (entry && entry.tasks) || [];
+}
+
+function memoBoardRender() {
+  const board = document.getElementById("mcMemoBoard");
+  if (!board) return;
+  const q = memoBoard.query.trim().toLowerCase();
+  let total = 0;
+  let loading = false;
+  const html = memoBoardCharts().map((chart) => {
+    const entry = memoBoard.data[chart.id];
+    if (!entry || entry.tasks === null) { loading = true; return ""; }
+    const cats = (entry.cats || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    const catIds = new Set(cats.map((c) => c.id));
+    const tasks = entry.tasks.filter((t) => String(t.memo || "").trim() &&
+      (!memoBoard.mine || isMyTask(t)) &&
+      (!q || (String(t.name || "") + " " + memoPlainText(t.memo)).toLowerCase().includes(q)));
+    if (!tasks.length) return "";
+    total += tasks.length;
+    const groups = cats.map((c) => ({ id: c.id, name: c.name || "카테고리", color: c.color })).concat([{ id: "", name: "기타", color: "#a1a1aa" }]);
+    const sections = groups.map((g) => {
+      const list = tasks.filter((t) => (catIds.has(t.categoryId) ? t.categoryId : "") === g.id)
+        .sort((a, b) => String(a.start || "9999").localeCompare(String(b.start || "9999")) || String(a.name || "").localeCompare(String(b.name || "")));
+      if (!list.length) return "";
+      return '<div class="mc-memo-cat"><em style="background:' + escapeAttr(validColorStr(g.color) || "#a1a1aa") + '"></em>' + escapeHtml(g.name) + "<small>" + list.length + "</small></div>" +
+        '<div class="mc-memo-row">' + list.map((t) => memoNoteHtml(chart, t, cats)).join("") + "</div>";
+    }).join("");
+    return '<section class="mc-memo-chart"><h3>' + escapeHtml(chart.name || "이름 없는 차트") + "<i>" + tasks.length + "</i></h3>" + sections + "</section>";
+  }).join("");
+  const count = document.getElementById("mcMemoCount");
+  if (count) count.textContent = "메모 " + total + "개";
+  board.innerHTML = html || '<div class="mc-memo-empty">' + memoIcon("note", 30) + "<b>" + (loading ? "불러오는 중…" : q ? "찾는 메모가 없어요" : memoBoard.mine ? "내가 담당인 작업에 메모가 없어요" : "메모가 있는 작업이 없어요") + "</b>" +
+    (loading || q ? "" : "<span>작업 상세창 메모란이나 오른쪽 위 + 로 메모를 써 보세요</span>") + "</div>";
+}
+
+function memoNoteHtml(chart, task, cats) {
+  const color = memoTaskColor(task, cats);
+  const due = memoDueText(task);
+  return '<button type="button" class="mc-memo-note" data-chart="' + escapeAttr(chart.id) + '" data-task="' + escapeAttr(task.id) + '" style="--paper:' + memoPastel(color, 0.8) + ";--ink:" + memoPastel(color, -0.5) + '">' +
+    "<b>" + escapeHtml(task.name || "이름 없는 작업") + "</b>" +
+    '<span class="mc-memo-note-body">' + memoMdToHtml(task.memo) + "</span>" +
+    '<span class="mc-memo-note-foot"><span>' + (task.start ? "시작 " + memoShortDate(task.start) : "") + "</span>" +
+    '<span class="' + (due.late ? "is-late" : "") + '">' + due.text + "</span></span></button>";
+}
+
+function memoClosePop() {
+  const pop = memoBoard.pop;
+  if (!pop) return Promise.resolve();
+  memoBoard.pop = null;
+  const done = pop.saver ? pop.saver.flush() : Promise.resolve();
+  pop.el.remove();
+  return done;
+}
+
+/* 포스트잇을 누르면 크게 펼쳐서 편집 */
+function memoOpenEditor(chartId, taskId) {
+  memoClosePop();
+  const chart = (shellChartsCache || []).find((c) => c.id === chartId);
+  const entry = memoBoard.data[chartId];
+  const task = memoBoardTasks(chartId).find((t) => t.id === taskId);
+  if (!chart || !task) return;
+  const cats = (entry && entry.cats) || [];
+  const cat = cats.find((c) => c.id === task.categoryId);
+  const color = memoTaskColor(task, cats);
+  const due = memoDueText(task);
+  const readonly = !shellCanEdit(chart);
+  const modal = document.querySelector("#mcMemoModal .mc-memo-modal");
+
+  const el = document.createElement("div");
+  el.className = "mc-memo-pop-dim";
+  el.innerHTML = '<div class="mc-memo-pop" role="dialog" aria-label="메모 편집" style="--paper:' + memoPastel(color, 0.82) + ";--ink:" + memoPastel(color, -0.55) + '">' +
+    '<div class="mc-memo-pop-head"><div class="mc-memo-pop-title"><h4>' + escapeHtml(task.name || "이름 없는 작업") +
+      (due.text ? ' <span class="mc-memo-due' + (due.late ? " is-late" : "") + '">' + due.text + "</span>" : "") + "</h4>" +
+      "<p>" + [chart.name, cat ? cat.name : "기타", task.start && task.end ? memoShortDate(task.start) + " – " + memoShortDate(task.end) : "", task.owner].filter(Boolean).map(escapeHtml).join(" · ") + "</p></div>" +
+      '<button type="button" class="mc-memo-pop-btn" data-act="open">' + memoIcon("open", 15) + "작업 열기</button>" +
+      '<button type="button" class="mc-memo-pop-btn mc-memo-pop-x" data-act="close" aria-label="닫기">' + memoIcon("x", 16) + "</button></div>" +
+    '<div class="mc-memo-pop-ed"></div>' +
+    '<div class="mc-memo-pop-foot"><span class="mc-memo-pop-state">' + (readonly ? "보기 전용 (편집 권한 없음)" : "자동 저장") + "</span>" +
+      '<button type="button" class="mc-memo-pop-btn" data-act="close">닫기</button></div></div>';
+  modal.appendChild(el);
+  const state = el.querySelector(".mc-memo-pop-state");
+  const pop = { el, saver: null };
+  if (!readonly) {
+    pop.saver = memoAutosaver(task.memo || "", (md) => apiPostForChart("update", chartId, { data: { id: task.id, memo: md } }), (s, length) => {
+      const [text, kind] = memoStateText(s, length);
+      state.textContent = text;
+      state.className = "mc-memo-pop-state" + (kind ? " is-" + kind : "");
+    });
+  }
+  const editor = memoCreateEditor({ md: task.memo || "", readonly, onChange: (md) => pop.saver && pop.saver.change(md) });
+  el.querySelector(".mc-memo-pop-ed").appendChild(editor.el);
+  memoBoard.pop = pop;
+  el.addEventListener("click", (event) => {
+    const act = event.target.closest("[data-act]");
+    if (event.target === el || (act && act.dataset.act === "close")) { memoClosePop(); return; }
+    if (act && act.dataset.act === "open") {
+      memoClosePop().finally(() => {
+        shellCloseMemoBoard();
+        shellOpenTaskFromNotice(chartId, taskId);
+      });
+    }
+  });
+  if (!readonly) setTimeout(() => {
+    editor.body.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor.body);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }, 30);
+}
+
+/* + 메모 쓰기: 메모 없는 작업을 골라 새로 쓰기 (편집할 수 있는 차트만) */
+function memoOpenPicker() {
+  memoClosePop();
+  const groups = memoBoardCharts().filter(shellCanEdit).map((chart) => {
+    const list = memoBoardTasks(chart.id).filter((t) => !String(t.memo || "").trim() && (!memoBoard.mine || isMyTask(t)))
+      .sort((a, b) => String(a.start || "9999").localeCompare(String(b.start || "9999")));
+    return list.length ? { chart, list } : null;
+  }).filter(Boolean);
+  const modal = document.querySelector("#mcMemoModal .mc-memo-modal");
+  const el = document.createElement("div");
+  el.className = "mc-memo-pop-dim";
+  el.innerHTML = '<div class="mc-memo-pick" role="dialog" aria-label="메모 쓸 작업 고르기"><div class="mc-memo-pop-head"><div class="mc-memo-pop-title"><h4>어느 작업에 메모를 쓸까요?</h4><p>메모가 없는 ' + (memoBoard.mine ? "내 " : "") + "작업</p></div>" +
+    '<button type="button" class="mc-memo-pop-btn mc-memo-pop-x" data-act="close" aria-label="닫기">' + memoIcon("x", 16) + "</button></div>" +
+    '<div class="mc-memo-pick-list">' + (groups.length ? groups.map((g) => '<div class="mc-memo-pick-chart">' + escapeHtml(g.chart.name || "") + "</div>" +
+      g.list.map((t) => '<button type="button" class="mc-memo-pick-item" data-chart="' + escapeAttr(g.chart.id) + '" data-task="' + escapeAttr(t.id) + '"><b>' + escapeHtml(t.name || "이름 없는 작업") + "</b><span>" + (t.start ? memoShortDate(t.start) + " – " + memoShortDate(t.end) : "") + "</span></button>").join("")).join("")
+      : '<div class="mc-memo-empty"><b>메모를 쓸 수 있는 작업이 없어요</b></div>') + "</div></div>";
+  modal.appendChild(el);
+  memoBoard.pop = { el, saver: null };
+  el.addEventListener("click", (event) => {
+    const item = event.target.closest(".mc-memo-pick-item");
+    if (item) { memoOpenEditor(item.dataset.chart, item.dataset.task); return; }
+    if (event.target === el || event.target.closest('[data-act="close"]')) memoClosePop();
+  });
+}
+
+function shellInitMemoBoard() {
+  const open = document.getElementById("mcSidebarMemoBtn");
+  if (open) open.addEventListener("click", shellOpenMemoBoard);
+  const modal = document.getElementById("mcMemoModal");
+  if (!modal) return;
+  modal.querySelectorAll("[data-close]").forEach((btn) => btn.addEventListener("click", () => { memoClosePop(); memoBoardStop(); }));
+  modal.querySelector("#mcMemoScope").addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-scope]");
+    if (!btn) return;
+    memoBoard.mine = btn.dataset.scope === "mine";
+    modal.querySelectorAll("#mcMemoScope [data-scope]").forEach((b) => b.classList.toggle("on", b === btn));
+    memoBoardRender();
+  });
+  modal.querySelector("#mcMemoSearch").addEventListener("input", (event) => {
+    memoBoard.query = event.target.value;
+    memoBoardRender();
+  });
+  modal.querySelector("#mcMemoAdd").addEventListener("click", memoOpenPicker);
+  modal.querySelector("#mcMemoBoard").addEventListener("click", (event) => {
+    const note = event.target.closest(".mc-memo-note");
+    if (note) memoOpenEditor(note.dataset.chart, note.dataset.task);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || modal.classList.contains("hidden")) return;
+    if (memoBoard.pop) memoClosePop();
+    else shellCloseMemoBoard();
+  });
+}
 
 
 /* =========================================================
