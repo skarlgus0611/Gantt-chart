@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v92"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v98"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v92";
+const APP_VERSION = "2026-10-24-design-v98";
 
 
 /* =========================================================
@@ -11518,6 +11518,7 @@ const MEMO_ICON = {
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
   note: '<path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v9l-6 6H5a1 1 0 0 1-1-1z"/><path d="M14 20v-5a1 1 0 0 1 1-1h5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'
 };
 
@@ -11787,6 +11788,11 @@ function memoAutosaver(initialMd, save, onState) {
     flush() {
       if (timer) { clearTimeout(timer); return run(); }
       return Promise.resolve();
+    },
+    cancel() {
+      clearTimeout(timer);
+      timer = null;
+      pending = null;
     }
   };
 }
@@ -11825,7 +11831,7 @@ function mountDetailMemo(task) {
 }
 
 /* ---------- 사이드바 "메모 보드" (셸) ---------- */
-const memoBoard = { mine: true, query: "", data: {}, unsubs: [], timer: null, pop: null };
+const memoBoard = { mine: true, query: "", data: {}, unsubs: [], timer: null, pop: null, selected: new Set() };
 
 function memoPastel(hex, k) {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ""));
@@ -11886,6 +11892,7 @@ function shellOpenMemoBoard() {
 
 function shellCloseMemoBoard() {
   memoClosePop();
+  memoBoard.selected.clear();
   memoBoardStop();
   shellCloseModal("mcMemoModal");
 }
@@ -11923,6 +11930,7 @@ function memoBoardRender() {
   }).join("");
   const count = document.getElementById("mcMemoCount");
   if (count) count.textContent = "메모 " + total + "개";
+  memoSelectionBar();
   board.innerHTML = html || '<div class="mc-memo-empty">' + memoIcon("note", 30) + "<b>" + (loading ? "불러오는 중…" : q ? "찾는 메모가 없어요" : memoBoard.mine ? "내가 담당인 작업에 메모가 없어요" : "메모가 있는 작업이 없어요") + "</b>" +
     (loading || q ? "" : "<span>작업 상세창 메모란이나 오른쪽 위 + 로 메모를 써 보세요</span>") + "</div>";
 }
@@ -11930,7 +11938,9 @@ function memoBoardRender() {
 function memoNoteHtml(chart, task, cats) {
   const color = memoTaskColor(task, cats);
   const due = memoDueText(task);
-  return '<button type="button" class="mc-memo-note" data-chart="' + escapeAttr(chart.id) + '" data-task="' + escapeAttr(task.id) + '" style="--paper:' + memoPastel(color, 0.8) + ";--ink:" + memoPastel(color, -0.5) + '">' +
+  const selected = memoBoard.selected.has(chart.id + "/" + task.id);
+  return '<button type="button" class="mc-memo-note' + (selected ? " is-selected" : "") + '" data-chart="' + escapeAttr(chart.id) + '" data-task="' + escapeAttr(task.id) + '" aria-pressed="' + selected + '" style="--paper:' + memoPastel(color, 0.8) + ";--ink:" + memoPastel(color, -0.5) + '">' +
+    '<span class="mc-memo-note-check" aria-hidden="true">' + memoIcon("check", 13) + "</span>" +
     "<b>" + escapeHtml(task.name || "이름 없는 작업") + "</b>" +
     '<span class="mc-memo-note-body">' + memoMdToHtml(task.memo) + "</span>" +
     '<span class="mc-memo-note-foot"><span>' + (task.start ? "시작 " + memoShortDate(task.start) : "") + "</span>" +
@@ -11969,16 +11979,19 @@ function memoOpenEditor(chartId, taskId) {
       '<button type="button" class="mc-memo-pop-btn" data-act="open">' + memoIcon("open", 15) + "작업 열기</button>" +
       '<button type="button" class="mc-memo-pop-btn mc-memo-pop-x" data-act="close" aria-label="닫기">' + memoIcon("x", 16) + "</button></div>" +
     '<div class="mc-memo-pop-ed"></div>' +
-    '<div class="mc-memo-pop-foot"><span class="mc-memo-pop-state">' + (readonly ? "보기 전용 (편집 권한 없음)" : "자동 저장") + "</span>" +
+    /* (요청사항) 자동 저장이라 안내 글씨는 빼고, 저장이 안 될 때만 알린다 */
+    '<div class="mc-memo-pop-foot">' +
+      (readonly ? '<span class="mc-memo-pop-state">보기 전용</span>' : '<button type="button" class="mc-memo-pop-btn mc-memo-pop-del" data-act="delete">' + memoIcon("trash", 15) + "삭제</button>") +
+      '<span class="mc-memo-pop-state" data-state></span>' +
       '<button type="button" class="mc-memo-pop-btn" data-act="close">닫기</button></div></div>';
   modal.appendChild(el);
-  const state = el.querySelector(".mc-memo-pop-state");
+  const state = el.querySelector("[data-state]");
   const pop = { el, saver: null };
   if (!readonly) {
     pop.saver = memoAutosaver(task.memo || "", (md) => apiPostForChart("update", chartId, { data: { id: task.id, memo: md } }), (s, length) => {
       const [text, kind] = memoStateText(s, length);
-      state.textContent = text;
-      state.className = "mc-memo-pop-state" + (kind ? " is-" + kind : "");
+      state.textContent = kind === "error" ? text : "";
+      state.className = "mc-memo-pop-state" + (kind === "error" ? " is-error" : "");
     });
   }
   const editor = memoCreateEditor({ md: task.memo || "", readonly, onChange: (md) => pop.saver && pop.saver.change(md) });
@@ -11987,6 +12000,10 @@ function memoOpenEditor(chartId, taskId) {
   el.addEventListener("click", (event) => {
     const act = event.target.closest("[data-act]");
     if (event.target === el || (act && act.dataset.act === "close")) { memoClosePop(); return; }
+    if (act && act.dataset.act === "delete") {
+      memoDeleteMemos([{ chartId, taskId }], () => { if (pop.saver) pop.saver.cancel(); });
+      return;
+    }
     if (act && act.dataset.act === "open") {
       memoClosePop().finally(() => {
         shellCloseMemoBoard();
@@ -12019,7 +12036,12 @@ function memoOpenPicker() {
   el.innerHTML = '<div class="mc-memo-pick" role="dialog" aria-label="메모 쓸 작업 고르기"><div class="mc-memo-pop-head"><div class="mc-memo-pop-title"><h4>어느 작업에 메모를 쓸까요?</h4><p>메모가 없는 ' + (memoBoard.mine ? "내 " : "") + "작업</p></div>" +
     '<button type="button" class="mc-memo-pop-btn mc-memo-pop-x" data-act="close" aria-label="닫기">' + memoIcon("x", 16) + "</button></div>" +
     '<div class="mc-memo-pick-list">' + (groups.length ? groups.map((g) => '<div class="mc-memo-pick-chart">' + escapeHtml(g.chart.name || "") + "</div>" +
-      g.list.map((t) => '<button type="button" class="mc-memo-pick-item" data-chart="' + escapeAttr(g.chart.id) + '" data-task="' + escapeAttr(t.id) + '"><b>' + escapeHtml(t.name || "이름 없는 작업") + "</b><span>" + (t.start ? memoShortDate(t.start) + " – " + memoShortDate(t.end) : "") + "</span></button>").join("")).join("")
+      g.list.map((t) => {
+        /* (요청사항) 작업마다 그 작업 색(포스트잇이 될 색)을 앞에 */
+        const color = memoTaskColor(t, (memoBoard.data[g.chart.id] || {}).cats);
+        return '<button type="button" class="mc-memo-pick-item" data-chart="' + escapeAttr(g.chart.id) + '" data-task="' + escapeAttr(t.id) + '">' +
+          '<i class="mc-memo-pick-sw" style="--paper:' + memoPastel(color, 0.75) + ";--ink:" + escapeAttr(color) + '"></i><b>' + escapeHtml(t.name || "이름 없는 작업") + "</b><span>" + (t.start ? memoShortDate(t.start) + " – " + memoShortDate(t.end) : "") + "</span></button>";
+      }).join("")).join("")
       : '<div class="mc-memo-empty"><b>메모를 쓸 수 있는 작업이 없어요</b></div>') + "</div></div>";
   modal.appendChild(el);
   memoBoard.pop = { el, saver: null };
@@ -12030,12 +12052,113 @@ function memoOpenPicker() {
   });
 }
 
+/* 메모 지우기(작업은 그대로, 메모란만 비운다) — 여러 개를 한 번에 */
+async function memoDeleteMemos(targets, beforeSave) {
+  const list = targets.filter(({ chartId }) => {
+    const chart = (shellChartsCache || []).find((c) => c.id === chartId);
+    return chart && shellCanEdit(chart);
+  });
+  const skipped = targets.length - list.length;
+  if (!list.length) {
+    showToast("편집 권한이 없는 차트의 메모라 지울 수 없어요.", true);
+    return;
+  }
+  const question = list.length === 1 ? "이 메모를 지울까요?" : "메모 " + list.length + "개를 지울까요?";
+  if (!confirm(question + "\n작업은 그대로 두고 메모만 지워요." + (skipped ? "\n(편집 권한이 없는 " + skipped + "개는 빼고)" : ""))) return;
+  if (beforeSave) beforeSave();
+  let failed = 0;
+  for (const { chartId, taskId } of list) {
+    try {
+      await apiPostForChart("update", chartId, { data: { id: taskId, memo: "" } });
+    } catch (error) {
+      failed++;
+    }
+  }
+  if (memoBoard.pop) { memoBoard.pop.saver = null; memoClosePop(); }
+  memoBoard.selected.clear();
+  memoBoardRender();
+  showToast(failed ? "메모 " + failed + "개를 지우지 못했어요." : "메모 " + (list.length - failed) + "개를 지웠어요.", !!failed);
+}
+
+/* 여러 개 고르기: 폰은 꾹(0.5초), 데스크탑은 1초 누르면 고르기 시작 · 고르는 중에는 눌러서 더하거나 빼기 */
+function memoInitSelection(modal) {
+  const board = modal.querySelector("#mcMemoBoard");
+  let hold = null;
+  let suppressClick = false;
+  const cancelHold = () => { if (hold) { clearTimeout(hold.timer); hold = null; } };
+  const toggle = (note) => {
+    const key = note.dataset.chart + "/" + note.dataset.task;
+    if (memoBoard.selected.has(key)) memoBoard.selected.delete(key);
+    else memoBoard.selected.add(key);
+    note.classList.toggle("is-selected", memoBoard.selected.has(key));
+    note.setAttribute("aria-pressed", String(memoBoard.selected.has(key)));
+    memoSelectionBar();
+  };
+  board.addEventListener("pointerdown", (event) => {
+    const note = event.target.closest(".mc-memo-note");
+    if (!note || (event.pointerType === "mouse" && event.button !== 0)) return;
+    cancelHold();
+    hold = {
+      note, x: event.clientX, y: event.clientY,
+      timer: setTimeout(() => {
+        hold = null;
+        suppressClick = true;
+        toggle(note);
+        if (navigator.vibrate) navigator.vibrate(15);
+      }, event.pointerType === "mouse" ? 1000 : 500)
+    };
+  });
+  board.addEventListener("pointermove", (event) => {
+    if (hold && Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 8) cancelHold();
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((type) => board.addEventListener(type, cancelHold));
+  board.addEventListener("contextmenu", (event) => { if (event.target.closest(".mc-memo-note")) event.preventDefault(); });
+  board.addEventListener("click", (event) => {
+    const note = event.target.closest(".mc-memo-note");
+    if (!note) return;
+    if (suppressClick) { suppressClick = false; return; }
+    if (memoBoard.selected.size) toggle(note);
+    else memoOpenEditor(note.dataset.chart, note.dataset.task);
+  });
+}
+
+function memoSelectionBar() {
+  const modal = document.querySelector("#mcMemoModal .mc-memo-modal");
+  if (!modal) return;
+  const count = memoBoard.selected.size;
+  modal.classList.toggle("is-selecting", count > 0);
+  let bar = modal.querySelector(".mc-memo-selbar");
+  if (!count) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.className = "mc-memo-selbar";
+    modal.appendChild(bar);
+    bar.addEventListener("click", (event) => {
+      const act = event.target.closest("[data-sel]");
+      if (!act) return;
+      if (act.dataset.sel === "clear") {
+        memoBoard.selected.clear();
+        memoBoardRender();
+      } else {
+        memoDeleteMemos(Array.from(memoBoard.selected).map((key) => {
+          const [chartId, taskId] = key.split("/");
+          return { chartId, taskId };
+        }));
+      }
+    });
+  }
+  /* 선택 해제 | 삭제 를 한 알약으로 */
+  bar.innerHTML = '<b>' + count + "개 선택</b>" +
+    '<span class="mc-memo-selpill"><button type="button" data-sel="clear">선택 해제</button>' +
+    '<button type="button" class="is-del" data-sel="delete">' + memoIcon("trash", 15) + "삭제</button></span>";
+}
+
 function shellInitMemoBoard() {
   const open = document.getElementById("mcSidebarMemoBtn");
   if (open) open.addEventListener("click", shellOpenMemoBoard);
   const modal = document.getElementById("mcMemoModal");
   if (!modal) return;
-  modal.querySelectorAll("[data-close]").forEach((btn) => btn.addEventListener("click", () => { memoClosePop(); memoBoardStop(); }));
+  modal.querySelectorAll("[data-close]").forEach((btn) => btn.addEventListener("click", () => { memoClosePop(); memoBoardStop(); memoBoard.selected.clear(); }));
   modal.querySelector("#mcMemoScope").addEventListener("click", (event) => {
     const btn = event.target.closest("[data-scope]");
     if (!btn) return;
@@ -12048,13 +12171,11 @@ function shellInitMemoBoard() {
     memoBoardRender();
   });
   modal.querySelector("#mcMemoAdd").addEventListener("click", memoOpenPicker);
-  modal.querySelector("#mcMemoBoard").addEventListener("click", (event) => {
-    const note = event.target.closest(".mc-memo-note");
-    if (note) memoOpenEditor(note.dataset.chart, note.dataset.task);
-  });
+  memoInitSelection(modal);
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || modal.classList.contains("hidden")) return;
     if (memoBoard.pop) memoClosePop();
+    else if (memoBoard.selected.size) { memoBoard.selected.clear(); memoBoardRender(); }
     else shellCloseMemoBoard();
   });
 }

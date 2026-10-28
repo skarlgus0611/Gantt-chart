@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v92";
+  --css-version: "2026-10-24-design-v98";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -12485,4 +12485,185 @@ body.shared-viewer-readonly #detailOwnerEmail {
   .mc-memo-pop-ed .memo-body {
     min-height: 200px;
   }
+}
+
+/* (요청사항) 메모 보드 도구줄: 세 칸 높이 36px 로 맞춤 */
+.mc-memo-tools .mc-bell-seg {
+  height: 36px;
+  padding: 3px;
+  gap: 2px;
+  align-items: stretch;
+  background: #efeee9;
+  flex-shrink: 0;
+}
+
+.mc-memo-tools .mc-bell-seg button {
+  height: auto;
+  min-width: 64px;
+  padding: 0 14px;
+  font-size: 12.5px;
+}
+
+/* 펼친 메모: 삭제 버튼 */
+.mc-memo-pop-del {
+  color: #b91c1c;
+}
+
+.mc-memo-pop-del:hover {
+  background: #fee2e2;
+}
+
+/* 여러 개 고르기 */
+.mc-memo-note {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.mc-memo-note-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  background: rgba(255, 255, 255, .7);
+  color: var(--ink);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  opacity: .55;
+}
+
+.mc-memo-note-check svg {
+  visibility: hidden;
+}
+
+.is-selecting .mc-memo-note-check {
+  display: flex;
+}
+
+.mc-memo-note.is-selected {
+  box-shadow: 0 0 0 3px #0f766e, 0 10px 14px -10px rgba(0, 0, 0, .3);
+}
+
+.mc-memo-note.is-selected .mc-memo-note-check {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+  opacity: 1;
+}
+
+.mc-memo-note.is-selected .mc-memo-note-check svg {
+  visibility: visible;
+}
+
+.mc-memo-selbar {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  z-index: 15;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 18px;
+  border-radius: 999px;
+  background: #18181b;
+  color: #ffffff;
+  box-shadow: 0 16px 36px -12px rgba(0, 0, 0, .5);
+  white-space: nowrap;
+}
+
+.mc-memo-selbar b {
+  margin-right: 6px;
+  font-size: 13px;
+}
+
+.mc-memo-selbar .mc-memo-pop-btn {
+  background: rgba(255, 255, 255, .12);
+  color: #ffffff;
+}
+
+.mc-memo-selbar .mc-memo-pop-del {
+  background: #dc2626;
+}
+
+/* 메모 쓸 작업 고르기: 작업 색 네모 */
+.mc-memo-pick-item {
+  justify-content: flex-start;
+}
+
+.mc-memo-pick-item b {
+  flex: 1;
+  min-width: 0;
+}
+
+.mc-memo-pick-sw {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 2px 2px 2px 6px;
+  background: var(--paper);
+  box-shadow: inset 3px 0 0 var(--ink), 0 1px 2px rgba(0, 0, 0, .12);
+}
+
+/* 포스트잇은 마우스를 올려도 제 색 그대로 */
+.mc-memo-board .mc-memo-note,
+.mc-memo-board .mc-memo-note:hover,
+.mc-memo-board .mc-memo-note:focus {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* + 버튼: 공통 버튼 안쪽 여백 때문에 아이콘이 오른쪽으로 밀려 있던 것 */
+.mc-memo-tools .mc-memo-add {
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+/* 여러 개 선택 막대: 연한 진회색 막대 + [흰 선택 해제 | 빨간 삭제] 한 알약 */
+.mc-memo-selbar {
+  padding: 6px 6px 6px 20px;
+  background: #52525b;
+  color: #ffffff;
+  box-shadow: 0 16px 36px -14px rgba(0, 0, 0, .45);
+}
+
+.mc-memo-selpill {
+  display: inline-flex;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mc-memo-selpill button {
+  height: 36px;
+  margin: 0;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 0; /* 두 칸이 틈 없이 붙게 — 둥근 끝은 알약(바깥)만 */
+  background: #ffffff;
+  color: #27272a;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.mc-memo-selpill button:hover {
+  background: #f4f4f5;
+}
+
+.mc-memo-selpill button.is-del {
+  background: #ef5b5b;
+  color: #ffffff;
+}
+
+.mc-memo-selpill button.is-del:hover {
+  background: #e54848;
 }
