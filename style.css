@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v94";
+  --css-version: "2026-10-24-design-v95";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -12630,20 +12630,21 @@ body.shared-viewer-readonly #detailOwnerEmail {
   box-shadow: 0 16px 36px -12px rgba(15, 118, 110, .55);
 }
 
+/* 선택 해제 = 흰색, 삭제 = 빨간색 */
 .mc-memo-selbar .mc-memo-pop-btn {
-  background: rgba(255, 255, 255, .16);
-  color: #ffffff;
-}
-
-.mc-memo-selbar .mc-memo-pop-btn:hover {
-  background: rgba(255, 255, 255, .26);
-}
-
-.mc-memo-selbar .mc-memo-pop-del {
   background: #ffffff;
   color: #0f766e;
 }
 
-.mc-memo-selbar .mc-memo-pop-del:hover {
+.mc-memo-selbar .mc-memo-pop-btn:hover {
   background: #e3f2ed;
+}
+
+.mc-memo-selbar .mc-memo-pop-del {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.mc-memo-selbar .mc-memo-pop-del:hover {
+  background: #b91c1c;
 }
