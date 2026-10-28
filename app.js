@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v90"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v91"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v90";
+const APP_VERSION = "2026-10-24-design-v91";
 
 
 /* =========================================================
@@ -507,16 +507,19 @@ function applyTaskFields(base, data, cats) {
     t.owner = t.ownerEmail ? t.ownerEmail.split("@")[0] : "";
   }
 
-  /* (요청사항) 종료일을 바꿀 때마다 시각을 남긴다 → 같은 날짜로 되돌아와도 사이트 안 알림이 새로 뜬다 */
-  if (t.end !== base.end) {
+  /* (요청사항) 종료일을 바꿀 때마다 시각을 남긴다 → 같은 날짜로 되돌아와도 사이트 안 알림이 새로 뜬다.
+     (버그 수정) 완료(100%)했던 작업의 진행률을 다시 낮춘 때도 마찬가지 — 완료 전에 [확인]·[지연 확인]을
+     눌러 뒀어도 다시 알린다 */
+  const reopened = normProgress(base.progress) >= 100 && normProgress(t.progress) < 100;
+  if (t.end !== base.end || reopened) {
     t.endChangedAt = Date.now();
   }
 
-  /* (요청사항) 지연 확인: 누르면 그 작업의 지연 알림을 멈춘다. 종료일을 바꾸면 다시 알린다 */
+  /* (요청사항) 지연 확인: 누르면 그 작업의 지연 알림을 멈춘다. 종료일을 바꾸거나 완료를 되돌리면 다시 알린다 */
   t.overdueAck = !!base.overdueAck;
   if (has("overdueAck")) {
     t.overdueAck = !!data.overdueAck;
-  } else if (t.end !== base.end) {
+  } else if (t.end !== base.end || reopened) {
     t.overdueAck = false;
   }
 
@@ -12022,7 +12025,6 @@ const BELL_ICON = {
   clock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>',
   cal: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M3.5 9.5h17M8 3v3M16 3v3"></path></svg>',
   check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>',
-  gear: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>',
   mail: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"></rect><path d="m4 7 8 6 8-6"></path></svg>',
   bell: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>',
   up: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 2 9 8H1z" fill="currentColor"></path></svg>',
@@ -12167,9 +12169,9 @@ function shellRenderBellMenu() {
   ];
 
   const tile = (t) => {
-    /* (요청사항) 마감 전은 "D-6" · "D-day" 한 줄만, 지연은 "+3일 / 지연" */
-    if (t.kind !== "overdue") return '<span class="mc-bell-tile mc-bell-tile-' + t.kind + '"><b>' + (t.days === 0 ? "D-day" : "D-" + t.days) + "</b></span>";
-    return '<span class="mc-bell-tile mc-bell-tile-overdue"><b>+' + t.days + "일</b><i>지연</i></span>";
+    /* (요청사항) 한 줄만: "D-6" · "D-day" · 지연은 "D+3" */
+    const text = t.kind === "overdue" ? "D+" + t.days : t.days === 0 ? "D-day" : "D-" + t.days;
+    return '<span class="mc-bell-tile mc-bell-tile-' + t.kind + '"><b>' + text + "</b></span>";
   };
   const who = (t) => {
     const name = t.owner || "";
