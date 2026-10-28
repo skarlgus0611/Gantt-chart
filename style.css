@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v96";
+  --css-version: "2026-10-24-design-v97";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -12624,27 +12624,26 @@ body.shared-viewer-readonly #detailOwnerEmail {
   place-items: center;
 }
 
-/* 여러 개 선택 막대: 흰 막대 + [선택 해제 | 삭제] 한 알약. 빨강은 청록과 어울리는 코랄 */
+/* 여러 개 선택 막대: 연한 진회색 막대 + [흰 선택 해제 | 빨간 삭제] 한 알약 */
 .mc-memo-selbar {
   padding: 6px 6px 6px 20px;
-  background: #ffffff;
-  color: #18181b;
-  box-shadow: 0 16px 40px -14px rgba(0, 0, 0, .35), 0 0 0 1px rgba(0, 0, 0, .06);
+  background: #52525b;
+  color: #ffffff;
+  box-shadow: 0 16px 36px -14px rgba(0, 0, 0, .45);
 }
 
 .mc-memo-selpill {
   display: inline-flex;
   border-radius: 999px;
   overflow: hidden;
-  box-shadow: 0 0 0 1px #d7ece6;
 }
 
 .mc-memo-selpill button {
   height: 36px;
-  padding: 0 16px;
+  padding: 0 18px;
   border: 0;
   background: #ffffff;
-  color: #0f766e;
+  color: #27272a;
   font: inherit;
   font-size: 13px;
   font-weight: 700;
@@ -12655,14 +12654,14 @@ body.shared-viewer-readonly #detailOwnerEmail {
 }
 
 .mc-memo-selpill button:hover {
-  background: #f1f7f5;
+  background: #f4f4f5;
 }
 
 .mc-memo-selpill button.is-del {
-  background: #e8665e;
+  background: #ef5b5b;
   color: #ffffff;
 }
 
 .mc-memo-selpill button.is-del:hover {
-  background: #db5a52;
+  background: #e54848;
 }
