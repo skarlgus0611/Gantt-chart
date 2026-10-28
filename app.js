@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v99"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v101"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v99";
+const APP_VERSION = "2026-10-24-design-v101";
 
 
 /* =========================================================
@@ -4399,7 +4399,7 @@ async function saveTaskDetail(id) {
 
     progress: document.getElementById("detailProgress").value,
 
-    memo: document.getElementById("detailMemo").value,
+    memo: (() => { const field = document.getElementById("detailMemo"); return field.memoRead ? field.memoRead() : field.value; })(),
 
     target: document.getElementById("detailTarget").value,
 
@@ -11546,7 +11546,7 @@ function memoInstallPopCloser() {
   });
 }
 
-/* 편집기 하나 만들기: { el, body, getMd, setStatus } — onChange(md) 는 입력할 때마다 */
+/* 편집기 하나 만들기: { el, body, getMd, setStatus } — onChange() 는 입력할 때마다(내용은 getMd 로 필요할 때만 읽기) */
 function memoCreateEditor({ md = "", readonly = false, onChange = null, compact = false, placeholder = "메모를 적어 보세요" } = {}) {
   const wrap = document.createElement("div");
   wrap.className = "memo-ed" + (compact ? " memo-ed-compact" : "") + (readonly ? " is-readonly" : "");
@@ -11570,7 +11570,8 @@ function memoCreateEditor({ md = "", readonly = false, onChange = null, compact 
   const refreshEmpty = () => body.classList.toggle("is-empty", !body.textContent.trim() && !body.querySelector("hr,li,.memo-ck"));
   const changed = () => {
     refreshEmpty();
-    if (onChange) onChange(memoHtmlToMd(body));
+    /* (성능) 글자마다 메모 전체를 저장 형식으로 바꾸지 않는다 — 저장할 때 한 번만 */
+    if (onChange) onChange();
   };
   refreshEmpty();
 
@@ -11782,9 +11783,11 @@ function memoAutosaver(initialMd, save, onState) {
   let saved = String(initialMd || "");
   let pending = null;
   let timer = null;
+  let typing = false;
   const run = async () => {
     timer = null;
-    const md = pending;
+    typing = false;
+    const md = pending ? pending() : null;
     pending = null;
     if (md === null || md === saved) return;
     if (md.length > LIMITS.memo) { onState("over", md.length); return; }
@@ -11798,9 +11801,10 @@ function memoAutosaver(initialMd, save, onState) {
     }
   };
   return {
-    change(md) {
-      pending = md;
-      onState(md.length > LIMITS.memo ? "over" : "typing", md.length);
+    /* readMd: 저장할 때 내용을 읽어 오는 함수 */
+    change(readMd) {
+      pending = readMd;
+      if (!typing) { typing = true; onState("typing", 0); }
       clearTimeout(timer);
       timer = setTimeout(run, MEMO_SAVE_DELAY);
     },
@@ -11822,7 +11826,7 @@ function memoStateText(state, length) {
   if (state === "saving") return ["저장 중…", ""];
   if (state === "saved") return ["저장됨 · " + count, "ok"];
   if (state === "error") return ["저장 실패 — 다시 입력하면 다시 저장해요", "error"];
-  return [count, ""];
+  return ["", ""];
 }
 
 /* 상세창 메모란 (카드 안 차트): 같은 편집기 + 자동 저장 */
@@ -11841,12 +11845,14 @@ function mountDetailMemo(task) {
     readonly,
     compact: true,
     placeholder: readonly ? "메모 없음" : "메모 추가… (자동 저장)",
-    onChange: (md) => {
+    onChange: () => saver.change(() => {
+      const md = editor.getMd();
       field.value = md; // 상세창 [저장]도 같은 값을 보낸다
-      saver.change(md);
-    }
+      return md;
+    })
   });
   host.replaceChildren(editor.el);
+  field.memoRead = () => editor.getMd(); // [저장]을 누르면 그때 내용을 읽는다
 }
 
 /* ---------- 사이드바 "메모 보드" (셸) ---------- */
@@ -12013,7 +12019,7 @@ function memoOpenEditor(chartId, taskId) {
       state.className = "mc-memo-pop-state" + (kind === "error" ? " is-error" : "");
     });
   }
-  const editor = memoCreateEditor({ md: task.memo || "", readonly, onChange: (md) => pop.saver && pop.saver.change(md) });
+  const editor = memoCreateEditor({ md: task.memo || "", readonly, onChange: () => pop.saver && pop.saver.change(() => editor.getMd()) });
   el.querySelector(".mc-memo-pop-ed").appendChild(editor.el);
   memoBoard.pop = pop;
   el.addEventListener("click", (event) => {
@@ -12099,7 +12105,7 @@ async function memoDeleteMemos(targets, beforeSave) {
   showToast(failed ? "메모 " + failed + "개를 지우지 못했어요." : "메모 " + (list.length - failed) + "개를 지웠어요.", !!failed);
 }
 
-/* 여러 개 고르기: 폰은 꾹(0.5초), 데스크탑은 1초 누르면 고르기 시작 · 고르는 중에는 눌러서 더하거나 빼기 */
+/* 여러 개 고르기: 폰 · 데스크탑 모두 0.5초 누르면 고르기 시작 · 고르는 중에는 눌러서 더하거나 빼기 */
 function memoInitSelection(modal) {
   const board = modal.querySelector("#mcMemoBoard");
   let hold = null;
@@ -12124,7 +12130,7 @@ function memoInitSelection(modal) {
         suppressClick = true;
         toggle(note);
         if (navigator.vibrate) navigator.vibrate(15);
-      }, event.pointerType === "mouse" ? 1000 : 500)
+      }, 500)
     };
   });
   board.addEventListener("pointermove", (event) => {
