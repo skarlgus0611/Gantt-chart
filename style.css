@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v93";
+  --css-version: "2026-10-24-design-v94";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -12615,4 +12615,35 @@ body.shared-viewer-readonly #detailOwnerEmail {
 .mc-memo-board .mc-memo-note:focus {
   background: var(--paper);
   color: var(--ink);
+}
+
+/* + 버튼: 공통 버튼 안쪽 여백 때문에 아이콘이 오른쪽으로 밀려 있던 것 */
+.mc-memo-tools .mc-memo-add {
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+/* 여러 개 선택 막대: 메인 색(청록)으로 */
+.mc-memo-selbar {
+  background: #0f766e;
+  box-shadow: 0 16px 36px -12px rgba(15, 118, 110, .55);
+}
+
+.mc-memo-selbar .mc-memo-pop-btn {
+  background: rgba(255, 255, 255, .16);
+  color: #ffffff;
+}
+
+.mc-memo-selbar .mc-memo-pop-btn:hover {
+  background: rgba(255, 255, 255, .26);
+}
+
+.mc-memo-selbar .mc-memo-pop-del {
+  background: #ffffff;
+  color: #0f766e;
+}
+
+.mc-memo-selbar .mc-memo-pop-del:hover {
+  background: #e3f2ed;
 }
