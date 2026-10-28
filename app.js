@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v88"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v89"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v88";
+const APP_VERSION = "2026-10-24-design-v89";
 
 
 /* =========================================================
@@ -12061,31 +12061,36 @@ function bellDigestOn(digest) {
 function bellDigestHtml(digest, off) {
   const on = bellDigestOn(digest);
   const preset = bellDigestPreset(digest);
-  const pills = BELL_DIGEST_PRESETS.map(([key, , , label]) =>
-    '<button type="button" class="mc-bell-pill' + (preset && preset[0] === key ? " on" : "") + '" data-digest="' + key + '"' + off + ">" + label + "</button>").join("");
-  let custom;
+  /* (요청사항) 낱개 알약 대신 "나에게 | 전체" 처럼 한 줄로 붙은 칸 — 칸 너비는 같게, 왼쪽에 이름표 */
+  const seg = (cells) => '<div class="mc-bell-seg mc-bell-seg-fill">' + cells.join("") + "</div>";
+  const row = (label, control) => '<div class="mc-bell-opt"><span class="mc-bell-opt-label">' + label + "</span>" + control + "</div>";
+  let cycle;
   if (bellDigestEdit) {
     const e = bellDigestEdit;
-    custom = '<span class="mc-bell-pill mc-bell-pill-edit on">' +
+    cycle = '<div class="mc-bell-pill-edit">' +
       '<span class="mc-bell-num">' + e.every + "</span>" +
       '<span class="mc-bell-step"><button type="button" data-step="1" aria-label="늘리기">' + BELL_ICON.up + '</button><button type="button" data-step="-1" aria-label="줄이기">' + BELL_ICON.down + "</button></span>" +
       '<span class="mc-bell-units">' + [["d", "일"], ["w", "주"], ["m", "달"]].map(([u, label]) =>
         '<button type="button" data-unit="' + u + '" class="' + (e.unit === u ? "on" : "") + '">' + label + "</button>").join("") + "</span>" +
-      '<button type="button" class="mc-bell-pill-ok" data-digest-ok aria-label="저장" title="저장">' + BELL_ICON.check + "</button></span>";
+      '<button type="button" class="mc-bell-pill-ok" data-digest-ok aria-label="저장" title="저장">' + BELL_ICON.check + "</button></div>";
   } else {
     const customOn = digest && !preset;
-    custom = '<button type="button" class="mc-bell-pill' + (customOn ? " on" : "") + '" data-digest="custom"' + off + ">" + (customOn ? bellDigestText(digest) : "직접 설정") + "</button>";
+    const short = customOn ? digest.every + ({ d: "일", w: "주", m: "달" }[digest.unit] || "") : "직접";
+    cycle = seg(BELL_DIGEST_PRESETS.map(([key, , , label]) =>
+      '<button type="button" class="' + (preset && preset[0] === key ? "on" : "") + '" data-digest="' + key + '"' + off + ">" + label + "</button>")
+      .concat('<button type="button" class="' + (customOn ? "on" : "") + '" data-digest="custom"' + off + ' title="직접 설정">' + short + "</button>"));
   }
-  const scope = on
-    ? '<div class="mc-bell-digest-scope"><span>받을 작업</span><div class="mc-bell-seg">' +
-        '<button type="button" data-digest-scope="mine" class="' + (digest.scope !== "charts" ? "on" : "") + '">내 작업</button>' +
-        '<button type="button" data-digest-scope="charts" class="' + (digest.scope === "charts" ? "on" : "") + '">내 차트 전체</button></div></div>'
-    : "";
+  const body = !on ? "" : '<div class="mc-bell-digest-body">' +
+    row("주기", cycle) +
+    row("받을 작업", seg([
+      '<button type="button" data-digest-scope="mine" class="' + (digest.scope !== "charts" ? "on" : "") + '">내 작업</button>',
+      '<button type="button" data-digest-scope="charts" class="' + (digest.scope === "charts" ? "on" : "") + '">내 차트 전체</button>'
+    ])) + "</div>";
   return '<div class="mc-bell-digest">' +
       '<label class="mc-bell-switch-row"><span class="mc-bell-switch-ic">' + BELL_ICON.cal + "</span>" +
         '<span class="mc-bell-switch-text"><b>일정 메일</b><i>' + (on ? bellDigestText(digest) + " 아침 8시, 끝나지 않은 작업 전체" : "정한 주기마다 일정 전체를 메일로") + "</i></span>" +
         '<input type="checkbox" class="mc-bell-switch" id="mcBellDigest"' + (on ? " checked" : "") + off + "></label>" +
-      (on ? '<div class="mc-bell-pills">' + pills + custom + "</div>" + scope : "") +
+      body +
     "</div>";
 }
 
