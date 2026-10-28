@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v97";
+  --css-version: "2026-10-24-design-v98";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -12640,8 +12640,10 @@ body.shared-viewer-readonly #detailOwnerEmail {
 
 .mc-memo-selpill button {
   height: 36px;
+  margin: 0;
   padding: 0 18px;
   border: 0;
+  border-radius: 0; /* 두 칸이 틈 없이 붙게 — 둥근 끝은 알약(바깥)만 */
   background: #ffffff;
   color: #27272a;
   font: inherit;
