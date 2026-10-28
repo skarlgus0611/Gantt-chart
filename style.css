@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v89";
+  --css-version: "2026-10-24-design-v90";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -11811,3 +11811,10 @@ body.shared-viewer-readonly #detailOwnerEmail {
   cursor: pointer;
 }
 
+
+/* (요청사항) 남은 날 타일 너비를 모두 같게 — "D-6" · "D-day" · "+64일" 이 같은 줄에 맞게 */
+.mc-bell-tile {
+  width: 58px;
+  min-width: 58px;
+  padding: 0;
+}

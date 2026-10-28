@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v89"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v90"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v89";
+const APP_VERSION = "2026-10-24-design-v90";
 
 
 /* =========================================================
@@ -11569,7 +11569,7 @@ function obTourSteps() {
       }], title: "엑셀(CSV) 올리기 · 받기",
       points: ["**업로드** — 엑셀 · CSV 파일의 작업을 이 차트에 추가", "**다운로드** — 작업 목록을 파일로 받기"] },
     { targets: [byId("mcBellBtn")], title: "마감 알림 · 메일",
-      points: ["종 버튼에서 **마감이 다가오는 작업**을 봐요", "내 작업은 **D-15 · D-7 · D-1 · 당일 · 지연** 때 메일로", "설정에서 **일정 메일** 주기도 정할 수 있어요"] }
+      points: ["종 버튼에서 **마감이 다가오는 작업**을 봐요", "내 작업은 **D-15 · D-7 · D-1 · 당일 · 지연** 때 메일로", "종 안에서 **일정 메일** 주기도 정할 수 있어요"] }
   ];
 }
 
@@ -12029,7 +12029,6 @@ const BELL_ICON = {
   down: '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 8 1 2h8z" fill="currentColor"></path></svg>',
   done: '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg>'
 };
-let bellSettingsOpen = false;
 
 /* (요청사항) 일정 메일 — 마감 알림과 따로, 정한 주기마다 일정 전체를 메일로.
    users/{uid}.notify.digest = { on, every, unit: "d"|"w"|"m", scope: "mine"|"charts", since }
@@ -12088,7 +12087,7 @@ function bellDigestHtml(digest, off) {
     ])) + "</div>";
   return '<div class="mc-bell-digest">' +
       '<label class="mc-bell-switch-row"><span class="mc-bell-switch-ic">' + BELL_ICON.cal + "</span>" +
-        '<span class="mc-bell-switch-text"><b>일정 메일</b><i>' + (on ? bellDigestText(digest) + " 아침 8시, 끝나지 않은 작업 전체" : "정한 주기마다 일정 전체를 메일로") + "</i></span>" +
+        '<span class="mc-bell-switch-text"><b>일정 메일</b><i>' + (on ? bellDigestText(digest) + " · 아침 8시" : "정한 주기마다 전체 일정") + "</i></span>" +
         '<input type="checkbox" class="mc-bell-switch" id="mcBellDigest"' + (on ? " checked" : "") + off + "></label>" +
       body +
     "</div>";
@@ -12168,9 +12167,9 @@ function shellRenderBellMenu() {
   ];
 
   const tile = (t) => {
-    const big = t.kind === "overdue" ? "+" + t.days + "일" : t.days === 0 ? "오늘" : "D-" + t.days;
-    const small = t.kind === "overdue" ? "지연" : t.days === 0 ? "마감" : "남음";
-    return '<span class="mc-bell-tile mc-bell-tile-' + t.kind + '"><b>' + big + "</b><i>" + small + "</i></span>";
+    /* (요청사항) 마감 전은 "D-6" · "D-day" 한 줄만, 지연은 "+3일 / 지연" */
+    if (t.kind !== "overdue") return '<span class="mc-bell-tile mc-bell-tile-' + t.kind + '"><b>' + (t.days === 0 ? "D-day" : "D-" + t.days) + "</b></span>";
+    return '<span class="mc-bell-tile mc-bell-tile-overdue"><b>+' + t.days + "일</b><i>지연</i></span>";
   };
   const who = (t) => {
     const name = t.owner || "";
@@ -12205,10 +12204,11 @@ function shellRenderBellMenu() {
     '<label class="mc-bell-switch-row"><span class="mc-bell-switch-ic">' + icon + "</span>" +
       '<span class="mc-bell-switch-text"><b>' + title + "</b><i>" + sub + "</i></span>" +
       '<input type="checkbox" class="mc-bell-switch" id="' + id + '"' + (on ? " checked" : "") + off + "></label>";
-  const settings = !bellSettingsOpen ? "" : bellProfileState === "error"
+  /* (요청사항) 설정은 접지 않고 항상 보이게 */
+  const settings = bellProfileState === "error"
     ? '<div class="mc-bell-settings mc-bell-mail-off">알림 설정을 불러오지 못했어요. (보안 규칙 확인 필요)</div>'
     : '<div class="mc-bell-settings">' +
-        toggle("mcBellMail", emailOn, BELL_ICON.mail, "마감 알림 메일", "D-15 · D-7 · D-1 · 당일 · 지연 1·4·7일, 그 뒤 매주") +
+        toggle("mcBellMail", emailOn, BELL_ICON.mail, "마감 알림 메일", "D-15 · 7 · 1 · 당일 · 지연 시") +
         bellDigestHtml(notify.digest || null, off) +
       "</div>";
 
@@ -12216,7 +12216,7 @@ function shellRenderBellMenu() {
     '<div class="mc-bell-head"><b>마감 알림</b>' +
       '<div class="mc-bell-seg"><button type="button" data-bell-scope="mine" class="' + (bellMineOnly ? "on" : "") + '">나에게</button>' +
       '<button type="button" data-bell-scope="all" class="' + (!bellMineOnly ? "on" : "") + '">전체</button></div>' +
-      '<button type="button" class="mc-bell-gear' + (bellSettingsOpen ? " on" : "") + '" aria-label="알림 설정" title="알림 설정">' + BELL_ICON.gear + "</button></div>" +
+    "</div>" +
     settings +
     '<div class="mc-bell-list">' +
       (items.length ? list : '<div class="mc-bell-empty">' + BELL_ICON.done + "<span>확인할 알림이 없어요</span></div>") +
@@ -12256,11 +12256,6 @@ function shellOpenBellMenu(button) {
       return;
     }
     if (bellHandleDigestClick(event.target)) return;
-    if (event.target.closest(".mc-bell-gear")) {
-      bellSettingsOpen = !bellSettingsOpen;
-      shellRenderBellMenu();
-      return;
-    }
     if (event.target.closest(".mc-bell-ack-all")) {
       const open = bellOpenItems();
       /* (요청사항) 안 보이던 알림까지 지워지지 않게 한 번 더 묻는다 */

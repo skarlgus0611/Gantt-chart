@@ -237,7 +237,7 @@ function renderMail(notice, siteUrl) {
   const summary = tiles.map((g) => g.label + " " + g.n + "건").join(" · ");
   return {
     subject: "[간트차트] " + summary,
-    html: mailHtml({ title: "간트차트 마감 알림", tiles, items: notice.items, siteUrl, footer: "완료하거나 [지연 확인]을 누르면 그만 보내요 · 메일 끄기: 종 버튼 → 설정" }),
+    html: mailHtml({ title: "간트차트 마감 알림", tiles, items: notice.items, siteUrl, footer: "완료하거나 [지연 확인]을 누르면 그만 보내요 · 메일 끄기: 사이트의 종 버튼" }),
     text: mailText(summary, notice.items, siteUrl)
   };
 }
@@ -257,7 +257,7 @@ function renderDigest(digest, siteUrl) {
     subject: "[간트차트] 일정 요약 · " + summary,
     html: mailHtml({
       title: "간트차트 일정 요약 · " + whose + " · " + digest.every, tiles, items: digest.items, siteUrl, showOwner: digest.scope === "charts",
-      footer: "끝나지 않은 작업을 모두 보여 줘요 · 주기 바꾸기·끄기: 종 버튼 → 설정"
+      footer: "끝나지 않은 작업을 모두 보여 줘요 · 주기 바꾸기·끄기: 사이트의 종 버튼"
     }),
     text: mailText(summary, digest.items, siteUrl)
   };
