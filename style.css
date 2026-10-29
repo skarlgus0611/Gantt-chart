@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v101";
+  --css-version: "2026-10-24-design-v107";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -12666,4 +12666,776 @@ body.shared-viewer-readonly #detailOwnerEmail {
 
 .mc-memo-selpill button.is-del:hover {
   background: #e54848;
+}
+
+
+/* =========================================================
+   (요청사항) 폰: 사이드바를 왼쪽 서랍처럼 — 평소엔 숨김, 메뉴 버튼으로 열기
+   ========================================================= */
+.mc-mobile-menu,
+.mc-sidebar-scrim {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .mc-mobile-menu {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin-right: 4px;
+  }
+
+  .mc-topbar .mc-brand {
+    margin-right: auto;
+    min-width: 0;
+  }
+
+  #shellView .mc-sidebar {
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 950;
+    width: min(290px, 84vw);
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    transform: translateX(-104%);
+    transition: transform .22s ease;
+    box-shadow: 0 0 40px -10px rgba(0, 0, 0, .35);
+    visibility: hidden;
+  }
+
+  #shellView.mc-sidebar-open .mc-sidebar {
+    transform: none;
+    visibility: visible;
+  }
+
+  .mc-sidebar-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 940;
+    background: rgba(15, 23, 22, .38);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease;
+  }
+
+  #shellView.mc-sidebar-open .mc-sidebar-scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* 서랍 안 접기 버튼은 "닫기"로 (화살표가 왼쪽을 가리킴) */
+  #shellView .mc-sidebar-toggle svg {
+    transform: none;
+  }
+}
+
+/* =========================================================
+   (요청사항) 폰 화면 차트 — 왼쪽 목록칸 없이, 막대 위에 이름
+   ========================================================= */
+body.is-mobile-chart .task-column,
+body.is-mobile-chart #vRangeSlider,
+body.is-mobile-chart .h-rail {
+  display: none; /* 폰: 왼쪽 목록칸 · 세로 띠 · 맨 아래 달 띠 없음 */
+}
+
+body.is-mobile-chart #timeline {
+  flex: 1 1 auto;
+  min-width: 0;
+  touch-action: none; /* 한 손가락 밀기 · 두 손가락 확대를 차트가 직접 처리 */
+}
+
+body.is-mobile-chart .timeline-task-row {
+  position: relative;
+}
+
+/* 막대: 작업 색을 연하게 깔고, 진행한 만큼 조금 더 진하게, 글씨는 진한 같은 색 */
+body.is-mobile-chart .task-bar {
+  background: var(--m-paper) !important;
+}
+
+body.is-mobile-chart .task-progress {
+  background: var(--m-fill) !important;
+  border-radius: 999px;
+}
+
+body.is-mobile-chart .task-bar .task-bar-text {
+  display: none;
+}
+
+.m-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.m-bar-label.is-inside {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 0 4px;
+  color: var(--m-ink);
+}
+
+.m-bar-label.is-inside .m-who {
+  margin-left: auto;
+}
+
+.m-bar-label.is-inside .m-due {
+  background: rgba(255, 255, 255, .92);
+}
+
+.m-bar-label.is-outside {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  max-width: 100%;
+  padding: 0 6px;
+  transform: translateY(-50%);
+  color: #27272a;
+}
+
+.m-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.m-due {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f1f1ef;
+  color: #52525b;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.m-due.is-late { background: #fee2e2; color: #dc2626; }
+.m-due.is-soon { background: #fef3c7; color: #b45309; }
+.m-due.is-done { background: #e3f2ed; color: #0f766e; }
+
+.m-who {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+/* 폰에선 막대 안 이름은 빼고 % 만 */
+
+/* 줄이 얇아지면(두 손가락으로 줄인 경우) 위 글씨는 숨김 */
+.m-thin .m-bar-label {
+  display: none;
+}
+
+.m-cat {
+  position: relative;
+}
+
+.m-cat-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #27272a;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.m-cat-label em {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+
+.m-cat-label small {
+  color: #a1a1aa;
+  font-weight: 700;
+}
+
+.m-cat-chev {
+  margin-left: auto;
+  color: #a1a1aa;
+  transition: transform .15s ease;
+}
+
+.m-cat-chev.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+/* 꾹 눌렀을 때 메뉴 */
+.m-menu {
+  position: absolute;
+  z-index: 3000;
+  min-width: 180px;
+  max-width: calc(100vw - 16px);
+  padding: 6px;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, .35), 0 0 0 1px rgba(0, 0, 0, .05);
+}
+
+.m-menu button {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  color: #27272a;
+}
+
+.m-menu button:disabled {
+  color: #d4d4d8;
+}
+
+.m-menu-sep {
+  display: block;
+  height: 1px;
+  margin: 4px 6px;
+  background: #f0f0f0;
+}
+
+/* 셸: 폰에서 사이드바를 여는 왼쪽 가장자리 탭 */
+.mc-sidebar-tab {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .mc-sidebar-tab {
+    position: fixed;
+    left: 0;
+    top: 50%;
+    z-index: 930;
+    width: 18px;
+    height: 64px;
+    margin-top: -32px;
+    padding: 0;
+    border: 0;
+    border-radius: 0 12px 12px 0;
+    background: #0f766e;
+    color: #ffffff;
+    display: grid;
+    place-items: center;
+    box-shadow: 2px 4px 12px -4px rgba(0, 0, 0, .35);
+    cursor: pointer;
+  }
+
+  #shellView.mc-sidebar-open .mc-sidebar-tab {
+    display: none;
+  }
+}
+
+
+/* =========================================================
+   (요청사항) 폰 화면 셸 — 버튼을 따로 떼지 않고 선으로 나눈 알약 하나에
+   ========================================================= */
+.mc-m-pill,
+.mc-m-range {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  /* 맨 위: 알림 | 새로고침 | 내 정보 (로그아웃은 내 정보를 누르면) */
+  #shellView .mc-topbar {
+    flex-wrap: nowrap;
+    height: 60px;
+    padding: 0 12px 0 16px;
+  }
+
+  #shellView .mc-topbar .brand-sep,
+  #shellView .mc-topbar .brand-sub {
+    display: none;
+  }
+
+  #shellView .mc-topbar-actions {
+    flex-shrink: 0;
+    gap: 0;
+    padding: 0;
+    border: 1px solid #e4e4e7;
+    border-radius: 999px;
+    background: #ffffff;
+    overflow: hidden;
+  }
+
+  #shellView .mc-topbar-actions > .mc-btn {
+    width: 42px;
+    height: 38px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  #shellView .mc-topbar-actions > * + * {
+    border-left: 1px solid #f0f0f0;
+  }
+
+  #shellView .mc-topbar-actions > #mcKeyBtn {
+    width: auto;
+    padding: 0 14px;
+  }
+
+  #shellView .mc-topbar-actions:has(.mc-user-box > :not(.hidden)) > #mcKeyBtn {
+    display: none;
+  }
+
+  #shellView .mc-user-box {
+    width: 42px;
+    height: 38px;
+    margin: 0;
+    padding: 0;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  #shellView .mc-user-box .mc-user-avatar,
+  #shellView .mc-user-box .mc-user-initial {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
+
+  /* 페이지 위: 차트 검색 | 차트 관리 | 새 차트 */
+  #shellView .mc-page-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  #shellView .mc-page-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    border: 1px solid #e4e4e7;
+    border-radius: 18px;
+    background: #ffffff;
+    overflow: hidden;
+  }
+
+  #shellView .mc-page-actions .mc-search {
+    flex: 1;
+    min-width: 0;
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  #shellView .mc-page-actions > .mc-btn {
+    flex-direction: column;
+    gap: 2px;
+    height: auto;
+    min-height: 46px;
+    padding: 6px 13px;
+    border: 0;
+    border-left: 1px solid #f0f0f0;
+    border-radius: 0;
+    box-shadow: none;
+    font-size: 10.5px;
+  }
+
+  #shellView .mc-page-actions > .mc-btn.hidden {
+    display: none;
+  }
+
+  /* 차트 카드 머리: 기간 · 오늘 · 전체 · 담당자 · 작업 · 더보기 · 공유 */
+  #shellView .mc-chart-box-head {
+    flex-wrap: wrap;
+  }
+
+  #shellView .mc-chart-box-head .mc-date-pill,
+  #shellView .mc-chart-box-head .mc-chart-box-actions {
+    display: none;
+  }
+
+  #shellView .mc-m-range {
+    display: inline;
+    margin-left: auto;
+    font-size: 12px;
+    font-weight: 800;
+    color: #0f766e;
+    white-space: nowrap;
+  }
+
+  #shellView .mc-chart-box-headinfo {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #shellView .mc-m-pill {
+    display: flex;
+    flex: 1 0 100%;
+    margin-top: 10px;
+    border: 1px solid #d7ece6;
+    border-radius: 18px;
+    background: #ffffff;
+    overflow: hidden;
+  }
+
+  .mc-chart-box-collapsed .mc-m-pill {
+    display: none !important;
+  }
+
+  #shellView .mc-m-pill button {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 7px 0 6px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #52525b;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  #shellView .mc-m-pill button + button {
+    border-left: 1px solid #e3efeb;
+  }
+
+  #shellView .mc-m-pill button.is-primary {
+    background: #0f766e;
+    color: #ffffff;
+  }
+
+  /* 메모 편집기: 폰에선 기울임 도구 빼기 */
+  .memo-tb[data-cmd="italic"] {
+    display: none;
+  }
+}
+
+/* 카드 안 차트(iframe)는 폭이 좁아 위 미디어 조건과 따로 */
+body.is-mobile-chart .memo-tb[data-cmd="italic"] {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  #shellView .mc-topbar-actions .mc-bell-badge {
+    top: 3px;
+    right: 4px;
+    min-width: 16px;
+    height: 16px;
+    font-size: 9.5px;
+  }
+}
+
+@media (max-width: 760px) {
+  #shellView .mc-page-actions .mc-search input {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  #shellView .mc-page-actions .mc-badge {
+    top: 3px;
+    right: 3px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px;
+    font-size: 9px;
+  }
+}
+
+/* =========================================================
+   (요청사항) 폰: 작업 상세 = 아래에서 올라오는 세로 창, 자동 저장
+   ========================================================= */
+/* 셸: 상세 창이 열린 차트 칸을 잠깐 화면 전체로 */
+.mc-chart-box.mc-sheet-open .mc-chart-iframe-wrap iframe {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  z-index: 2500;
+  background: transparent;
+}
+
+body.mc-sheet-lock {
+  overflow: hidden;
+}
+
+/* 차트(iframe) 안 */
+body.is-mobile-chart #detailPanel:not(.hidden) {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 48px;
+  bottom: 0;
+  z-index: 1000;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 22px 22px 0 0;
+  background: #ffffff;
+  box-shadow: 0 0 0 100vmax rgba(15, 23, 22, .42);
+}
+
+body.is-mobile-chart #detailPanel::before {
+  content: "";
+  flex-shrink: 0;
+  width: 40px;
+  height: 5px;
+  margin: 8px auto 0;
+  border-radius: 999px;
+  background: #e4e4e7;
+}
+
+body.is-mobile-chart .detail-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.is-mobile-chart .detail-main {
+  display: contents;
+}
+
+body.is-mobile-chart .detail-title {
+  order: 1;
+  padding: 10px 16px 8px 18px;
+  margin: 0;
+}
+
+body.is-mobile-chart .m-detail-saved {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0f766e;
+  white-space: nowrap;
+}
+
+body.is-mobile-chart .m-detail-saved.is-error {
+  color: #dc2626;
+}
+
+/* 진행률 · 막대 색: 한 칸에 가로로 */
+body.is-mobile-chart .detail-side {
+  order: 2;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 2px 16px 10px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 16px;
+  background: #f6faf9;
+}
+
+body.is-mobile-chart .detail-ring {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+}
+
+body.is-mobile-chart .detail-ring-num {
+  font-size: 18px;
+}
+
+body.is-mobile-chart .detail-ring-caption {
+  display: none;
+}
+
+body.is-mobile-chart .detail-progress {
+  flex: 1;
+  min-width: 150px;
+}
+
+body.is-mobile-chart .detail-colors {
+  flex: 1 0 100%;
+}
+
+body.is-mobile-chart .detail-side-key {
+  display: none;
+}
+
+/* 속성 줄: 아이콘 + 값 */
+body.is-mobile-chart .detail-props {
+  order: 3;
+  padding: 0 16px;
+}
+
+body.is-mobile-chart .detail-prop {
+  grid-template-columns: 28px minmax(0, 1fr);
+  min-height: 48px;
+  border-bottom: 1px solid #f2f2f2;
+}
+
+body.is-mobile-chart .detail-prop-key {
+  font-size: 0;
+  gap: 0;
+  color: #a1a1aa;
+}
+
+body.is-mobile-chart .detail-prop-key svg {
+  width: 18px;
+  height: 18px;
+}
+
+body.is-mobile-chart .detail-dates,
+body.is-mobile-chart .detail-owner {
+  flex-wrap: wrap;
+}
+
+body.is-mobile-chart .detail-memo-ed {
+  order: 4;
+  margin: 12px 16px 16px;
+}
+
+/* 아래: [삭제 | 지연 확인 | 완료] 알약 하나 (저장 · 취소는 자동 저장이라 없음) */
+body.is-mobile-chart .detail-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 0;
+  padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
+}
+
+body.is-mobile-chart .detail-actions .detail-pill-main,
+body.is-mobile-chart .detail-actions .detail-actions-spacer {
+  display: none;
+}
+
+body.is-mobile-chart .detail-actions #deleteTaskBtn,
+body.is-mobile-chart .detail-actions .detail-pill-status {
+  flex: 1;
+  height: 44px;
+  margin: 0;
+  border: 1px solid #e4e4e7;
+  background: #ffffff;
+}
+
+body.is-mobile-chart .detail-actions #deleteTaskBtn {
+  justify-content: center;
+  border-radius: 22px 0 0 22px;
+  color: #dc2626;
+}
+
+body.is-mobile-chart .detail-actions .detail-pill-status {
+  flex: 2;
+  display: flex;
+  border-left: 0;
+  border-radius: 0 22px 22px 0;
+  overflow: hidden;
+}
+
+body.is-mobile-chart .detail-actions:has(.detail-pill-status.hidden) #deleteTaskBtn {
+  border-radius: 22px;
+}
+
+body.is-mobile-chart .detail-actions .detail-pill-status button {
+  flex: 1;
+  height: 100%;
+  justify-content: center;
+  border: 0;
+  border-left: 1px solid #f0f0f0;
+  border-radius: 0;
+  background: transparent;
+}
+
+body.is-mobile-chart .detail-actions .detail-pill-status button svg,
+body.is-mobile-chart .detail-actions #deleteTaskBtn svg {
+  width: 19px;
+  height: 19px;
+}
+
+body.is-mobile-chart .detail-actions .detail-pill-status {
+  border-color: #e4e4e7;
+  border-left: 0;
+  box-shadow: none;
+}
+
+/* (요청사항) 폰 세로 창: "52일"은 날짜 옆, "내가 할게요"는 이름 옆 — 한 줄로 */
+body.is-mobile-chart .detail-dates {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+}
+
+body.is-mobile-chart .detail-dates input[type="date"] {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  padding-left: 2px;
+  padding-right: 2px;
+  font-size: 13px;
+}
+
+body.is-mobile-chart .detail-dates .detail-dates-arrow {
+  flex-shrink: 0;
+}
+
+body.is-mobile-chart .detail-dates .detail-days {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+body.is-mobile-chart .detail-owner {
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
+}
+
+body.is-mobile-chart .detail-owner #detailOwner {
+  flex: 1 1 0;
+  min-width: 0;
+  order: 1;
+}
+
+body.is-mobile-chart .detail-owner .detail-owner-avatar {
+  order: 0;
+}
+
+body.is-mobile-chart .detail-owner .assignee-self {
+  flex-shrink: 0;
+  order: 2;
+}
+
+body.is-mobile-chart .detail-owner .assignee-email {
+  flex: 1 0 100%;
+  order: 3;
 }

@@ -10,7 +10,7 @@
 
   <meta name="theme-color" content="#ffffff">
 
-  <meta name="app-version" content="2026-10-24-design-v101">
+  <meta name="app-version" content="2026-10-24-design-v107">
 
   <title>간트차트</title>
 
@@ -27,7 +27,7 @@
 
   <link
     rel="stylesheet"
-    href="style.css?v=2026-10-24-design-v101"
+    href="style.css?v=2026-10-24-design-v107"
   >
 </head>
 
@@ -44,6 +44,11 @@
     <div class="mc-shell-layout">
 
       <!-- ▼▼▼ 접이식 사이드바 (추가분) ▼▼▼ -->
+      <div id="mcSidebarScrim" class="mc-sidebar-scrim" aria-hidden="true"></div>
+      <!-- (요청사항) 폰: 왼쪽 가장자리에 살짝 튀어나온 탭 — 누르면 사이드바가 열린다 -->
+      <button id="mcSidebarTab" type="button" class="mc-sidebar-tab" aria-label="메뉴 열기" title="메뉴" aria-controls="mcSidebar" aria-expanded="false">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+      </button>
       <aside id="mcSidebar" class="mc-sidebar">
         <div class="mc-sidebar-head">
           <button id="mcSidebarToggle" type="button" class="mc-sidebar-toggle" aria-label="사이드바 접기/펼치기" title="사이드바 접기/펼치기">
@@ -868,7 +873,7 @@
        JS
   ========================= -->
 
-  <script type="module" src="app.js?v=2026-10-24-design-v101"></script>
+  <script type="module" src="app.js?v=2026-10-24-design-v107"></script>
 
 </body>
 </html>
