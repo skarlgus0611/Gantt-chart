@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v104"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v106"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v104";
+const APP_VERSION = "2026-10-24-design-v106";
 
 
 /* =========================================================
@@ -3239,8 +3239,8 @@ function renderTimeline() {
 
     renderTaskBar(row, item.task, totalDays, visibleDays, h);
     /* 폰: 이 기간에 막대가 안 보이는 작업도 이름은 보이게 */
-    if (isMobileChart() && !row.querySelector(".m-bar-label")) addMobileBarLabel(row, item.task, 0, 0);
-    if (isMobileChart() && h < 40) row.classList.add("m-thin");
+    if (isMobileChart() && !row.querySelector(".m-bar-label")) addMobileBarLabel(row, item.task, 0, 0, null);
+    if (isMobileChart() && h < 34) row.classList.add("m-thin");
 
     rowsInner.appendChild(row);
   });
@@ -3820,8 +3820,13 @@ function renderTaskBar(
 
   row.appendChild(bar);
 
-  /* (요청사항) 폰: 막대 위에 남은 날 · 이름 · 담당자 */
-  if (isMobileChart()) addMobileBarLabel(row, task, left, width);
+  /* (요청사항) 폰: 막대 안에 남은 날 · 이름 · 담당자 (연한 바탕 + 진한 글씨) */
+  if (isMobileChart()) {
+    bar.style.setProperty("--m-paper", mixHex(color, "#ffffff", 0.16)); // mixHex: 앞 색의 비율
+    bar.style.setProperty("--m-fill", mixHex(color, "#ffffff", 0.42));
+    bar.style.setProperty("--m-ink", mixHex(color, "#000000", 0.55));
+    addMobileBarLabel(row, task, left, width, bar);
+  }
 
 
   /* (요청사항) 꾹 눌러(1초) 띄운 뒤 좌우로 끌어 일정 옮기기 */
@@ -3999,9 +4004,9 @@ function applyBarGeometry(bar, rowHeight) {
     Math.max(14, Math.min(32, Math.round(rowHeight * 0.56)));
 
   /* (요청사항) 폰: 위에 글씨 줄을 두고 막대는 아래쪽에 얇게 */
-  if (isMobileChart() && rowHeight >= 40) {
-    const h = Math.max(12, Math.min(20, Math.round(rowHeight * 0.32)));
-    bar.style.top = Math.max(24, rowHeight - h - 7) + "px";
+  if (isMobileChart() && rowHeight >= 34) {
+    const h = Math.min(30, rowHeight - 12);
+    bar.style.top = Math.round((rowHeight - h) / 2) + "px";
     bar.style.height = h + "px";
     return;
   }
@@ -4271,6 +4276,7 @@ function showTaskDetail(id) {
   });
 
   mountDetailMemo(task);
+  if (isMobileChart()) mountMobileDetailAutosave(task);
 
   const progressRange = document.getElementById("detailProgressRange");
   const progressNumber = document.getElementById("detailProgress");
@@ -6519,7 +6525,7 @@ vSlider = buildRangeSlider(document.getElementById("vRangeSlider"), {
  *  - 한 손가락: 옆 · 위아래로 밀기 / 두 손가락: 벌리고 오므려 좌우 · 상하 확대
  * ========================================================= */
 const MOBILE_CHART_MQ = window.matchMedia("(max-width: 640px)");
-const MOBILE_TASK_ROW_PX = 58;
+const MOBILE_TASK_ROW_PX = 46;
 
 function isMobileChart() {
   /* 이 줄보다 먼저 그려질 수도 있어서 상수 대신 바로 묻는다 */
@@ -6564,20 +6570,70 @@ function mobileDueChip(task) {
   return { text: left === 0 ? "D-day" : "D-" + left, kind: left <= 1 ? "soon" : "" };
 }
 
-/* 막대 위 글씨: 남은 날 · 이름 · 담당자. 오른쪽 끝에 걸리면 오른쪽에 맞춘다 */
-function addMobileBarLabel(row, task, leftPct, widthPct) {
-  const label = document.createElement("div");
-  label.className = "m-bar-label";
+/* 막대 안 글씨: 남은 날 · 이름 · 담당자. 막대가 짧으면 남은 날만 안에 두고 이름 · 담당자는 막대 오른쪽 바깥에
+   (막대가 화면 오른쪽 끝에 걸리면 바깥 글씨는 막대 왼쪽에) */
+function mobileBarParts(task) {
   const due = mobileDueChip(task);
   const owner = String(task.owner || "").trim();
-  label.innerHTML = (due ? '<span class="m-due' + (due.kind ? " is-" + due.kind : "") + '">' + due.text + "</span>" : "") +
-    '<span class="m-name">' + escapeHtml(task.name || "") + "</span>" +
-    (owner ? '<span class="m-who" style="background:' + mcPersonColor(task.ownerEmail || owner) + '">' + escapeHtml(Array.from(owner)[0]) + "</span>" : "");
-  if (leftPct > 50) {
-    label.classList.add("is-right");
-    label.style.right = Math.max(0, 100 - leftPct - widthPct) + "%";
+  return {
+    due: due ? '<span class="m-due' + (due.kind ? " is-" + due.kind : "") + '">' + due.text + "</span>" : "",
+    name: '<span class="m-name">' + escapeHtml(task.name || "") + "</span>",
+    who: owner ? '<span class="m-who" style="background:' + mcPersonColor(task.ownerEmail || owner) + '">' + escapeHtml(Array.from(owner)[0]) + "</span>" : ""
+  };
+}
+
+/* 글씨 실제 폭(px) — 막대 안에 다 들어가는지 재 보려고 */
+let mobileMeasureCtx = null;
+function mobileTextWidth(text) {
+  if (!mobileMeasureCtx) {
+    mobileMeasureCtx = document.createElement("canvas").getContext("2d");
+    mobileMeasureCtx.font = "800 12px " + (getComputedStyle(document.body).fontFamily || "sans-serif");
+  }
+  return mobileMeasureCtx.measureText(String(text || "")).width;
+}
+
+function addMobileBarLabel(row, task, leftPct, widthPct, bar) {
+  const parts = mobileBarParts(task);
+  const timeline = document.getElementById("timeline");
+  const fullWidth = (timeline && timeline.clientWidth) || 360;
+  const barPx = widthPct / 100 * fullWidth;
+  const label = document.createElement("div");
+  label.className = "m-bar-label";
+  /* (요청사항) 길이를 보고 둘 중 하나: 이름이 막대 안에 다 들어가면 안에, 아니면 바깥에 */
+  const due = mobileDueChip(task);
+  const dueWidth = due ? mobileTextWidth(due.text) * 0.9 + 17 : 0;
+  const needed = 8 + dueWidth + 5 + mobileTextWidth(task.name) + (String(task.owner || "").trim() ? 27 : 0);
+  /* 다 안 들어가면 막대 안 · 오른쪽 · 왼쪽 중 자리가 가장 넓은 곳 */
+  const rightPct = leftPct + widthPct;
+  const roomInside = barPx - (needed - mobileTextWidth(task.name));
+  const roomRight = (100 - rightPct) / 100 * fullWidth;
+  const roomLeft = leftPct / 100 * fullWidth;
+  if (bar && (barPx >= needed || (roomInside >= 60 && roomInside >= roomRight && roomInside >= roomLeft))) {
+    /* 막대 안 */
+    label.classList.add("is-inside");
+    label.innerHTML = parts.due + parts.name + parts.who;
+    bar.appendChild(label);
   } else {
-    label.style.left = Math.max(0, leftPct) + "%";
+    const dueFits = bar && parts.due && barPx >= dueWidth + 10;
+    if (dueFits) {
+      const inside = document.createElement("div");
+      inside.className = "m-bar-label is-inside is-due-only";
+      inside.innerHTML = parts.due;
+      bar.appendChild(inside);
+    }
+    label.classList.add("is-outside");
+    label.innerHTML = (dueFits ? "" : parts.due) + parts.name + parts.who;
+    const right = rightPct;
+    /* 오른쪽보다 왼쪽이 넓으면 막대 왼쪽에 (넘치면 이름 끝을 … 로) */
+    if (bar && roomLeft > roomRight && roomRight < (needed - dueWidth)) {
+      label.classList.add("is-before");
+      label.style.right = Math.max(0, 100 - leftPct) + "%";
+      label.style.maxWidth = leftPct + "%";
+    } else {
+      if (bar) label.style.maxWidth = Math.max(0, 100 - right) + "%";
+      label.style.left = (bar ? right : Math.max(0, leftPct)) + "%";
+    }
+    row.appendChild(label);
   }
   mobileLongPress(label, () => mobileTaskMenu(task, label));
   label.addEventListener("click", (event) => {
@@ -6585,7 +6641,6 @@ function addMobileBarLabel(row, task, leftPct, widthPct) {
     if (label.dataset.justPressed === "1") { label.dataset.justPressed = ""; return; }
     showTaskDetail(task.id);
   });
-  row.appendChild(label);
 }
 
 /* 카테고리 띠: 이름 · 개수 · 접기 */
@@ -6738,17 +6793,6 @@ function mobileCategoryMenu(group, anchor) {
   ]);
 }
 
-/* 폰 위쪽 도구: + 작업 · + 카테고리 (왼쪽 목록칸이 없어서) */
-function ensureMobileTools() {
-  const gantt = document.querySelector(".gantt");
-  if (!gantt || document.getElementById("mChartTools")) return;
-  const tools = document.createElement("div");
-  tools.id = "mChartTools";
-  tools.className = "m-chart-tools";
-  tools.appendChild(buildTaskAddPill());
-  gantt.parentNode.insertBefore(tools, gantt);
-}
-
 /* 손가락 조작: 한 손가락 = 밀기, 두 손가락 = 확대/축소 (가로 · 세로 따로) */
 function initMobileChartGestures() {
   const timeline = document.getElementById("timeline");
@@ -6868,14 +6912,85 @@ function initMobileChartGestures() {
   timeline.addEventListener("pointerdown", () => { if (!points.size || points.size === 1) suppressClick = false; }, true);
 }
 
+/* (요청사항) 폰: 작업 상세 = 아래에서 올라오는 세로 창. 저장 버튼 없이 자동 저장
+   (입력을 멈추고 0.9초 뒤 한 번 — 글자마다 저장하지 않아 버벅이지 않게) */
+function mobileCollectDetail(id) {
+  const value = (fieldId) => { const el = document.getElementById(fieldId); return el ? el.value : ""; };
+  const panel = document.getElementById("detailPanel");
+  const data = {
+    id,
+    name: value("detailName").trim(),
+    categoryId: value("detailCategory"),
+    start: value("detailStart"),
+    end: value("detailEnd"),
+    progress: value("detailProgress"),
+    target: value("detailTarget"),
+    owner: value("detailOwner"),
+    ownerEmail: assigneeEmailValue("detailOwnerEmail")
+  };
+  const color = value("detailColor");
+  if (color && color.toLowerCase() !== ((panel && panel.dataset.originalColor) || "")) data.color = color;
+  if (!data.name || !data.start || !data.end || data.start > data.end) return null; // 고치는 중이면 저장하지 않는다
+  return data;
+}
+
+function mountMobileDetailAutosave(task) {
+  const panel = document.getElementById("detailPanel");
+  if (!panel || !canEditChartHere()) return;
+  const title = panel.querySelector(".detail-title");
+  const status = document.createElement("span");
+  status.className = "m-detail-saved";
+  if (title) title.insertBefore(status, title.querySelector(".detail-close"));
+  let timer = 0;
+  const save = async () => {
+    timer = 0;
+    const data = mobileCollectDetail(task.id);
+    if (!data) { status.textContent = "작업명 · 날짜를 확인해 주세요"; status.className = "m-detail-saved is-error"; return; }
+    status.textContent = "저장 중…";
+    status.className = "m-detail-saved";
+    try {
+      await apiPost("update", { data });
+      if (data.color) panel.dataset.originalColor = data.color.toLowerCase();
+      status.textContent = "✓ 저장됨";
+    } catch (error) {
+      status.textContent = "저장 실패";
+      status.className = "m-detail-saved is-error";
+    }
+  };
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(save, 900); };
+  ["detailName", "detailCategory", "detailStart", "detailEnd", "detailOwner", "detailOwnerEmail", "detailTarget", "detailProgress", "detailProgressRange", "detailColor"]
+    .forEach((fieldId) => {
+      const el = document.getElementById(fieldId);
+      if (!el) return;
+      el.addEventListener("input", schedule);
+      el.addEventListener("change", schedule);
+    });
+  panel.querySelectorAll(".detail-swatch-btn").forEach((btn) => btn.addEventListener("click", schedule));
+  /* 닫을 때 남은 저장은 바로 */
+  const close = document.getElementById("closeDetail");
+  if (close) close.addEventListener("click", () => { if (timer) { clearTimeout(timer); save(); } }, true);
+}
+
+/* 상세 창이 열리고 닫힐 때 바깥(셸)에 알려서, 이 차트 칸을 잠깐 화면 전체로 띄우게 한다 */
+function initMobileDetailSheet() {
+  const panel = document.getElementById("detailPanel");
+  if (!panel || IS_SHELL_MODE || window.parent === window) return;
+  let open = false;
+  new MutationObserver(() => {
+    const now = isMobileChart() && !panel.classList.contains("hidden");
+    if (now === open) return;
+    open = now;
+    try { window.parent.postMessage({ type: "gantt:sheet", open }, window.location.origin); } catch (error) { /* 무시 */ }
+  }).observe(panel, { attributes: true, attributeFilter: ["class"] });
+}
+
 applyMobileChartClass();
+initMobileDetailSheet();
 MOBILE_CHART_MQ.addEventListener("change", () => {
   applyMobileChartClass();
   mobileFitTotal = -1;
-  if (isMobileChart()) ensureMobileTools();
   render();
 });
-if (isMobileChart()) ensureMobileTools();
 initMobileChartGestures();
 
 
@@ -7741,6 +7856,86 @@ function shellBuildActionsEl(chart, box) {
   return actions;
 }
 
+/* (요청사항) 폰 카드 머리: 아이콘 + 작은 글씨 칸을 선으로 나눈 알약 하나.
+   누르면 넓은 화면의 같은 버튼이 하는 일을 그대로 한다 */
+const MOBILE_HEAD_ICON = {
+  range: '<rect x="3.5" y="4.5" width="17" height="16" rx="3"/><path d="M3.5 9.5h17M8 3v3M16 3v3"/>',
+  today: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/>',
+  full: '<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>',
+  owner: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 4.5a3 3 0 0 1 0 6M21 20a5 5 0 0 0-3.5-4.8"/>',
+  task: '<path d="M4 6h9M4 12h6M4 18h9"/><path d="M18 9v8M14 13h8"/>',
+  more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4"/>'
+};
+
+function shellClickInFrame(box, id) {
+  const iframe = box.querySelector("iframe");
+  try {
+    const el = iframe && iframe.contentDocument && iframe.contentDocument.getElementById(id);
+    if (el) el.click();
+  } catch (error) { /* 다른 출처면 무시 */ }
+}
+
+function shellBuildMobileHeadPill(chart, box) {
+  const pill = document.createElement("div");
+  pill.className = "mc-m-pill";
+  const items = [["range", "기간"], ["today", "오늘"], ["full", "전체"], ["owner", "담당자"], ["task", "작업"], ["more", "더보기"], ["share", "공유"]];
+  pill.innerHTML = items.map(([act, label]) =>
+    '<button type="button" data-m-act="' + act + '"' + (act === "share" ? ' class="is-primary"' : "") + ">" +
+      '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + MOBILE_HEAD_ICON[act] + "</svg>" +
+      "<span>" + label + "</span></button>").join("");
+  pill.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-m-act]");
+    if (!btn) return;
+    event.stopPropagation();
+    const current = shellFindChart(chart.id) || chart;
+    const find = (selector) => box.querySelector(selector);
+    const clickEl = (el) => { if (el) el.click(); };
+    switch (btn.dataset.mAct) {
+      case "range": shellOpenRangePopover(current, box, btn); break;
+      case "today": shellSendCommand(box, { cmd: "today" }); break;
+      case "full": shellSendCommand(box, { cmd: "full" }); break;
+      case "owner": {
+        const stats = shellStats[chart.id] || {};
+        openOwnerFilterMenu(btn, {
+          people: stats.ownerPeople || [],
+          filter: stats.ownerFilter || null,
+          total: stats.taskCount || 0,
+          onPick: (filter) => shellSendCommand(box, { cmd: "setOwnerFilter", filter })
+        });
+        break;
+      }
+      case "task": shellClickInFrame(box, "addTaskBtn"); break;
+      case "more": {
+        const csvButtons = Array.from(box.querySelectorAll(".mc-csv-group button"));
+        mobileShowMenu(btn, [
+          { label: "카테고리 추가", run: () => shellClickInFrame(box, "addCategoryBtn") },
+          { label: "새로고침", run: () => shellSendCommand(box, { cmd: "reload" }) },
+          { label: "이미지로 캡처", run: () => shellSendCommand(box, { cmd: "capture" }) },
+          { label: shellChartHasCalendar(current) ? "구글 캘린더에서 삭제" : "구글 캘린더에 추가", run: () => clickEl(find(".mc-cal-toggle")) },
+          "-",
+          { label: "엑셀(CSV) 업로드", run: () => clickEl(find(".mc-csv-upload")) },
+          { label: "엑셀(CSV) 다운로드", run: () => clickEl(csvButtons.find((b) => b.textContent.includes("다운로드"))) }
+        ]);
+        break;
+      }
+      case "share": clickEl(find(".mc-share-btn")); break;
+    }
+  });
+  return pill;
+}
+
+/* 폰: 맨 위 프로필을 누르면 로그아웃 */
+function shellInitMobileTopbar() {
+  const userBox = document.querySelector(".mc-user-box");
+  const keyBtn = document.getElementById("mcKeyBtn");
+  if (!userBox || !keyBtn) return;
+  userBox.addEventListener("click", () => {
+    if (!window.matchMedia("(max-width: 760px)").matches) return;
+    mobileShowMenu(userBox, [{ label: (fbUser && fbUser.email) ? "로그아웃 (" + fbUser.email + ")" : "로그아웃", run: () => keyBtn.click() }]);
+  });
+}
+
 /* 제목 옆 기간 알약 바로 뒤: 오늘 전후 보기 · 전체 보기 (흰색) */
 /* 카드 머리 담당자 버튼 모양: iframe 이 알려 준 "고른 사람"에 맞춘다 */
 function shellRefreshOwnerButton(chartId) {
@@ -8418,6 +8613,12 @@ function shellRenderList() {
       datePill.appendChild(actions.toolGroup);
       head.appendChild(actions);
 
+      /* (요청사항) 폰: 기간 · 오늘 · 전체 · 담당자 · 작업 · 더보기 · 공유 를 큰 알약 하나로 */
+      const mobileRange = document.createElement("span");
+      mobileRange.className = "mc-m-range";
+      headInfo.appendChild(mobileRange);
+      head.appendChild(shellBuildMobileHeadPill(chart, box));
+
       box.appendChild(head);
 
       toggle.addEventListener("click", () => {
@@ -8462,6 +8663,8 @@ function shellRenderList() {
     const nameEl = box.querySelector(".mc-chart-box-name");
     if (!nameEl.querySelector("input")) nameEl.textContent = chart.name;
     box.querySelector(".mc-chart-box-range").textContent = shellRangeLabel(chart);
+    const mobileRangeEl = box.querySelector(".mc-m-range");
+    if (mobileRangeEl) mobileRangeEl.textContent = shellRangeLabel(chart);
   });
 
   Object.keys(existing).forEach((id) => {
@@ -9894,6 +10097,7 @@ function shellInitSidebarToggle() {
 
   /* (요청사항) 사이드바 "메모 보드" */
   shellInitMemoBoard();
+  shellInitMobileTopbar();
 
   const orgNewBtn = document.getElementById("mcOrgNewBtn");
   if (orgNewBtn) {
@@ -10595,6 +10799,13 @@ if (IS_SHELL_MODE) {
     if (event.data && event.data.type === "gantt:toast") {
       if (event.data.hide) hideToast();
       else showToast(String(event.data.message || ""), !!event.data.isError, Number(event.data.duration) || 0);
+    }
+    /* (요청사항) 폰: 작업 상세 창이 열리면 그 차트 칸을 화면 전체로 */
+    if (event.data && event.data.type === "gantt:sheet") {
+      const frame = Array.from(document.querySelectorAll(".mc-chart-iframe-wrap iframe")).find((f) => f.contentWindow === event.source);
+      const box = frame && frame.closest(".mc-chart-box");
+      if (box) box.classList.toggle("mc-sheet-open", !!event.data.open);
+      document.body.classList.toggle("mc-sheet-lock", !!document.querySelector(".mc-chart-box.mc-sheet-open"));
     }
     /* (디자인 추가분) 차트 iframe이 보내는 요약값(평균 진행률·카테고리·기간) */
     if (event.data && event.data.type === "gantt:stats" && event.data.chartId) {
