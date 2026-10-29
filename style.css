@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v102";
+  --css-version: "2026-10-24-design-v104";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -12731,4 +12731,208 @@ body.shared-viewer-readonly #detailOwnerEmail {
   #shellView .mc-sidebar-toggle svg {
     transform: none;
   }
+}
+
+/* =========================================================
+   (요청사항) 폰 화면 차트 — 왼쪽 목록칸 없이, 막대 위에 이름
+   ========================================================= */
+.m-chart-tools {
+  display: none;
+}
+
+body.is-mobile-chart .task-column,
+body.is-mobile-chart #vRangeSlider {
+  display: none;
+}
+
+body.is-mobile-chart .m-chart-tools {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 0 8px;
+}
+
+body.is-mobile-chart #timeline {
+  flex: 1 1 auto;
+  min-width: 0;
+  touch-action: none; /* 한 손가락 밀기 · 두 손가락 확대를 차트가 직접 처리 */
+}
+
+body.is-mobile-chart .timeline-task-row {
+  position: relative;
+}
+
+.m-bar-label {
+  position: absolute;
+  top: 4px;
+  z-index: 2;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #18181b;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.m-bar-label.is-right {
+  justify-content: flex-end;
+}
+
+.m-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.m-due {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f1f1ef;
+  color: #52525b;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.m-due.is-late { background: #fee2e2; color: #dc2626; }
+.m-due.is-soon { background: #fef3c7; color: #b45309; }
+.m-due.is-done { background: #e3f2ed; color: #0f766e; }
+
+.m-who {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+/* 폰에선 막대 안 이름은 빼고 % 만 */
+body.is-mobile-chart .task-bar .task-bar-name {
+  display: none;
+}
+
+/* 줄이 얇아지면(두 손가락으로 줄인 경우) 위 글씨는 숨김 */
+.m-thin .m-bar-label {
+  display: none;
+}
+
+.m-cat {
+  position: relative;
+}
+
+.m-cat-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #27272a;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.m-cat-label em {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+
+.m-cat-label small {
+  color: #a1a1aa;
+  font-weight: 700;
+}
+
+.m-cat-chev {
+  margin-left: auto;
+  color: #a1a1aa;
+  transition: transform .15s ease;
+}
+
+.m-cat-chev.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+/* 꾹 눌렀을 때 메뉴 */
+.m-menu {
+  position: absolute;
+  z-index: 3000;
+  min-width: 180px;
+  max-width: calc(100vw - 16px);
+  padding: 6px;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, .35), 0 0 0 1px rgba(0, 0, 0, .05);
+}
+
+.m-menu button {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  color: #27272a;
+}
+
+.m-menu button:disabled {
+  color: #d4d4d8;
+}
+
+.m-menu-sep {
+  display: block;
+  height: 1px;
+  margin: 4px 6px;
+  background: #f0f0f0;
+}
+
+/* 셸: 폰에서 사이드바를 여는 왼쪽 가장자리 탭 */
+.mc-sidebar-tab {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .mc-sidebar-tab {
+    position: fixed;
+    left: 0;
+    top: 50%;
+    z-index: 930;
+    width: 18px;
+    height: 64px;
+    margin-top: -32px;
+    padding: 0;
+    border: 0;
+    border-radius: 0 12px 12px 0;
+    background: #0f766e;
+    color: #ffffff;
+    display: grid;
+    place-items: center;
+    box-shadow: 2px 4px 12px -4px rgba(0, 0, 0, .35);
+    cursor: pointer;
+  }
+
+  #shellView.mc-sidebar-open .mc-sidebar-tab {
+    display: none;
+  }
+}
+
+body.is-mobile-chart .m-chart-tools .task-add-pill {
+  width: auto;
+  flex: 0 0 auto;
 }

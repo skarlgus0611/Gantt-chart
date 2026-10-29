@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v102"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v104"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v102";
+const APP_VERSION = "2026-10-24-design-v104";
 
 
 /* =========================================================
@@ -1702,6 +1702,8 @@ function render() {
 
   syncRowRange();
   fitChartHeightToRows();
+  mobileFitRows();
+  mobileFitRange();
   applyGanttHeight();
   computeRowScale();
 
@@ -3222,6 +3224,7 @@ function renderTimeline() {
       categoryRow.className = "timeline-category";
       categoryRow.style.height = h + "px";
       applyCategoryTint(categoryRow, item.group.color); /* (디자인 추가분) */
+      if (isMobileChart()) addMobileCategoryLabel(categoryRow, item.group);
 
       rowsInner.appendChild(categoryRow);
 
@@ -3235,6 +3238,9 @@ function renderTimeline() {
     row.style.height = h + "px";
 
     renderTaskBar(row, item.task, totalDays, visibleDays, h);
+    /* 폰: 이 기간에 막대가 안 보이는 작업도 이름은 보이게 */
+    if (isMobileChart() && !row.querySelector(".m-bar-label")) addMobileBarLabel(row, item.task, 0, 0);
+    if (isMobileChart() && h < 40) row.classList.add("m-thin");
 
     rowsInner.appendChild(row);
   });
@@ -3814,6 +3820,9 @@ function renderTaskBar(
 
   row.appendChild(bar);
 
+  /* (요청사항) 폰: 막대 위에 남은 날 · 이름 · 담당자 */
+  if (isMobileChart()) addMobileBarLabel(row, task, left, width);
+
 
   /* (요청사항) 꾹 눌러(1초) 띄운 뒤 좌우로 끌어 일정 옮기기 */
   enableBarLongPressMove(bar, row, task, visibleDays);
@@ -3988,6 +3997,14 @@ function applyBarGeometry(bar, rowHeight) {
   /* (요청사항) 막대를 살짝 두껍게: 기본 줄(48px)에서 27px */
   const barHeight =
     Math.max(14, Math.min(32, Math.round(rowHeight * 0.56)));
+
+  /* (요청사항) 폰: 위에 글씨 줄을 두고 막대는 아래쪽에 얇게 */
+  if (isMobileChart() && rowHeight >= 40) {
+    const h = Math.max(12, Math.min(20, Math.round(rowHeight * 0.32)));
+    bar.style.top = Math.max(24, rowHeight - h - 7) + "px";
+    bar.style.height = h + "px";
+    return;
+  }
 
   bar.style.top = Math.round((rowHeight - barHeight) / 2) + "px";
   bar.style.height = barHeight + "px";
@@ -6491,6 +6508,375 @@ vSlider = buildRangeSlider(document.getElementById("vRangeSlider"), {
     renderTimeline();
   }
 });
+
+
+/* =========================================================
+ * (요청사항) 폰 화면 차트 — PC 는 그대로
+ *  - 왼쪽 작업 목록칸 없이 날짜칸을 화면 전체로
+ *  - 막대 위에 남은 날(D-·D-day·D+) · 작업 이름 · 담당자
+ *  - 카테고리는 가로 띠(누르면 접기/펼치기, 꾹 누르면 위·아래로)
+ *  - 작업 이름 줄을 꾹 누르면 위·아래로 · 카테고리 옮기기
+ *  - 한 손가락: 옆 · 위아래로 밀기 / 두 손가락: 벌리고 오므려 좌우 · 상하 확대
+ * ========================================================= */
+const MOBILE_CHART_MQ = window.matchMedia("(max-width: 640px)");
+const MOBILE_TASK_ROW_PX = 58;
+
+function isMobileChart() {
+  /* 이 줄보다 먼저 그려질 수도 있어서 상수 대신 바로 묻는다 */
+  return !IS_SHELL_MODE && window.matchMedia("(max-width: 640px)").matches;
+}
+
+function applyMobileChartClass() {
+  document.body.classList.toggle("is-mobile-chart", isMobileChart());
+}
+
+/* 폰에서 줄이 너무 얇으면 이름이 안 보이므로, 처음과 줄 수가 바뀔 때 작업 줄을 넉넉한 높이로 */
+let mobileFitTotal = -1;
+function mobileFitRows() {
+  if (!isMobileChart() || mobileFitTotal === state.rowsTotal) return;
+  mobileFitTotal = state.rowsTotal;
+  const viewH = Math.max(1, state.chartHeight - 52);
+  const span = viewH * TASK_ROW_HEIGHT / MOBILE_TASK_ROW_PX;
+  if (state.rowEnd - state.rowStart > span) state.rowEnd = Math.min(state.rowsTotal, state.rowStart + span);
+}
+
+/* 처음 한 번: 1년 전체면 너무 촘촘하니 오늘 앞뒤 석 달 정도로 */
+let mobileFitRangeDone = false;
+function mobileFitRange() {
+  if (!isMobileChart() || mobileFitRangeDone) return;
+  mobileFitRangeDone = true;
+  const total = windowTotalDays();
+  if (state.rangeEnd - state.rangeStart + 1 <= 120) return;
+  const today = dayOffsetFromYearStart(new Date());
+  if (today < 0 || today >= total) return;
+  const days = Math.min(total, 90);
+  const start = Math.max(0, Math.min(total - days, today - 30));
+  state.rangeStart = start;
+  state.rangeEnd = start + days - 1;
+}
+
+function mobileDueChip(task) {
+  if (normProgress(task.progress) >= 100) return { text: "완료", kind: "done" };
+  if (!task.end) return null;
+  const left = daysBetweenKeys(dateKey(new Date()), task.end);
+  if (left === null) return null;
+  if (left < 0) return { text: "D+" + (-left), kind: task.overdueAck ? "" : "late" };
+  return { text: left === 0 ? "D-day" : "D-" + left, kind: left <= 1 ? "soon" : "" };
+}
+
+/* 막대 위 글씨: 남은 날 · 이름 · 담당자. 오른쪽 끝에 걸리면 오른쪽에 맞춘다 */
+function addMobileBarLabel(row, task, leftPct, widthPct) {
+  const label = document.createElement("div");
+  label.className = "m-bar-label";
+  const due = mobileDueChip(task);
+  const owner = String(task.owner || "").trim();
+  label.innerHTML = (due ? '<span class="m-due' + (due.kind ? " is-" + due.kind : "") + '">' + due.text + "</span>" : "") +
+    '<span class="m-name">' + escapeHtml(task.name || "") + "</span>" +
+    (owner ? '<span class="m-who" style="background:' + mcPersonColor(task.ownerEmail || owner) + '">' + escapeHtml(Array.from(owner)[0]) + "</span>" : "");
+  if (leftPct > 50) {
+    label.classList.add("is-right");
+    label.style.right = Math.max(0, 100 - leftPct - widthPct) + "%";
+  } else {
+    label.style.left = Math.max(0, leftPct) + "%";
+  }
+  mobileLongPress(label, () => mobileTaskMenu(task, label));
+  label.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (label.dataset.justPressed === "1") { label.dataset.justPressed = ""; return; }
+    showTaskDetail(task.id);
+  });
+  row.appendChild(label);
+}
+
+/* 카테고리 띠: 이름 · 개수 · 접기 */
+function addMobileCategoryLabel(categoryRow, group) {
+  const collapsed = state.collapsedGroups.includes(group.id);
+  const label = document.createElement("div");
+  label.className = "m-cat-label";
+  label.innerHTML = '<em style="background:' + escapeAttr(validHex(group.color) || DEFAULT_COLOR) + '"></em>' +
+    '<span class="m-cat-name">' + escapeHtml(group.name || "기타") + "</span><small>" + (group.tasks || []).length + "</small>" +
+    '<svg class="m-cat-chev' + (collapsed ? " is-collapsed" : "") + '" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>';
+  categoryRow.appendChild(label);
+  categoryRow.classList.add("m-cat");
+  mobileLongPress(categoryRow, () => { if (group.id) mobileCategoryMenu(group, categoryRow); });
+  categoryRow.addEventListener("click", () => {
+    if (categoryRow.dataset.justPressed === "1") { categoryRow.dataset.justPressed = ""; return; }
+    if (!group.empty) toggleGroupCollapsed(group.id);
+  });
+}
+
+/* 꾹(0.5초) 누르기 — 움직이면 취소(밀기로 본다). 밀기가 시작되면 손가락을 차트 칸이 붙잡으므로
+   움직임 · 떼기는 창 전체에서 듣는다 */
+function mobileLongPress(el, onPress) {
+  el.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const id = event.pointerId;
+    const sx = event.clientX;
+    const sy = event.clientY;
+    const stop = () => {
+      clearTimeout(timer);
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", stop, true);
+      window.removeEventListener("pointercancel", stop, true);
+      window.removeEventListener("pointerdown", onOther, true);
+    };
+    const onMove = (e) => { if (e.pointerId === id && Math.hypot(e.clientX - sx, e.clientY - sy) > 8) stop(); };
+    const onOther = (e) => { if (e.pointerId !== id) stop(); }; // 두 번째 손가락 = 확대
+    const timer = setTimeout(() => {
+      stop();
+      el.dataset.justPressed = "1";
+      if (navigator.vibrate) navigator.vibrate(15);
+      onPress();
+    }, 500);
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", stop, true);
+    window.addEventListener("pointercancel", stop, true);
+    window.addEventListener("pointerdown", onOther, true);
+  });
+  el.addEventListener("contextmenu", (event) => event.preventDefault());
+}
+
+function mobileCloseMenu() {
+  const old = document.getElementById("mChartMenu");
+  if (old) old.remove();
+}
+
+function mobileShowMenu(anchor, items) {
+  mobileCloseMenu();
+  const menu = document.createElement("div");
+  menu.id = "mChartMenu";
+  menu.className = "m-menu";
+  menu.innerHTML = items.map((item, i) => item === "-" ? '<i class="m-menu-sep"></i>'
+    : '<button type="button" data-i="' + i + '"' + (item.disabled ? " disabled" : "") + ">" + escapeHtml(item.label) + "</button>").join("");
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  const top = r.bottom + 6 + menu.offsetHeight > window.innerHeight ? Math.max(6, r.top - menu.offsetHeight - 6) : r.bottom + 6;
+  menu.style.top = top + window.scrollY + "px";
+  menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, r.left)) + "px";
+  menu.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-i]");
+    if (!btn) return;
+    mobileCloseMenu();
+    items[Number(btn.dataset.i)].run();
+  });
+  setTimeout(() => document.addEventListener("pointerdown", function close(event) {
+    if (!menu.contains(event.target)) { mobileCloseMenu(); document.removeEventListener("pointerdown", close, true); }
+  }, true), 0);
+}
+
+function mobileCanEdit() {
+  return !document.body.classList.contains("shared-viewer-readonly");
+}
+
+/* 작업 순서: 같은 카테고리 안에서 한 칸 위/아래 */
+async function mobileMoveTask(task, dir) {
+  const group = groupTasks().find((g) => g.tasks.some((t) => t.id === task.id));
+  if (!group) return;
+  const list = group.tasks;
+  const i = list.findIndex((t) => t.id === task.id);
+  const other = list[i + dir];
+  if (!other) return;
+  const a = state.tasks.findIndex((t) => t.id === task.id);
+  const b = state.tasks.findIndex((t) => t.id === other.id);
+  [state.tasks[a], state.tasks[b]] = [state.tasks[b], state.tasks[a]];
+  render();
+  try {
+    await apiPost("reorder", { ids: state.tasks.map((t) => t.id) });
+  } catch (error) {
+    alert("순서 저장 실패\n" + error.message);
+    await loadData(false);
+  }
+}
+
+async function mobileMoveTaskToCategory(task, categoryId) {
+  try {
+    await apiPost("update", { data: { id: task.id, categoryId } });
+    await loadData(false);
+    showToast("카테고리를 옮겼어요.");
+  } catch (error) {
+    alert("저장 실패\n" + error.message);
+  }
+}
+
+function mobileTaskMenu(task, anchor) {
+  if (!mobileCanEdit()) { showTaskDetail(task.id); return; }
+  const group = groupTasks().find((g) => g.tasks.some((t) => t.id === task.id));
+  const i = group ? group.tasks.findIndex((t) => t.id === task.id) : -1;
+  const items = [
+    { label: "위로", disabled: i <= 0, run: () => mobileMoveTask(task, -1) },
+    { label: "아래로", disabled: !group || i >= group.tasks.length - 1, run: () => mobileMoveTask(task, 1) },
+    "-"
+  ];
+  state.categories.filter((c) => c.id !== (task.categoryId || "")).forEach((c) => {
+    items.push({ label: "→ " + c.name + "(으)로 옮기기", run: () => mobileMoveTaskToCategory(task, c.id) });
+  });
+  if (task.categoryId) items.push({ label: "→ 기타로 옮기기", run: () => mobileMoveTaskToCategory(task, "") });
+  items.push("-", { label: "열기", run: () => showTaskDetail(task.id) });
+  mobileShowMenu(anchor, items);
+}
+
+async function mobileMoveCategory(group, dir) {
+  const i = state.categories.findIndex((c) => c.id === group.id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= state.categories.length) return;
+  [state.categories[i], state.categories[j]] = [state.categories[j], state.categories[i]];
+  render();
+  try {
+    await apiPost("reorderCategories", { ids: state.categories.map((c) => c.id) });
+  } catch (error) {
+    alert("순서 저장 실패\n" + error.message);
+    await loadData(false);
+  }
+}
+
+function mobileCategoryMenu(group, anchor) {
+  if (!mobileCanEdit()) return;
+  const i = state.categories.findIndex((c) => c.id === group.id);
+  mobileShowMenu(anchor, [
+    { label: "카테고리 위로", disabled: i <= 0, run: () => mobileMoveCategory(group, -1) },
+    { label: "카테고리 아래로", disabled: i < 0 || i >= state.categories.length - 1, run: () => mobileMoveCategory(group, 1) }
+  ]);
+}
+
+/* 폰 위쪽 도구: + 작업 · + 카테고리 (왼쪽 목록칸이 없어서) */
+function ensureMobileTools() {
+  const gantt = document.querySelector(".gantt");
+  if (!gantt || document.getElementById("mChartTools")) return;
+  const tools = document.createElement("div");
+  tools.id = "mChartTools";
+  tools.className = "m-chart-tools";
+  tools.appendChild(buildTaskAddPill());
+  gantt.parentNode.insertBefore(tools, gantt);
+}
+
+/* 손가락 조작: 한 손가락 = 밀기, 두 손가락 = 확대/축소 (가로 · 세로 따로) */
+function initMobileChartGestures() {
+  const timeline = document.getElementById("timeline");
+  if (!timeline || IS_SHELL_MODE) return;
+  const points = new Map();
+  let base = null;
+  let suppressClick = false;
+  let raf = 0;
+  let dirtyH = false;
+  let dirtyV = false;
+
+  const flush = () => {
+    raf = 0;
+    if (dirtyV) { computeRowScale(); renderTaskColumn(); }
+    renderTimeline();
+    if (dirtyH) { updateRangeLabel(); if (hSlider) hSlider.layout(); }
+    if (dirtyV && vSlider) vSlider.layout();
+    dirtyH = dirtyV = false;
+  };
+  const schedule = (h, v) => {
+    dirtyH = dirtyH || h;
+    dirtyV = dirtyV || v;
+    if (!raf) raf = requestAnimationFrame(flush);
+  };
+  const snapshot = () => {
+    const viewport = timeline.querySelector(".rows-viewport");
+    const vr = viewport ? viewport.getBoundingClientRect() : timeline.getBoundingClientRect();
+    const tr = timeline.getBoundingClientRect();
+    return {
+      pts: Array.from(points.values()).map((p) => ({ ...p })),
+      rs: state.rangeStart, re: state.rangeEnd, ws: state.rowStart, we: state.rowEnd,
+      left: tr.left, width: tr.width || 1, top: vr.top, height: vr.height || 1,
+      total: windowTotalDays(), rowsTotal: Math.max(1, state.rowsTotal || 1), moved: false
+    };
+  };
+
+  /* 밀기 · 확대가 시작되면 손가락을 차트 칸이 붙잡는다 — 다시 그리면서 손가락 아래 막대가
+     지워져도 움직임이 끊기지 않게. (그냥 누르기는 붙잡지 않아서 막대 · 이름 누르기는 그대로) */
+  const hold = () => points.forEach((p, id) => { try { timeline.setPointerCapture(id); } catch (error) { /* 무시 */ } });
+
+  timeline.addEventListener("pointerdown", (event) => {
+    if (!isMobileChart() || event.pointerType === "mouse") return;
+    points.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    base = snapshot();
+    if (points.size >= 2) hold();
+  }, true);
+
+  timeline.addEventListener("pointermove", (event) => {
+    if (!base || !points.has(event.pointerId)) return;
+    points.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (document.body.classList.contains("is-bar-moving")) return;
+    const now = Array.from(points.values());
+
+    if (now.length === 1 && base.pts.length === 1) {
+      const dx = now[0].x - base.pts[0].x;
+      const dy = now[0].y - base.pts[0].y;
+      if (!base.moved && Math.hypot(dx, dy) < 8) return;
+      if (!base.moved) hold();
+      base.moved = true;
+      suppressClick = true;
+      const span = base.re - base.rs;
+      const rs = Math.max(0, Math.min(base.total - 1 - span, base.rs + Math.round(-dx * (span + 1) / base.width)));
+      if (rs !== state.rangeStart) { state.rangeStart = rs; state.rangeEnd = rs + span; schedule(true, false); }
+      const rows = base.we - base.ws;
+      const ws = Math.max(0, Math.min(Math.max(0, base.rowsTotal - rows), base.ws - dy * rows / base.height));
+      if (Math.abs(ws - state.rowStart) > 0.01) { state.rowStart = ws; state.rowEnd = ws + rows; schedule(false, true); }
+      return;
+    }
+
+    if (now.length >= 2 && base.pts.length >= 2) {
+      base.moved = true;
+      suppressClick = true;
+      const [a0, b0] = base.pts;
+      const [a1, b1] = now;
+      const dx0 = Math.abs(a0.x - b0.x);
+      const dx1 = Math.abs(a1.x - b1.x);
+      const dy0 = Math.abs(a0.y - b0.y);
+      const dy1 = Math.abs(a1.y - b1.y);
+      /* 가로로 벌린 만큼 날짜를, 세로로 벌린 만큼 줄을 확대 (손가락 가운데를 기준으로) */
+      if (dx0 > 40) {
+        const days0 = base.re - base.rs + 1;
+        const days = Math.max(7, Math.min(base.total, Math.round(days0 * dx0 / Math.max(24, dx1))));
+        const anchor = base.rs + ((a0.x + b0.x) / 2 - base.left) / base.width * days0;
+        const rs = Math.max(0, Math.min(base.total - days, Math.round(anchor - ((a1.x + b1.x) / 2 - base.left) / base.width * days)));
+        if (rs !== state.rangeStart || rs + days - 1 !== state.rangeEnd) { state.rangeStart = rs; state.rangeEnd = rs + days - 1; schedule(true, false); }
+      }
+      if (dy0 > 40) {
+        const rows0 = base.we - base.ws;
+        const minRows = Math.min(base.rowsTotal, base.height / MAX_ROW_SCALE);
+        const rows = Math.max(minRows, Math.min(base.rowsTotal, rows0 * dy0 / Math.max(24, dy1)));
+        const anchor = base.ws + ((a0.y + b0.y) / 2 - base.top) / base.height * rows0;
+        const ws = Math.max(0, Math.min(base.rowsTotal - rows, anchor - ((a1.y + b1.y) / 2 - base.top) / base.height * rows));
+        state.rowStart = ws;
+        state.rowEnd = ws + rows;
+        schedule(false, true);
+      }
+    }
+  }, true);
+
+  const end = (event) => {
+    if (!points.has(event.pointerId)) return;
+    points.delete(event.pointerId);
+    base = points.size ? snapshot() : null; // 손가락 하나를 떼도 남은 손가락으로 이어서
+    if (base) base.moved = true;
+  };
+  ["pointerup", "pointercancel"].forEach((type) => timeline.addEventListener(type, end, true));
+  timeline.addEventListener("lostpointercapture", (event) => { if (event.target === timeline) end(event); });
+
+  /* 밀거나 확대한 뒤 따라오는 클릭은 막대 · 이름을 열지 않는다 */
+  timeline.addEventListener("click", (event) => {
+    if (suppressClick) {
+      suppressClick = false;
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }, true);
+  timeline.addEventListener("pointerdown", () => { if (!points.size || points.size === 1) suppressClick = false; }, true);
+}
+
+applyMobileChartClass();
+MOBILE_CHART_MQ.addEventListener("change", () => {
+  applyMobileChartClass();
+  mobileFitTotal = -1;
+  if (isMobileChart()) ensureMobileTools();
+  render();
+});
+if (isMobileChart()) ensureMobileTools();
+initMobileChartGestures();
 
 
 /* =========================================================
@@ -9462,7 +9848,7 @@ function shellInitSidebarToggle() {
   /* (요청사항) 폰(좁은 화면): 사이드바는 평소 숨기고, 위 메뉴 버튼으로 왼쪽에서 밀려 나오게.
      바깥을 누르거나 차트 · 메뉴를 고르면 다시 들어간다. 넓은 화면은 예전처럼 접기/펼치기 */
   const mobile = window.matchMedia("(max-width: 760px)");
-  const menuBtn = document.getElementById("mcMobileMenuBtn");
+  const menuBtn = document.getElementById("mcSidebarTab");
   const scrim = document.getElementById("mcSidebarScrim");
   const sidebar = document.getElementById("mcSidebar");
   let collapsed = false;
