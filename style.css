@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v106";
+  --css-version: "2026-10-24-design-v107";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -13386,4 +13386,56 @@ body.is-mobile-chart .detail-actions .detail-pill-status {
   border-color: #e4e4e7;
   border-left: 0;
   box-shadow: none;
+}
+
+/* (요청사항) 폰 세로 창: "52일"은 날짜 옆, "내가 할게요"는 이름 옆 — 한 줄로 */
+body.is-mobile-chart .detail-dates {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+}
+
+body.is-mobile-chart .detail-dates input[type="date"] {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  padding-left: 2px;
+  padding-right: 2px;
+  font-size: 13px;
+}
+
+body.is-mobile-chart .detail-dates .detail-dates-arrow {
+  flex-shrink: 0;
+}
+
+body.is-mobile-chart .detail-dates .detail-days {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+body.is-mobile-chart .detail-owner {
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
+}
+
+body.is-mobile-chart .detail-owner #detailOwner {
+  flex: 1 1 0;
+  min-width: 0;
+  order: 1;
+}
+
+body.is-mobile-chart .detail-owner .detail-owner-avatar {
+  order: 0;
+}
+
+body.is-mobile-chart .detail-owner .assignee-self {
+  flex-shrink: 0;
+  order: 2;
+}
+
+body.is-mobile-chart .detail-owner .assignee-email {
+  flex: 1 0 100%;
+  order: 3;
 }
