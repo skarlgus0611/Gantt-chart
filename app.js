@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v101"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v102"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v101";
+const APP_VERSION = "2026-10-24-design-v102";
 
 
 /* =========================================================
@@ -9459,14 +9459,40 @@ function shellInitSidebarToggle() {
   const shellView = document.getElementById("shellView");
   if (!toggleBtn || !shellView) return;
 
+  /* (요청사항) 폰(좁은 화면): 사이드바는 평소 숨기고, 위 메뉴 버튼으로 왼쪽에서 밀려 나오게.
+     바깥을 누르거나 차트 · 메뉴를 고르면 다시 들어간다. 넓은 화면은 예전처럼 접기/펼치기 */
+  const mobile = window.matchMedia("(max-width: 760px)");
+  const menuBtn = document.getElementById("mcMobileMenuBtn");
+  const scrim = document.getElementById("mcSidebarScrim");
+  const sidebar = document.getElementById("mcSidebar");
   let collapsed = false;
   try { collapsed = localStorage.getItem("mcSidebarCollapsed") === "1"; } catch (error) { /* 무시 */ }
-  shellView.classList.toggle("mc-sidebar-collapsed", collapsed);
+  const setOpen = (open) => {
+    shellView.classList.toggle("mc-sidebar-open", open);
+    if (menuBtn) menuBtn.setAttribute("aria-expanded", String(open));
+  };
+  const apply = () => {
+    shellView.classList.toggle("mc-sidebar-collapsed", collapsed && !mobile.matches);
+    if (!mobile.matches) setOpen(false);
+  };
+  apply();
+  mobile.addEventListener("change", apply);
 
   toggleBtn.addEventListener("click", () => {
+    if (mobile.matches) { setOpen(false); return; }
     collapsed = !collapsed;
-    shellView.classList.toggle("mc-sidebar-collapsed", collapsed);
+    apply();
     try { localStorage.setItem("mcSidebarCollapsed", collapsed ? "1" : "0"); } catch (error) { /* 무시 */ }
+  });
+  if (menuBtn) menuBtn.addEventListener("click", () => setOpen(!shellView.classList.contains("mc-sidebar-open")));
+  if (scrim) scrim.addEventListener("click", () => setOpen(false));
+  if (sidebar) {
+    sidebar.addEventListener("click", (event) => {
+      if (mobile.matches && event.target.closest(".mc-sidebar-item[data-chart-id], .mc-sidebar-foot-btn, .mc-sidebar-add")) setOpen(false);
+    });
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && shellView.classList.contains("mc-sidebar-open")) setOpen(false);
   });
 
   if (addBtn) {

@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v101";
+  --css-version: "2026-10-24-design-v102";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -12666,4 +12666,69 @@ body.shared-viewer-readonly #detailOwnerEmail {
 
 .mc-memo-selpill button.is-del:hover {
   background: #e54848;
+}
+
+
+/* =========================================================
+   (요청사항) 폰: 사이드바를 왼쪽 서랍처럼 — 평소엔 숨김, 메뉴 버튼으로 열기
+   ========================================================= */
+.mc-mobile-menu,
+.mc-sidebar-scrim {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .mc-mobile-menu {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin-right: 4px;
+  }
+
+  .mc-topbar .mc-brand {
+    margin-right: auto;
+    min-width: 0;
+  }
+
+  #shellView .mc-sidebar {
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 950;
+    width: min(290px, 84vw);
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    transform: translateX(-104%);
+    transition: transform .22s ease;
+    box-shadow: 0 0 40px -10px rgba(0, 0, 0, .35);
+    visibility: hidden;
+  }
+
+  #shellView.mc-sidebar-open .mc-sidebar {
+    transform: none;
+    visibility: visible;
+  }
+
+  .mc-sidebar-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 940;
+    background: rgba(15, 23, 22, .38);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease;
+  }
+
+  #shellView.mc-sidebar-open .mc-sidebar-scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* 서랍 안 접기 버튼은 "닫기"로 (화살표가 왼쪽을 가리킴) */
+  #shellView .mc-sidebar-toggle svg {
+    transform: none;
+  }
 }
