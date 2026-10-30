@@ -86,7 +86,7 @@ function buildNotices({ users, charts, tasksByChart, todayKey }) {
 
   return {
     mails: Array.from(mails.entries()).map(([email, items]) => ({
-      email, name: byEmail.get(email).name || "", items: items.sort((a, b) => a.left - b.left)
+      email, name: byEmail.get(email).name || "", todayKey, items: items.sort((a, b) => a.left - b.left)
     }))
   };
 }
@@ -164,7 +164,7 @@ function buildDigests({ users, charts, tasksByChart, todayKey }) {
     if (!items.length) return;
     /* 지금 하는 일 먼저, 그다음 시작이 빠른 순 */
     items.sort((a, b) => Math.max(0, a.toStart) - Math.max(0, b.toStart) || a.left - b.left);
-    out.push({ email, name: user.name || "", scope: allCharts ? "charts" : "mine", every: digestEveryText(digest), items });
+    out.push({ email, name: user.name || "", scope: allCharts ? "charts" : "mine", every: digestEveryText(digest), todayKey, items });
   });
   return out;
 }
@@ -173,7 +173,7 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-/* 메일: 그날 보낼 작업을 한 통에 묶어서 — 차트별로 한 줄씩, D-표시만 크고 굵게 색으로 */
+/* 메일 공통 — D-표시 색 · 바탕 */
 function dLabel(left) {
   if (left === null || left === undefined) return "—";
   return left < 0 ? "D+" + (-left) : left === 0 ? "D-day" : "D-" + left;
@@ -189,44 +189,77 @@ function dTint(left) {
   return left < 0 ? "#fee2e2" : left === 0 ? "#ffedd5" : left === 1 ? "#fef3c7" : left <= 7 ? "#dcf1ea" : "#eef1f5";
 }
 
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
 function shortDate(key) {
   const m = String(key).match(/^\d{4}-(\d{2})-(\d{2})$/);
-  return m ? m[1] + "." + m[2] : String(key);
+  return m ? Number(m[1]) + "." + Number(m[2]) : String(key);
+}
+
+function weekday(key) {
+  const d = keyToUtc(key);
+  return d === null ? "" : WEEKDAYS[new Date(d).getUTCDay()];
+}
+
+function longDate(key) {
+  const m = String(key).match(/^\d{4}-(\d{2})-(\d{2})$/);
+  return m ? Number(m[1]) + "월 " + Number(m[2]) + "일 (" + weekday(key) + ")" : "";
 }
 
 const MAIL_FONT = "font-family:-apple-system,'Pretendard','Malgun Gothic',sans-serif;";
+const C_TEAL = "#0f766e";
+const C_GRAY = "#64748b";
+const TABLE = 'role="presentation" style="width:100%;border-collapse:collapse"';
 
-/* 메일 틀 — 맨 위 단계별 색 타일, 아래는 차트별로 한 줄씩 [D-표시] 작업명 · 종료일 · 진행률 */
-function mailHtml({ title, tiles, items, siteUrl, footer, showOwner, showRange }) {
-  const byChart = new Map();
-  items.forEach((i) => {
-    if (!byChart.has(i.chartName)) byChart.set(i.chartName, []);
-    byChart.get(i.chartName).push(i);
-  });
-  const rows = Array.from(byChart.entries()).map(([chartName, list]) =>
-    '<tr><td colspan="3" style="padding:16px 0 4px;font-size:11.5px;color:#71717a;font-weight:700">' + escapeHtml(chartName) + "</td></tr>" +
-    list.map((i) => {
-      const when = showRange && i.start ? shortDate(i.start) + "–" + shortDate(i.end) : (i.end ? shortDate(i.end) : "날짜 없음");
-      const meta = (showOwner && i.owner ? escapeHtml(i.owner) + " · " : "") + when + " · " + i.progress + "%";
-      return '<tr style="border-top:1px solid #ececec">' +
-        '<td style="padding:8px 10px 8px 0;width:1%;white-space:nowrap;font-size:18px;font-weight:800;letter-spacing:-.3px;color:' + dColor(i.left) + '">' + dLabel(i.left) + "</td>" +
-        '<td style="padding:8px 0;font-size:14px;color:#18181b">' + escapeHtml(i.name) + "</td>" +
-        '<td style="padding:8px 0 8px 8px;width:1%;white-space:nowrap;text-align:right;font-size:12px;color:#a1a1aa">' + meta + "</td></tr>";
-    }).join("")
-  ).join("");
+function progressBar(p, color) {
+  return "<table " + TABLE + "><tr><td>" +
+    '<div style="height:5px;border-radius:9px;background:#eef0ef;overflow:hidden"><div style="width:' + p + "%;height:5px;background:" + color + ';border-radius:9px"></div></div></td>' +
+    '<td style="width:34px;text-align:right;font-size:11px;font-weight:700;color:#71717a">' + p + "%</td></tr></table>";
+}
 
-  /* 맨 위: 단계별 타일 — 색 바탕에 큰 숫자, 아래 작은 D-표시 */
-  const stats = '<table role="presentation" style="width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed"><tr>' +
-    tiles.map((g, k) =>
-      '<td style="padding:0 ' + (k === tiles.length - 1 ? 0 : 6) + 'px 0 0"><div style="padding:10px 4px 8px;border-radius:12px;background:' + dTint(g.left) + ';text-align:center">' +
-        '<div style="font-size:24px;line-height:1;font-weight:800;color:' + dColor(g.left) + '">' + g.n + "</div>" +
-        '<div style="margin-top:5px;font-size:12px;font-weight:700;color:' + dColor(g.left) + '">' + g.short + "</div></div></td>").join("") +
-    "</tr></table>";
-  return '<div style="max-width:560px;margin:0 auto;padding:16px;' + MAIL_FONT + 'color:#27272a">' +
-      '<div style="padding-bottom:14px;border-bottom:1px solid #e4e4e7"><div style="font-size:13px;font-weight:700;color:#0f766e">' + escapeHtml(title) + "</div>" + stats + "</div>" +
-      '<table role="presentation" style="width:100%;border-collapse:collapse">' + rows + "</table>" +
-      '<p style="margin:20px 0 8px"><a href="' + escapeHtml(siteUrl) + '" style="display:inline-block;padding:9px 18px;border-radius:999px;background:#0f766e;color:#fff;text-decoration:none;font-weight:700;font-size:13px">간트차트 열기</a></p>' +
-      '<p style="margin:0;font-size:11px;color:#a1a1aa">' + escapeHtml(footer) + "</p></div>";
+function section(title, color, n) {
+  return '<tr><td style="padding:14px 2px 8px;font-size:12.5px;font-weight:800;color:' + color + '">● ' + escapeHtml(title) + ' <span style="color:#a1a1aa">' + n + "</span></td></tr>";
+}
+
+function cardMeta(i, when, showOwner) {
+  return escapeHtml(i.chartName) + (showOwner && i.owner ? " · " + escapeHtml(i.owner) : "") + " · " + when;
+}
+
+/* 마감 메일 카드: 왼쪽 색 띠 · D-표시 · 작업명 · 차트 · 마감일 · 진행률 */
+function deadlineCard(i) {
+  const c = dColor(i.left);
+  const when = i.left === 0 ? "오늘" : shortDate(i.end) + " (" + weekday(i.end) + ")";
+  return '<tr><td style="padding:0 0 8px"><div style="border-radius:14px;background:#fff;border:1px solid #eceeed;overflow:hidden"><table ' + TABLE + "><tr>" +
+    '<td style="width:5px;background:' + c + '"></td>' +
+    '<td style="width:64px;padding:12px 0 12px 12px;vertical-align:top"><div style="padding:4px 0;width:58px;text-align:center;border-radius:10px;background:' + dTint(i.left) + ";color:" + c + ';font-size:14px;font-weight:800">' + dLabel(i.left) + "</div></td>" +
+    '<td style="padding:11px 14px 12px 10px"><div style="font-size:14.5px;font-weight:700;color:#18181b;line-height:1.35">' + escapeHtml(i.name) + "</div>" +
+    '<div style="margin:3px 0 7px;font-size:11.5px;color:#8b8b94">' + cardMeta(i, when) + "</div>" + progressBar(i.progress, c) + "</td></tr></table></div></td></tr>";
+}
+
+/* 일정 메일 카드: 작업명 · 오른쪽에 마감/시작 · 차트 · 기간 · 진행률 */
+function digestCard(i, showOwner) {
+  const started = i.toStart <= 0;
+  const right = started ? (i.left === 0 ? "오늘 마감" : dLabel(i.left)) : shortDate(i.start) + " 시작";
+  const rc = started ? dColor(i.left) : i.toStart <= 7 ? C_TEAL : C_GRAY;
+  const when = (i.start ? shortDate(i.start) + " – " : "") + shortDate(i.end);
+  return '<tr><td style="padding:0 0 8px"><div style="border-radius:14px;background:#fff;border:1px solid #eceeed;padding:12px 14px">' +
+    "<table " + TABLE + '><tr><td style="font-size:14.5px;font-weight:700;color:#18181b">' + escapeHtml(i.name) + "</td>" +
+    '<td style="padding-left:8px;text-align:right;white-space:nowrap;font-size:12px;font-weight:800;color:' + rc + '">' + right + "</td></tr></table>" +
+    '<div style="margin:3px 0 7px;font-size:11.5px;color:#8b8b94">' + cardMeta(i, when, showOwner) + "</div>" +
+    progressBar(i.progress, started ? dColor(i.left) : C_GRAY) + "</div></td></tr>";
+}
+
+/* 메일 틀 — 청록 머리(날짜 · 한 줄 제목) · 본문 · 열기 버튼 · 한 줄 꼬리말 */
+function mailHtml({ todayKey, title, under, body, siteUrl, footer }) {
+  return '<div style="max-width:560px;margin:0 auto;background:#f6f7f7;' + MAIL_FONT + 'color:#27272a;padding-bottom:24px">' +
+    '<div style="padding:22px 20px ' + (under ? 34 : 22) + 'px;background:' + C_TEAL + ';border-radius:0 0 22px 22px;color:#fff">' +
+      "<table " + TABLE + '><tr><td style="font-size:12px;font-weight:700;color:#d5ece8">▤ 간트차트</td><td style="text-align:right;font-size:12px;color:#d5ece8">' + longDate(todayKey) + "</td></tr></table>" +
+      '<div style="margin-top:14px;font-size:21px;font-weight:800;line-height:1.35">' + escapeHtml(title) + "</div></div>" +
+    (under || "") +
+    '<div style="padding:4px 14px 0">' + body +
+      '<a href="' + escapeHtml(siteUrl) + '" style="display:block;margin:18px 0 0;padding:14px;border-radius:14px;background:' + C_TEAL + ';color:#fff;text-align:center;font-weight:800;font-size:14px;text-decoration:none">간트차트 열기</a>' +
+      '<div style="margin:18px 4px 0;padding-top:14px;border-top:1px solid #eceeed;font-size:11.5px;line-height:1.6;color:#a1a1aa">' + escapeHtml(footer) + "</div>" +
+    "</div></div>";
 }
 
 function mailText(summary, items, siteUrl) {
@@ -234,44 +267,69 @@ function mailText(summary, items, siteUrl) {
     items.map((i) => "- " + dLabel(i.left) + "  " + i.name + " (" + i.chartName + ", " + (i.end || "날짜 없음") + ", " + i.progress + "%)").join("\n") + "\n\n" + siteUrl;
 }
 
+function groupRows(groups, items, card) {
+  return groups.map(([title, color, test]) => {
+    const list = items.filter(test);
+    return list.length ? section(title, color, list.length) + list.map(card).join("") : "";
+  }).join("");
+}
+
 function renderMail(notice, siteUrl) {
-  const groups = [
-    ["지연", "D+", -1, (i) => i.left < 0],
-    ["오늘 마감", "D-day", 0, (i) => i.left === 0],
-    ["내일 마감", "D-1", 1, (i) => i.left === 1],
-    ["4일 뒤 마감", "D-4", 4, (i) => i.left === 4],
-    ["일주일 뒤 마감", "D-7", 7, (i) => i.left === 7],
-    ["15일 뒤 마감", "D-15", 15, (i) => i.left === 15],
-    ["30일 뒤 마감", "D-30", 30, (i) => i.left === 30]
-  ];
-  const tiles = groups.map(([label, short, left, test]) => ({ label, short, left, n: notice.items.filter(test).length })).filter((g) => g.n);
-  const summary = tiles.map((g) => g.label + " " + g.n + "건").join(" · ");
+  const items = notice.items;
+  const chips = [
+    ["지연", -1, (i) => i.left < 0],
+    ["오늘", 0, (i) => i.left === 0],
+    ["내일", 1, (i) => i.left === 1],
+    ["다가옴", 7, (i) => i.left > 1]
+  ].map(([label, left, test]) => ({ label, left, n: items.filter(test).length })).filter((g) => g.n);
+  const under = '<table role="presentation" style="width:100%;border-collapse:separate;border-spacing:6px 0;margin:-16px 0 0;padding:0 14px"><tr>' +
+    chips.map((g) => '<td style="background:#fff;border-radius:14px;box-shadow:0 6px 16px -10px rgba(0,0,0,.35);text-align:center;padding:10px 2px 8px">' +
+      '<div style="font-size:20px;font-weight:800;color:' + dColor(g.left) + '">' + g.n + "</div>" +
+      '<div style="font-size:11px;font-weight:700;color:' + dColor(g.left) + ';margin-top:2px">' + g.label + "</div></td>").join("") +
+    "</tr></table>";
+  const body = "<table " + TABLE + ">" + groupRows([
+    ["지연", dColor(-1), (i) => i.left < 0],
+    ["오늘 · 내일", dColor(0), (i) => i.left === 0 || i.left === 1],
+    ["다가옴", C_TEAL, (i) => i.left > 1]
+  ], items, deadlineCard) + "</table>";
+  const summary = "마감 " + items.length + "건 · " + chips.map((g) => g.label + " " + g.n).join(" · ");
   return {
     subject: "[간트차트] " + summary,
-    html: mailHtml({ title: "간트차트 마감 알림", tiles, items: notice.items, siteUrl, footer: "[작업 끝냄] · [지연 알림 끄기]를 누르면 그만 보내요 · 메일 끄기: 사이트의 종 버튼" }),
-    text: mailText(summary, notice.items, siteUrl)
+    html: mailHtml({ todayKey: notice.todayKey, title: "마감 " + items.length + "건", under, body, siteUrl,
+      footer: "[작업 끝냄] · [지연 알림 끄기]로 그만 받기 · 메일 끄기: 종 버튼" }),
+    text: mailText(summary, items, siteUrl)
   };
 }
 
-/* 일정 메일: 끝나지 않은 작업 전체 — 지연 · 7일 안 · 그 뒤 · 날짜 없음 */
-/* 일정 메일: 앞으로 할 일 — 진행 중 · 7일 안 시작 · 그 뒤 시작 */
+/* 일정 메일: 앞으로 할 일 — 7일 칸(마감 · 시작 수) · 진행 중 · 곧 시작 */
+function weekStrip(todayKey, items) {
+  const cells = [0, 1, 2, 3, 4, 5, 6].map((k) => {
+    const key = addDaysKey(todayKey, k);
+    const ends = items.filter((i) => i.end === key).length;
+    const starts = items.filter((i) => i.start === key).length;
+    const on = k === 0;
+    const note = (n, label, color) => n ? '<div style="font-size:9.5px;font-weight:800;margin-top:3px;color:' + (on ? "#fff" : color) + '">' + label + " " + n + "</div>" : "";
+    return '<td style="vertical-align:top;text-align:center;padding:8px 0 7px;border-radius:12px;' + (on ? "background:" + C_TEAL + ";color:#fff" : "background:#fff;color:#3f3f46") + '">' +
+      '<div style="font-size:10.5px;font-weight:700">' + weekday(key) + "</div>" +
+      '<div style="font-size:15px;font-weight:800;margin-top:1px">' + Number(key.slice(8)) + "</div>" +
+      note(ends, "마감", dColor(-1)) + note(starts, "시작", C_TEAL) + "</td>";
+  }).join("");
+  return '<table role="presentation" style="width:100%;border-collapse:separate;border-spacing:4px 0;margin-top:14px;table-layout:fixed"><tr>' + cells + "</tr></table>";
+}
+
 function renderDigest(digest, siteUrl) {
-  const groups = [
-    ["진행 중", "진행 중", 0, (i) => i.toStart <= 0],
-    ["7일 안 시작", "7일 안 시작", 7, (i) => i.toStart > 0 && i.toStart <= 7],
-    ["그 뒤 시작", "그 뒤 시작", 30, (i) => i.toStart > 7]
-  ];
-  const tiles = groups.map(([label, short, left, test]) => ({ label, short, left, n: digest.items.filter(test).length })).filter((g) => g.n);
-  const whose = digest.scope === "charts" ? "내 차트" : "내 작업";
-  const summary = whose + " " + digest.items.length + "건 · " + tiles.map((g) => g.label + " " + g.n).join(" · ");
+  const items = digest.items;
+  const showOwner = digest.scope === "charts";
+  const body = weekStrip(digest.todayKey, items) + "<table " + TABLE + ">" + groupRows([
+    ["진행 중", dColor(0), (i) => i.toStart <= 0],
+    ["곧 시작", C_TEAL, (i) => i.toStart > 0]
+  ], items, (i) => digestCard(i, showOwner)) + "</table>";
+  const whose = showOwner ? "내 차트" : "내 작업";
+  const title = "앞으로 할 일 " + items.length + "건";
   return {
-    subject: "[간트차트] 앞으로 할 일 · " + summary,
-    html: mailHtml({
-      title: "간트차트 앞으로 할 일 · " + whose + " · " + digest.every, tiles, items: digest.items, siteUrl,
-      showOwner: digest.scope === "charts", showRange: true,
-      footer: "오늘부터 할 일만 보여 줘요(완료 · 마감 지난 작업 제외) · 주기 바꾸기·끄기: 사이트의 종 버튼"
-    }),
-    text: mailText(summary, digest.items, siteUrl)
+    subject: "[간트차트] " + title + " · " + whose,
+    html: mailHtml({ todayKey: digest.todayKey, title, body, siteUrl, footer: "주기 · 끄기: 종 버튼" }),
+    text: mailText(title + " · " + whose, items, siteUrl)
   };
 }
 
