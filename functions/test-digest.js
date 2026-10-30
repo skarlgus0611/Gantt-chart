@@ -51,7 +51,10 @@ assert.deepStrictEqual(names("me@example.com"), ["지연 14일", "지연 7일", 
 assert.deepStrictEqual(names("ji@example.com"), ["D-7 지수"]);
 
 const mail = renderMail(mails.find((m) => m.email === "me@example.com"), "https://example.com/");
-assert.strictEqual(mail.subject, "[간트차트] 지연 4건 · 오늘 마감 1건 · 내일 마감 1건 · 4일 뒤 마감 1건 · 일주일 뒤 마감 1건 · 15일 뒤 마감 1건 · 30일 뒤 마감 1건");
+assert.strictEqual(mail.subject, "[간트차트] 마감 10건 · 지연 4 · 오늘 1 · 내일 1 · 다가옴 4");
+assert.ok(mail.html.includes("10월 25일 (일)") && mail.html.includes(">마감 10건<"));
+assert.ok(mail.html.includes(">D+14<") && mail.html.includes(">D-day<") && mail.html.includes(">D-30<"));
+assert.ok(mail.html.indexOf("● 지연") < mail.html.indexOf("● 오늘 · 내일") && mail.html.indexOf("● 오늘 · 내일") < mail.html.indexOf("● 다가옴"));
 assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(seoulTodayKey()));
 
 /* 일정 메일 — 설정한 다음 날이 첫날, 그 뒤 주기마다 */
@@ -99,6 +102,8 @@ assert.deepStrictEqual(digests.map((d) => d.email), ["me@example.com", "ji@examp
 assert.deepStrictEqual(digests[0].items.map((i) => i.name), ["내 오늘 마감", "내 진행 중", "내 다음주 시작", "남의 차트 내 작업"]);
 assert.deepStrictEqual(digests[1].items.map((i) => i.name), ["내 오늘 마감", "내 진행 중", "내 다음주 시작", "지수 작업"], "참여한 차트 전체");
 const dMail = renderDigest(digests[1], "https://example.com/");
-assert.strictEqual(dMail.subject, "[간트차트] 앞으로 할 일 · 내 차트 4건 · 진행 중 2 · 7일 안 시작 1 · 그 뒤 시작 1");
-assert.ok(dMail.html.includes("김지수 · 11.15–12.01"));
+assert.strictEqual(dMail.subject, "[간트차트] 앞으로 할 일 4건 · 내 차트");
+assert.ok(dMail.html.includes("김지수 · 11.15 – 12.1") && dMail.html.includes("11.15 시작") && dMail.html.includes("오늘 마감"));
+assert.ok(dMail.html.includes("● 진행 중") && dMail.html.includes("● 곧 시작"));
+assert.ok(!renderDigest(digests[0], "https://example.com/").html.includes("남기현 ·"), "내 작업은 담당자 안 붙임");
 console.log("ok —", mail.subject, "/", dMail.subject);
