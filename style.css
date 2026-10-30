@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v109";
+  --css-version: "2026-10-24-design-v110";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -13438,4 +13438,28 @@ body.is-mobile-chart .detail-owner .assignee-self {
 body.is-mobile-chart .detail-owner .assignee-email {
   flex: 1 0 100%;
   order: 3;
+}
+
+/* (요청사항) PC · 폰 모두 자동 저장 — [취소 | 저장] 없이, 제목 옆에 저장 상태 */
+.detail-actions .detail-pill-main {
+  display: none;
+}
+
+.m-detail-saved {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0f766e;
+  white-space: nowrap;
+}
+
+.m-detail-saved.is-idle {
+  color: #a1a1aa;
+  font-weight: 600;
+}
+
+.m-detail-saved.is-error {
+  color: #dc2626;
 }

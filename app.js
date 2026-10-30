@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v109"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v110"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v109";
+const APP_VERSION = "2026-10-24-design-v110";
 
 
 /* =========================================================
@@ -4080,6 +4080,9 @@ function showTaskDetail(id) {
     return;
   }
 
+  /* (요청사항) 자동 저장: 이 창의 남은 저장을 먼저 마치고 새 작업을 그린다 */
+  if (panel.autosaveFlush) panel.autosaveFlush();
+
   panel.classList.remove("hidden");
 
   /* 색을 바꾸지 않으면 서버에 색을 보내지 않는다. (기본색 따르기 유지) */
@@ -4213,17 +4216,17 @@ function showTaskDetail(id) {
 
       <button id="deleteTaskBtn" type="button" class="detail-delete">
         ${icon('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path>')}
-        삭제
+        작업 삭제
       </button>
 
       <span class="detail-actions-spacer"></span>
 
-      <!-- (요청사항) [지연 확인 | 완료] 한 알약 — 지연 확인은 지연된 작업에만 -->
+      <!-- (요청사항) [지연 알림 끄기 | 작업 끝냄] 한 알약 — 지연 알림 끄기는 지연된 작업에만 -->
       <div class="detail-pill detail-pill-status${canFinishTask(task) ? "" : " hidden"}">
         ${canFinishTask(task) && taskDueStatus(task) && taskDueStatus(task).kind === "overdue"
-          ? `<button id="ackOverdueBtn" type="button" class="detail-ack" title="확인하면 이 작업의 지연 알림을 멈춰요">${icon('<path d="M12 8v5M12 16h.01"></path><circle cx="12" cy="12" r="9"></circle>')}지연 확인</button>`
+          ? `<button id="ackOverdueBtn" type="button" class="detail-ack" title="확인하면 이 작업의 지연 알림을 멈춰요">${icon('<path d="M12 8v5M12 16h.01"></path><circle cx="12" cy="12" r="9"></circle>')}지연 알림 끄기</button>`
           : ""}
-        ${canFinishTask(task) ? `<button id="completeTaskBtn" type="button" class="detail-complete" ${normProgress(task.progress) >= 100 ? "disabled" : ""} title="진행률을 100%로 바꾸고 알림을 멈춰요">${icon('<path d="m5 12 5 5 9-10"></path>')}${normProgress(task.progress) >= 100 ? "완료됨" : "완료"}</button>` : ""}
+        ${canFinishTask(task) ? `<button id="completeTaskBtn" type="button" class="detail-complete" ${normProgress(task.progress) >= 100 ? "disabled" : ""} title="진행률을 100%로 바꾸고 알림을 멈춰요">${icon('<path d="m5 12 5 5 9-10"></path>')}${normProgress(task.progress) >= 100 ? "끝난 작업" : "작업 끝냄"}</button>` : ""}
       </div>
 
       <!-- (요청사항) [취소 | 저장] 한 알약 -->
@@ -4287,7 +4290,7 @@ function showTaskDetail(id) {
   });
 
   mountDetailMemo(task);
-  if (isMobileChart()) mountMobileDetailAutosave(task);
+  mountDetailAutosave(task); /* (요청사항) PC · 폰 모두 자동 저장 */
 
   const progressRange = document.getElementById("detailProgressRange");
   const progressNumber = document.getElementById("detailProgress");
@@ -4348,7 +4351,7 @@ function showTaskDetail(id) {
     completeButton.onclick = () => {
       /* 편집 권한이 없는 담당자(뷰어)는 진행률만 100% 로 */
       if (!canEditChartHere()) {
-        quickTaskUpdate(completeButton, task.id, { progress: 100 }, "완료했어요. 이 작업 알림은 더 오지 않아요.");
+        quickTaskUpdate(completeButton, task.id, { progress: 100 }, "작업을 끝냈어요. 이 작업 알림은 더 오지 않아요.");
         return;
       }
       const progressInput = document.getElementById("detailProgress");
@@ -4381,7 +4384,7 @@ function showTaskDetail(id) {
   const ackButton = document.getElementById("ackOverdueBtn");
 
   if (ackButton) {
-    ackButton.onclick = () => quickTaskUpdate(ackButton, task.id, { overdueAck: true }, "지연을 확인했어요. 이 작업의 지연 알림을 멈춥니다.");
+    ackButton.onclick = () => quickTaskUpdate(ackButton, task.id, { overdueAck: true }, "지연 알림을 껐어요. 마감일을 바꾸면 다시 알려요.");
   }
 
   /* 화면 아래쪽에 열리므로 보이는 위치로 스크롤한다. */
@@ -6945,16 +6948,21 @@ function mobileCollectDetail(id) {
   return data;
 }
 
-function mountMobileDetailAutosave(task) {
+function mountDetailAutosave(task) {
   const panel = document.getElementById("detailPanel");
-  if (!panel || !canEditChartHere()) return;
+  if (!panel) return;
+  panel.autosaveFlush = null;
+  if (!canEditChartHere()) return;
   const title = panel.querySelector(".detail-title");
   const status = document.createElement("span");
-  status.className = "m-detail-saved";
+  status.className = "m-detail-saved is-idle";
+  status.textContent = "자동 저장";
   if (title) title.insertBefore(status, title.querySelector(".detail-close"));
   let timer = 0;
+  let alive = true;
   const save = async () => {
     timer = 0;
+    if (!alive) return;
     const data = mobileCollectDetail(task.id);
     if (!data) { status.textContent = "작업명 · 날짜를 확인해 주세요"; status.className = "m-detail-saved is-error"; return; }
     status.textContent = "저장 중…";
@@ -6977,9 +6985,18 @@ function mountMobileDetailAutosave(task) {
       el.addEventListener("change", schedule);
     });
   panel.querySelectorAll(".detail-swatch-btn").forEach((btn) => btn.addEventListener("click", schedule));
-  /* 닫을 때 남은 저장은 바로 */
+  /* 다른 작업을 열거나 닫기 전에 남은 저장은 지금 화면 값으로 바로 (그 뒤엔 이 창의 저장은 끝) */
+  panel.autosaveFlush = () => {
+    if (timer) { clearTimeout(timer); save(); }
+    alive = false;
+  };
   const close = document.getElementById("closeDetail");
   if (close) close.addEventListener("click", () => { if (timer) { clearTimeout(timer); save(); } }, true);
+  /* 작업 삭제 · 작업 끝냄 · 지연 알림 끄기는 자기 저장을 하므로 남은 자동 저장은 버린다 */
+  ["deleteTaskBtn", "completeTaskBtn", "ackOverdueBtn"].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.addEventListener("click", () => { clearTimeout(timer); timer = 0; }, true);
+  });
 }
 
 /* 상세 창이 열리고 닫힐 때 바깥(셸)에 알려서, 이 차트 칸을 잠깐 화면 전체로 띄우게 한다 */

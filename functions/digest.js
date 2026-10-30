@@ -248,7 +248,7 @@ function renderMail(notice, siteUrl) {
   const summary = tiles.map((g) => g.label + " " + g.n + "건").join(" · ");
   return {
     subject: "[간트차트] " + summary,
-    html: mailHtml({ title: "간트차트 마감 알림", tiles, items: notice.items, siteUrl, footer: "완료하거나 [지연 확인]을 누르면 그만 보내요 · 메일 끄기: 사이트의 종 버튼" }),
+    html: mailHtml({ title: "간트차트 마감 알림", tiles, items: notice.items, siteUrl, footer: "[작업 끝냄] · [지연 알림 끄기]를 누르면 그만 보내요 · 메일 끄기: 사이트의 종 버튼" }),
     text: mailText(summary, notice.items, siteUrl)
   };
 }
