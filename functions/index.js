@@ -1,5 +1,5 @@
 /* (요청사항) 마감 알림 — 매일 오전 8시(서울)에 한 번 돈다
-   - 메일: D-15 · D-7 · D-1 · 당일, 지연 1 · 4 · 7일째와 그 뒤 매주 (Gmail 앱 비밀번호로 발송: 비밀값 SMTP_USER, SMTP_PASS)
+   - 메일: D-30 · D-15 · D-7 · D-4 · D-1 · 당일, 지연 1 · 4 · 7일째와 그 뒤 매주 (Gmail 앱 비밀번호로 발송: 비밀값 SMTP_USER, SMTP_PASS)
    - Firebase Cloud Functions(2세대) 예약 작업이라 요금제가 Blaze(종량제)여야 배포할 수 있다
    - 배포 방법은 functions/README.md 참고 */
 const { onSchedule } = require("firebase-functions/v2/scheduler");

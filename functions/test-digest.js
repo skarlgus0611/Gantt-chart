@@ -2,10 +2,10 @@
 const assert = require("assert");
 const { buildNotices, renderMail, buildDigests, renderDigest, isDigestDay, seoulTodayKey, isMailDay } = require("./digest");
 
-/* 보내는 날: D-15 · D-7 · D-1 · 당일, 지연 1 · 4 · 7 · 14 · 21 … */
+/* 보내는 날: D-30 · D-15 · D-7 · D-4 · D-1 · 당일, 지연 1 · 4 · 7 · 14 · 21 … */
 const sendDays = [];
-for (let left = 20; left >= -30; left--) if (isMailDay(left, false)) sendDays.push(left);
-assert.deepStrictEqual(sendDays, [15, 7, 1, 0, -1, -4, -7, -14, -21, -28]);
+for (let left = 40; left >= -30; left--) if (isMailDay(left, false)) sendDays.push(left);
+assert.deepStrictEqual(sendDays, [30, 15, 7, 4, 1, 0, -1, -4, -7, -14, -21, -28]);
 assert.strictEqual(isMailDay(-4, true), false, "지연 확인 누르면 안 보냄");
 assert.strictEqual(isMailDay(-3, false), false, "지연 3일째는 안 보냄");
 assert.strictEqual(isMailDay(1, true), true, "마감 전 알림은 지연 확인과 상관없음");
@@ -20,7 +20,9 @@ const charts = [{ id: "c1", name: "기본 차트", ownerEmail: "me@example.com" 
 const at = (name, end, extra = {}) => ({ name, end, progress: 0, ownerEmail: "me@example.com", ...extra });
 const tasksByChart = {
   c1: [
+    at("D-30", "2026-11-24"),
     at("D-15", "2026-11-09"),
+    at("D-4", "2026-10-29"),
     at("D-8 (안 보냄)", "2026-11-02"),
     at("D-7", "2026-11-01"),
     at("D-2 (안 보냄)", "2026-10-27"),
@@ -45,11 +47,11 @@ const tasksByChart = {
 const { mails } = buildNotices({ users, charts, tasksByChart, todayKey: "2026-10-25" });
 const names = (email) => (mails.find((m) => m.email === email) || { items: [] }).items.map((i) => i.name);
 assert.deepStrictEqual(mails.map((m) => m.email).sort(), ["ji@example.com", "me@example.com"]);
-assert.deepStrictEqual(names("me@example.com"), ["지연 14일", "지연 7일", "지연 4일", "지연 1일", "당일", "D-1", "D-7", "D-15"]);
+assert.deepStrictEqual(names("me@example.com"), ["지연 14일", "지연 7일", "지연 4일", "지연 1일", "당일", "D-1", "D-4", "D-7", "D-15", "D-30"]);
 assert.deepStrictEqual(names("ji@example.com"), ["D-7 지수"]);
 
 const mail = renderMail(mails.find((m) => m.email === "me@example.com"), "https://example.com/");
-assert.strictEqual(mail.subject, "[간트차트] 지연 4건 · 오늘 마감 1건 · 내일 마감 1건 · 일주일 뒤 마감 1건 · 15일 뒤 마감 1건");
+assert.strictEqual(mail.subject, "[간트차트] 지연 4건 · 오늘 마감 1건 · 내일 마감 1건 · 4일 뒤 마감 1건 · 일주일 뒤 마감 1건 · 15일 뒤 마감 1건 · 30일 뒤 마감 1건");
 assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(seoulTodayKey()));
 
 /* 일정 메일 — 설정한 다음 날이 첫날, 그 뒤 주기마다 */
@@ -80,14 +82,23 @@ const dUsers = [
 ];
 const dCharts = [{ id: "c1", name: "기본 차트", ownerId: "u1", memberEmails: ["ji@example.com"] }, { id: "c2", name: "남의 차트", ownerId: "u9" }];
 const dTasks = {
-  c1: [at("내 지연", "2026-10-20"), at("내 날짜없음", ""), at("내 완료", "2026-10-30", { progress: 100 }), at("지수 작업", "2026-12-01", { ownerEmail: "ji@example.com", owner: "김지수" })],
-  c2: [at("남의 차트 내 작업", "2026-11-01")]
+  c1: [
+    at("내 지연", "2026-10-20"),
+    at("내 날짜없음", ""),
+    at("내 완료", "2026-10-30", { progress: 100 }),
+    at("내 진행 중", "2026-11-10", { start: "2026-10-01" }),
+    at("내 다음주 시작", "2026-11-20", { start: "2026-10-29" }),
+    at("내 오늘 마감", "2026-10-25", { start: "2026-10-20" }),
+    at("지수 작업", "2026-12-01", { start: "2026-11-15", ownerEmail: "ji@example.com", owner: "김지수" })
+  ],
+  c2: [at("남의 차트 내 작업", "2026-11-01", { start: "2026-11-01" })]
 };
 const digests = buildDigests({ users: dUsers, charts: dCharts, tasksByChart: dTasks, todayKey: "2026-10-25" });
 assert.deepStrictEqual(digests.map((d) => d.email), ["me@example.com", "ji@example.com"], "3일 주기는 오늘 아님, 기본 메일 끈 것과 상관없음");
-assert.deepStrictEqual(digests[0].items.map((i) => i.name), ["내 지연", "남의 차트 내 작업", "내 날짜없음"]);
-assert.deepStrictEqual(digests[1].items.map((i) => i.name), ["내 지연", "지수 작업", "내 날짜없음"], "참여한 차트 전체");
+/* 앞으로 할 일만: 지연 · 날짜 없음 · 완료는 빼고, 진행 중 먼저 → 시작 빠른 순 */
+assert.deepStrictEqual(digests[0].items.map((i) => i.name), ["내 오늘 마감", "내 진행 중", "내 다음주 시작", "남의 차트 내 작업"]);
+assert.deepStrictEqual(digests[1].items.map((i) => i.name), ["내 오늘 마감", "내 진행 중", "내 다음주 시작", "지수 작업"], "참여한 차트 전체");
 const dMail = renderDigest(digests[1], "https://example.com/");
-assert.strictEqual(dMail.subject, "[간트차트] 일정 요약 · 내 차트 3건 · 지연 1 · 그 뒤 1 · 날짜 없음 1");
-assert.ok(dMail.html.includes("김지수 · 12.01"));
+assert.strictEqual(dMail.subject, "[간트차트] 앞으로 할 일 · 내 차트 4건 · 진행 중 2 · 7일 안 시작 1 · 그 뒤 시작 1");
+assert.ok(dMail.html.includes("김지수 · 11.15–12.01"));
 console.log("ok —", mail.subject, "/", dMail.subject);
