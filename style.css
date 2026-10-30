@@ -1,6 +1,6 @@
 /* 세 파일의 버전이 같은지 app.js 가 확인한다. (화면 맨 아래에 표시) */
 :root {
-  --css-version: "2026-10-24-design-v111";
+  --css-version: "2026-10-24-design-v112";
 }
 
 /* Pretendard 글꼴은 index.html 이 fonts/pretendard.css 로 불러온다
@@ -2166,7 +2166,7 @@ body.is-dragging * {
   justify-content: center;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1023px) {
   .mc-sidebar { display: none; }
 }
 /* ▲▲▲ 접이식 사이드바 (추가분) 끝 ▲▲▲ */
@@ -4678,7 +4678,7 @@ body.shared-viewer-readonly .detail-swatches {
 }
 
 /* 좁은 화면: 오른쪽 카드를 아래로, 원형 그래프는 옆으로 나란히 */
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1023px) {
   .detail-layout {
     grid-template-columns: 1fr;
   }
@@ -7088,7 +7088,7 @@ input.mc-org-member-title {
 }
 
 /* ---------- 좁은 화면 ---------- */
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1023px) {
   .mc-org-modal {
     height: 92vh;
   }
@@ -12677,7 +12677,7 @@ body.shared-viewer-readonly #detailOwnerEmail {
   display: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1023px) {
   .mc-mobile-menu {
     display: inline-flex;
     flex-shrink: 0;
@@ -12925,7 +12925,7 @@ body.is-mobile-chart .task-bar .task-bar-text {
   display: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1023px) {
   .mc-sidebar-tab {
     position: fixed;
     left: 0;
@@ -12959,7 +12959,7 @@ body.is-mobile-chart .task-bar .task-bar-text {
   display: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1023px) {
   /* 맨 위: 알림 | 새로고침 | 내 정보 (로그아웃은 내 정보를 누르면) */
   #shellView .mc-topbar {
     flex-wrap: nowrap;
@@ -13147,7 +13147,7 @@ body.is-mobile-chart .memo-tb[data-cmd="italic"] {
   display: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1023px) {
   #shellView .mc-topbar-actions .mc-bell-badge {
     top: 3px;
     right: 4px;
@@ -13157,7 +13157,7 @@ body.is-mobile-chart .memo-tb[data-cmd="italic"] {
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1023px) {
   #shellView .mc-page-actions .mc-search input {
     border: 0;
     background: transparent;

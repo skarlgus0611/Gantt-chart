@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v111"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v112"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -32,6 +32,15 @@ import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v111"; /* �
    역할을 한다 (아래 SHELL 섹션 참고). */
 const CHART_PARAM = new URLSearchParams(window.location.search).get("chart");
 const IS_SHELL_MODE = CHART_PARAM === null;
+
+/* 폰 · 폴드 펼침 · 태블릿 세로 = 모바일 모양: 폭 760 이하, 또는 터치 화면이면 1023 이하.
+   차트 칸(iframe)은 자기 폭이 아니라 바깥 페이지 폭으로 정해서 맨 위와 차트가 같은 모양이 되게 */
+const MOBILE_VIEW_QUERY = "(max-width: 760px), (pointer: coarse) and (max-width: 1023px)";
+function mobileViewQuery() {
+  let win = window;
+  try { if (window.parent !== window && window.parent.matchMedia) win = window.parent; } catch (error) { /* 다른 사이트에 끼워진 경우 */ }
+  return win.matchMedia(MOBILE_VIEW_QUERY);
+}
 const CHART_ID = CHART_PARAM || "default";
 
 /* (디자인 추가분) 모음(셸) 페이지의 차트 박스 안 iframe으로 떠 있을 때는
@@ -69,7 +78,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v111";
+const APP_VERSION = "2026-10-24-design-v112";
 
 
 /* =========================================================
@@ -6538,12 +6547,12 @@ vSlider = buildRangeSlider(document.getElementById("vRangeSlider"), {
  *  - 작업 이름 줄을 꾹 누르면 위·아래로 · 카테고리 옮기기
  *  - 한 손가락: 옆 · 위아래로 밀기 / 두 손가락: 벌리고 오므려 좌우 · 상하 확대
  * ========================================================= */
-const MOBILE_CHART_MQ = window.matchMedia("(max-width: 640px)");
+const MOBILE_CHART_MQ = mobileViewQuery();
 const MOBILE_TASK_ROW_PX = 46;
 
 function isMobileChart() {
   /* 이 줄보다 먼저 그려질 수도 있어서 상수 대신 바로 묻는다 */
-  return !IS_SHELL_MODE && window.matchMedia("(max-width: 640px)").matches;
+  return !IS_SHELL_MODE && mobileViewQuery().matches;
 }
 
 function applyMobileChartClass() {
@@ -7959,7 +7968,7 @@ function shellInitMobileTopbar() {
   const keyBtn = document.getElementById("mcKeyBtn");
   if (!userBox || !keyBtn) return;
   userBox.addEventListener("click", () => {
-    if (!window.matchMedia("(max-width: 760px)").matches) return;
+    if (!mobileViewQuery().matches) return;
     mobileShowMenu(userBox, [{ label: (fbUser && fbUser.email) ? "로그아웃 (" + fbUser.email + ")" : "로그아웃", run: () => keyBtn.click() }]);
   });
 }
@@ -10078,12 +10087,16 @@ function shellInitSidebarToggle() {
 
   /* (요청사항) 폰(좁은 화면): 사이드바는 평소 숨기고, 위 메뉴 버튼으로 왼쪽에서 밀려 나오게.
      바깥을 누르거나 차트 · 메뉴를 고르면 다시 들어간다. 넓은 화면은 예전처럼 접기/펼치기 */
-  const mobile = window.matchMedia("(max-width: 760px)");
+  const mobile = mobileViewQuery();
   const menuBtn = document.getElementById("mcSidebarTab");
   const scrim = document.getElementById("mcSidebarScrim");
   const sidebar = document.getElementById("mcSidebar");
-  let collapsed = false;
-  try { collapsed = localStorage.getItem("mcSidebarCollapsed") === "1"; } catch (error) { /* 무시 */ }
+  /* 태블릿 가로처럼 넓은 터치 화면은 차트를 넓게 보도록 접고 시작(직접 바꾼 적 없을 때) */
+  let collapsed = window.matchMedia("(pointer: coarse)").matches;
+  try {
+    const saved = localStorage.getItem("mcSidebarCollapsed");
+    if (saved !== null) collapsed = saved === "1";
+  } catch (error) { /* 무시 */ }
   const setOpen = (open) => {
     shellView.classList.toggle("mc-sidebar-open", open);
     if (menuBtn) menuBtn.setAttribute("aria-expanded", String(open));
