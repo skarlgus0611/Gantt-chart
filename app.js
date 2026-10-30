@@ -5,7 +5,7 @@
  * 교체했다. 개인 차트와 공유 차트는 이제 같은 Firestore 컬렉션
  * (charts/{chartId})을 쓴다 — apiGet/apiPost/apiPostForChart ->
  * coreApiPost(action, chartId, data) 하나로 통합. */
-import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v108"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
+import * as fb from "./firebase/firebase-core.js?v=2026-10-24-design-v109"; /* 버전을 붙여 예전 파일이 캐시에 남지 않게 */
 
 /* =========================================================
  * 간트차트 app.js  (v3, 2026-10-18-share15)
@@ -69,7 +69,7 @@ const DEFAULT_COLOR = "#3b82f6";
 /* 세 파일(index.html / app.js / style.css)이 같은 버전인지 화면 맨 아래에 표시한다.
    파일을 새로 올렸는데 예전 파일이 뜨는 경우(브라우저 캐시, 일부만 교체)를
    바로 알아볼 수 있다. 파일을 고칠 때마다 세 곳의 버전을 같이 올린다. */
-const APP_VERSION = "2026-10-24-design-v108";
+const APP_VERSION = "2026-10-24-design-v109";
 
 
 /* =========================================================
@@ -3590,7 +3590,7 @@ function renderWeekHeader(inner, visibleDays, dayWidth) {
  *  - 지연: 종료일이 지났는데 진행률이 100% 가 아님
  *  - 임박: 오늘부터 3일 안에 끝나야 하는데 아직 100% 가 아님
  * ========================================================= */
-/* (요청사항) 알림 단계 — 사이트 안: D-15 · D-7 · D-1 · 당일 · 지연(확인 전까지)
+/* (요청사항) 알림 단계 — 사이트 안 · 메일 같음: D-30 · D-15 · D-7 · D-4 · D-1 · 당일 · 지연(D+1 · 4 · 7 · 매주, 확인 전까지)
    메일(서버 예약 작업, 매일 오전 8시): D-30 · D-15 · D-7 · D-4 · D-1 · 당일 · D+1 · D+4 · D+7 · 그 뒤 일주일마다. 완료·지연 확인이면 끝 */
 const DUE_NOTICE_DAYS = 15;
 const DUE_SOON_DAYS = 2;
@@ -3620,16 +3620,27 @@ function taskDueStatus(task) {
    종 버튼에서 [확인]을 누를 때까지 남아 있다(확인은 단계마다 따로) */
 /* (요청사항) 사이트 안 알림 단계: D-15 · D-7 · D-1 · 당일 · 지연(D+1 부터 완료·지연 확인 전까지).
    단계가 바뀌면 새 알림, 같은 단계 안에서는 [확인] 전까지 그대로 남는다 */
+/* (요청사항) 사이트 안 알림도 메일과 같은 단계: D-30 · D-15 · D-7 · D-4 · D-1 · 당일 ·
+   지연 D+1 · D+4 · D+7 · 그 뒤 일주일마다. 단계가 바뀌면 새 알림([확인]한 것도 다시), 완료 · 지연 확인이면 끝 */
+const NOTICE_FIRST_DAYS = 30;
+
 function taskNoticeStage(task) {
   if (!task || !task.end || normProgress(task.progress) >= 100) return null;
   const left = daysBetweenKeys(dateKey(new Date()), task.end);
-  if (left === null || left > DUE_NOTICE_DAYS) return null;
-  if (left < 0) return task.overdueAck ? null : { stage: "overdue", kind: "overdue", days: -left, label: "지연 " + (-left) + "일" };
+  if (left === null || left > NOTICE_FIRST_DAYS) return null;
+  if (left < 0) {
+    if (task.overdueAck) return null;
+    const late = -left;
+    const step = late < 4 ? 1 : late < 7 ? 4 : Math.floor(late / 7) * 7;
+    return { stage: "late" + step, kind: "overdue", days: late, label: "지연 " + late + "일" };
+  }
   const label = left === 0 ? "오늘 마감" : "D-" + left;
   if (left === 0) return { stage: "d0", kind: "due-soon", days: left, label };
   if (left === 1) return { stage: "d1", kind: "due-soon", days: left, label };
+  if (left <= 4) return { stage: "d4", kind: "upcoming", days: left, label };
   if (left <= 7) return { stage: "d7", kind: "upcoming", days: left, label };
-  return { stage: "d15", kind: "upcoming", days: left, label };
+  if (left <= 15) return { stage: "d15", kind: "upcoming", days: left, label };
+  return { stage: "d30", kind: "upcoming", days: left, label };
 }
 
 /* =========================================================
